@@ -2,9 +2,10 @@
 
 import { useState } from "react";
 import Image from "next/image";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
-import { Minus, Plus, QrCode, Search, Ticket, Trophy, X } from "lucide-react";
+import { Info, Minus, Plus, QrCode, Search, Ticket, Trophy, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { crearApuestas } from "@/actions/apuestas";
@@ -21,6 +22,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { lanzarConfetti } from "@/lib/confetti";
 import { formatFechaCorta } from "@/lib/format";
+import { traducirEquipo, traducirLiga, type Idioma } from "@/lib/idioma";
 import { formatCOP, POLLA } from "@/lib/polla";
 import { cn } from "@/lib/utils";
 import type { Partido } from "@/types";
@@ -107,7 +109,13 @@ function EquipoPronostico({
   );
 }
 
-export function PronosticoForm({ partidos }: { partidos: Partido[] }) {
+export function PronosticoForm({
+  partidos,
+  idioma = "es",
+}: {
+  partidos: Partido[];
+  idioma?: Idioma;
+}) {
   const router = useRouter();
   // Valores que se están editando por partido (antes de "Agregar").
   const [editing, setEditing] = useState<
@@ -122,7 +130,15 @@ export function PronosticoForm({ partidos }: { partidos: Partido[] }) {
 
   const query = q.trim().toLowerCase();
   const visibles = partidos.filter((p) =>
-    `${p.equipo_local} ${p.equipo_visitante} ${p.liga ?? ""}`
+    [
+      p.equipo_local,
+      p.equipo_visitante,
+      p.liga ?? "",
+      traducirEquipo(p.equipo_local, idioma),
+      traducirEquipo(p.equipo_visitante, idioma),
+      traducirLiga(p.liga, idioma),
+    ]
+      .join(" ")
       .toLowerCase()
       .includes(query),
   );
@@ -259,6 +275,8 @@ export function PronosticoForm({ partidos }: { partidos: Partido[] }) {
             {visibles.map((p) => {
             const ed = editing[p.id];
             const apuestasPartido = cart.filter((c) => c.partido_id === p.id);
+            const local = traducirEquipo(p.equipo_local, idioma);
+            const visitante = traducirEquipo(p.equipo_visitante, idioma);
             return (
               <div
                 key={p.id}
@@ -274,13 +292,13 @@ export function PronosticoForm({ partidos }: { partidos: Partido[] }) {
                 </div>
                 <div className="grid gap-2">
                   <EquipoPronostico
-                    nombre={p.equipo_local}
+                    nombre={local}
                     logo={p.equipo_local_logo}
                     goles={ed.local}
                     onGolesChange={(v) => setStepper(p.id, { local: v })}
                   />
                   <EquipoPronostico
-                    nombre={p.equipo_visitante}
+                    nombre={visitante}
                     logo={p.equipo_visitante_logo}
                     goles={ed.visitante}
                     onGolesChange={(v) => setStepper(p.id, { visitante: v })}
@@ -385,7 +403,16 @@ export function PronosticoForm({ partidos }: { partidos: Partido[] }) {
             </div>
           </div>
 
-          <DialogFooter className="flex-col gap-2 sm:flex-col sm:gap-2">
+          <Link
+            href="/terminos"
+            target="_blank"
+            className="text-polla-muted hover:text-polla-gold mx-auto inline-flex items-center gap-1.5 text-xs"
+          >
+            <Info className="size-3.5" />
+            Cómo funciona · Términos y privacidad
+          </Link>
+
+          <DialogFooter>
             <Button
               type="button"
               onClick={() => confirmar(true)}
@@ -394,15 +421,6 @@ export function PronosticoForm({ partidos }: { partidos: Partido[] }) {
             >
               <Trophy className="size-4" />
               {enviando ? "Registrando…" : "Ya transferí, confirmar"}
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => confirmar(false)}
-              disabled={enviando}
-              className="w-full"
-            >
-              Registrar y pagar después
             </Button>
           </DialogFooter>
         </DialogContent>

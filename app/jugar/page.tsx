@@ -3,10 +3,12 @@ import { Lock } from "lucide-react";
 import { getPartidos } from "@/actions/partidos";
 import { PronosticoForm } from "@/components/pronostico-form";
 import { SiteHeader } from "@/components/site-header";
+import { getIdioma } from "@/lib/idioma-server";
 
 export const dynamic = "force-dynamic";
 
 export default async function JugarPage() {
+  const idioma = await getIdioma();
   const result = await getPartidos();
   const todos = result.success ? result.data : [];
   // Solo se puede pronosticar partidos que aún no han empezado.
@@ -15,7 +17,7 @@ export default async function JugarPage() {
 
   return (
     <>
-      <SiteHeader live={hayLive} />
+      <SiteHeader live={hayLive} idioma={idioma} />
       <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-8">
         <div className="mb-8">
           <h1 className="font-heading text-4xl tracking-wide text-white sm:text-5xl">
@@ -36,7 +38,7 @@ export default async function JugarPage() {
             </p>
           </div>
         ) : (
-          <PronosticoForm partidos={disponibles} />
+          <PronosticoForm partidos={disponibles} idioma={idioma} />
         )}
       </main>
     </>

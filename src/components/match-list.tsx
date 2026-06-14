@@ -4,10 +4,19 @@ import { useMemo, useState } from "react";
 import { CalendarX2, ChevronDown, Search } from "lucide-react";
 
 import { PartidoCard } from "@/components/partido-card";
+import { traducirEquipo, traducirLiga, type Idioma } from "@/lib/idioma";
 import type { Partido } from "@/types";
 
-function coincide(p: Partido, q: string) {
-  return `${p.equipo_local} ${p.equipo_visitante} ${p.liga ?? ""}`
+function coincide(p: Partido, q: string, idioma: Idioma) {
+  return [
+    p.equipo_local,
+    p.equipo_visitante,
+    p.liga ?? "",
+    traducirEquipo(p.equipo_local, idioma),
+    traducirEquipo(p.equipo_visitante, idioma),
+    traducirLiga(p.liga, idioma),
+  ]
+    .join(" ")
     .toLowerCase()
     .includes(q);
 }
@@ -16,11 +25,11 @@ function esFinalizado(p: Partido) {
   return p.estado === "finalizado" || p.estado === "cancelado";
 }
 
-function Grid({ partidos }: { partidos: Partido[] }) {
+function Grid({ partidos, idioma }: { partidos: Partido[]; idioma: Idioma }) {
   return (
     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
       {partidos.map((p, i) => (
-        <PartidoCard key={p.id} partido={p} index={i} />
+        <PartidoCard key={p.id} partido={p} index={i} idioma={idioma} />
       ))}
     </div>
   );
@@ -62,10 +71,12 @@ export function MatchList({
   estaSemana,
   masAdelante,
   finalizados,
+  idioma = "es",
 }: {
   estaSemana: Partido[];
   masAdelante: Partido[];
   finalizados: Partido[];
+  idioma?: Idioma;
 }) {
   const [q, setQ] = useState("");
   const query = q.trim().toLowerCase();
@@ -80,14 +91,14 @@ export function MatchList({
       };
     }
     const todos = [...estaSemana, ...masAdelante, ...finalizados].filter((p) =>
-      coincide(p, query),
+      coincide(p, query, idioma),
     );
     return {
       proximosRes: todos.filter((p) => !esFinalizado(p)),
       finalizadosRes: todos.filter(esFinalizado),
       totalRes: todos.length,
     };
-  }, [searching, query, estaSemana, masAdelante, finalizados]);
+  }, [searching, query, idioma, estaSemana, masAdelante, finalizados]);
 
   return (
     <div className="mt-12">
@@ -117,7 +128,7 @@ export function MatchList({
                   Próximos{" "}
                   <span className="text-polla-muted">({proximosRes.length})</span>
                 </h2>
-                <Grid partidos={proximosRes} />
+                <Grid partidos={proximosRes} idioma={idioma} />
               </section>
             )}
             {finalizadosRes.length > 0 && (
@@ -128,7 +139,7 @@ export function MatchList({
                     ({finalizadosRes.length})
                   </span>
                 </h2>
-                <Grid partidos={finalizadosRes} />
+                <Grid partidos={finalizadosRes} idioma={idioma} />
               </section>
             )}
           </div>
@@ -138,7 +149,7 @@ export function MatchList({
           {/* Finalizados: justo debajo del buscador, contraído por defecto */}
           {finalizados.length > 0 && (
             <Colapsable titulo="Partidos finalizados" count={finalizados.length}>
-              <Grid partidos={finalizados} />
+              <Grid partidos={finalizados} idioma={idioma} />
             </Colapsable>
           )}
 
@@ -162,13 +173,13 @@ export function MatchList({
               </p>
             </div>
           ) : (
-            <Grid partidos={estaSemana} />
+            <Grid partidos={estaSemana} idioma={idioma} />
           )}
 
           {masAdelante.length > 0 && (
             <div className="mt-10">
               <Colapsable titulo="Más adelante" count={masAdelante.length}>
-                <Grid partidos={masAdelante} />
+                <Grid partidos={masAdelante} idioma={idioma} />
               </Colapsable>
             </div>
           )}

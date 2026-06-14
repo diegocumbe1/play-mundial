@@ -4,6 +4,7 @@ import Link from "next/link";
 import { EstadoBadge } from "@/components/estado-badge";
 import { cn } from "@/lib/utils";
 import { formatFechaCorta } from "@/lib/format";
+import { traducirEquipo, traducirLiga, type Idioma } from "@/lib/idioma";
 import type { Partido } from "@/types";
 
 function Equipo({
@@ -40,13 +41,17 @@ function Equipo({
 export function PartidoCard({
   partido,
   index = 0,
+  idioma = "es",
 }: {
   partido: Partido;
   index?: number;
+  idioma?: Idioma;
 }) {
   const finalizado = partido.estado === "finalizado";
   const enJuego = partido.estado === "en_juego";
   const hayMarcador = partido.goles_local !== null && partido.goles_visitante !== null;
+  const local = traducirEquipo(partido.equipo_local, idioma);
+  const visitante = traducirEquipo(partido.equipo_visitante, idioma);
 
   return (
     <Link
@@ -61,12 +66,12 @@ export function PartidoCard({
       <div className="mb-4 flex items-center justify-between gap-2">
         <EstadoBadge estado={partido.estado} />
         <span className="text-polla-muted text-xs font-medium">
-          {partido.liga ?? "Mundial 2026"}
+          {traducirLiga(partido.liga, idioma)}
         </span>
       </div>
 
       <div className="flex items-center justify-between gap-3">
-        <Equipo nombre={partido.equipo_local} logo={partido.equipo_local_logo} align="start" />
+        <Equipo nombre={local} logo={partido.equipo_local_logo} align="start" />
 
         <div className="flex shrink-0 flex-col items-center px-1">
           {hayMarcador ? (
@@ -91,7 +96,7 @@ export function PartidoCard({
           )}
         </div>
 
-        <Equipo nombre={partido.equipo_visitante} logo={partido.equipo_visitante_logo} align="end" />
+        <Equipo nombre={visitante} logo={partido.equipo_visitante_logo} align="end" />
       </div>
 
       <div className="border-polla-line/70 mt-4 border-t pt-3 text-center">

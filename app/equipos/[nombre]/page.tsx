@@ -4,7 +4,10 @@ import { ArrowLeft } from "lucide-react";
 
 import { getPartidos } from "@/actions/partidos";
 import { PartidoCard } from "@/components/partido-card";
+import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
+import { traducirEquipo } from "@/lib/idioma";
+import { getIdioma } from "@/lib/idioma-server";
 import type { Partido } from "@/types";
 
 export const dynamic = "force-dynamic";
@@ -25,8 +28,10 @@ export default async function EquipoPage({
 }: {
   params: Promise<{ nombre: string }>;
 }) {
+  const idioma = await getIdioma();
   const { nombre: raw } = await params;
   const nombre = decodeURIComponent(raw);
+  const displayNombre = traducirEquipo(nombre, idioma);
 
   const res = await getPartidos();
   const partidos = (res.success ? res.data : []).filter(
@@ -80,7 +85,7 @@ export default async function EquipoPage({
 
   return (
     <>
-      <SiteHeader />
+      <SiteHeader idioma={idioma} />
       <main className="mx-auto w-full max-w-4xl flex-1 px-4 py-8">
         <Link
           href="/"
@@ -92,13 +97,13 @@ export default async function EquipoPage({
         <div className="flex items-center gap-4">
           <div className="bg-polla-elevated ring-polla-line flex size-16 items-center justify-center overflow-hidden rounded-full ring-1">
             {logo ? (
-              <Image src={logo} alt={nombre} width={48} height={48} className="size-12 object-contain" />
+              <Image src={logo} alt={displayNombre} width={48} height={48} className="size-12 object-contain" />
             ) : (
               <span className="text-2xl">⚽</span>
             )}
           </div>
           <h1 className="font-heading text-4xl tracking-wide text-white sm:text-5xl">
-            {nombre}
+            {displayNombre}
           </h1>
         </div>
 
@@ -126,7 +131,7 @@ export default async function EquipoPage({
                 </h2>
                 <div className="grid gap-4 sm:grid-cols-2">
                   {proximos.map((p, i) => (
-                    <PartidoCard key={p.id} partido={p} index={i} />
+                    <PartidoCard key={p.id} partido={p} index={i} idioma={idioma} />
                   ))}
                 </div>
               </section>
@@ -139,7 +144,7 @@ export default async function EquipoPage({
                 </h2>
                 <div className="grid gap-4 sm:grid-cols-2">
                   {jugados.map((p, i) => (
-                    <PartidoCard key={p.id} partido={p} index={i} />
+                    <PartidoCard key={p.id} partido={p} index={i} idioma={idioma} />
                   ))}
                 </div>
               </section>
@@ -147,6 +152,7 @@ export default async function EquipoPage({
           </>
         )}
       </main>
+      <SiteFooter />
     </>
   );
 }

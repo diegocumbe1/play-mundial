@@ -6,8 +6,11 @@ import { ArrowLeft, ArrowRight } from "lucide-react";
 import { getApuestas } from "@/actions/apuestas";
 import { getPartidos } from "@/actions/partidos";
 import { EstadoBadge } from "@/components/estado-badge";
+import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import { formatFecha } from "@/lib/format";
+import { traducirEquipo, traducirLiga } from "@/lib/idioma";
+import { getIdioma } from "@/lib/idioma-server";
 import { calcularResultadoPartido, formatCOP } from "@/lib/polla";
 import { cn } from "@/lib/utils";
 
@@ -41,6 +44,7 @@ export default async function PartidoDetallePage({
 }: {
   params: Promise<{ id: string }>;
 }) {
+  const idioma = await getIdioma();
   const { id } = await params;
 
   const [partidosRes, apuestasRes] = await Promise.all([
@@ -63,7 +67,7 @@ export default async function PartidoDetallePage({
 
   return (
     <>
-      <SiteHeader live={partido.estado === "en_juego"} />
+      <SiteHeader live={partido.estado === "en_juego"} idioma={idioma} />
       <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-8">
         <Link
           href="/"
@@ -76,12 +80,15 @@ export default async function PartidoDetallePage({
           <div className="mb-6 flex items-center justify-between gap-2">
             <EstadoBadge estado={partido.estado} />
             <span className="text-polla-muted text-sm">
-              {partido.liga ?? "Mundial 2026"}
+              {traducirLiga(partido.liga, idioma)}
             </span>
           </div>
 
           <div className="flex items-center justify-between gap-4">
-            <Equipo nombre={partido.equipo_local} logo={partido.equipo_local_logo} />
+            <Equipo
+              nombre={traducirEquipo(partido.equipo_local, idioma)}
+              logo={partido.equipo_local_logo}
+            />
             <div className="flex shrink-0 flex-col items-center">
               {hayMarcador ? (
                 <span className="font-heading text-5xl text-white tabular-nums sm:text-6xl">
@@ -92,7 +99,7 @@ export default async function PartidoDetallePage({
               )}
             </div>
             <Equipo
-              nombre={partido.equipo_visitante}
+              nombre={traducirEquipo(partido.equipo_visitante, idioma)}
               logo={partido.equipo_visitante_logo}
             />
           </div>
@@ -134,9 +141,14 @@ export default async function PartidoDetallePage({
         </h2>
         <div className="grid gap-3 sm:grid-cols-2">
           {[
-            { nombre: partido.equipo_local, logo: partido.equipo_local_logo },
+            {
+              nombre: partido.equipo_local,
+              display: traducirEquipo(partido.equipo_local, idioma),
+              logo: partido.equipo_local_logo,
+            },
             {
               nombre: partido.equipo_visitante,
+              display: traducirEquipo(partido.equipo_visitante, idioma),
               logo: partido.equipo_visitante_logo,
             },
           ].map((e) => (
@@ -150,18 +162,19 @@ export default async function PartidoDetallePage({
               <span className="flex items-center gap-3">
                 <span className="bg-polla-elevated ring-polla-line flex size-10 items-center justify-center overflow-hidden rounded-full ring-1">
                   {e.logo ? (
-                    <Image src={e.logo} alt={e.nombre} width={28} height={28} className="size-7 object-contain" />
+                    <Image src={e.logo} alt={e.display} width={28} height={28} className="size-7 object-contain" />
                   ) : (
                     <span>⚽</span>
                   )}
                 </span>
-                <span className="font-semibold text-white">Ver {e.nombre}</span>
+                <span className="font-semibold text-white">Ver {e.display}</span>
               </span>
               <ArrowRight className="text-polla-gold size-5" />
             </Link>
           ))}
         </div>
       </main>
+      <SiteFooter />
     </>
   );
 }

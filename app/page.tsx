@@ -1,13 +1,16 @@
 import { getPartidos } from "@/actions/partidos";
 import { Hero } from "@/components/hero";
 import { MatchList } from "@/components/match-list";
+import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
+import { getIdioma } from "@/lib/idioma-server";
 
 export const dynamic = "force-dynamic";
 
 const SEMANA_MS = 7 * 24 * 60 * 60 * 1000;
 
 export default async function Home() {
+  const idioma = await getIdioma();
   const partidosRes = await getPartidos();
   const partidos = partidosRes.success ? partidosRes.data : [];
   const hayLive = partidos.some((p) => p.estado === "en_juego");
@@ -29,7 +32,7 @@ export default async function Home() {
 
   return (
     <>
-      <SiteHeader live={hayLive} />
+      <SiteHeader live={hayLive} idioma={idioma} />
       <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-8">
         <Hero />
 
@@ -42,15 +45,12 @@ export default async function Home() {
             estaSemana={estaSemana}
             masAdelante={masAdelante}
             finalizados={finalizados}
+            idioma={idioma}
           />
         )}
       </main>
 
-      <footer className="border-polla-line/70 border-t">
-        <div className="text-polla-muted mx-auto max-w-5xl px-4 py-6 text-center text-xs">
-          Polla Mundial 2026 · Pronostica el marcador exacto y llévate el premio.
-        </div>
-      </footer>
+      <SiteFooter />
     </>
   );
 }

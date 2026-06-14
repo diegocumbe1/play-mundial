@@ -2,7 +2,10 @@ import { Trophy } from "lucide-react";
 
 import { getApuestas } from "@/actions/apuestas";
 import { getPartidos } from "@/actions/partidos";
+import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
+import { traducirEquipo, type Idioma } from "@/lib/idioma";
+import { getIdioma } from "@/lib/idioma-server";
 import { calcularResultadoPartido, formatCOP } from "@/lib/polla";
 import type { Apuesta, Partido } from "@/types";
 
@@ -18,9 +21,11 @@ const ORDEN: Record<string, number> = {
 function ResultadoCard({
   partido,
   apuestas,
+  idioma,
 }: {
   partido: Partido;
   apuestas: Apuesta[];
+  idioma: Idioma;
 }) {
   const r = calcularResultadoPartido(partido, apuestas);
   const finalizado = partido.estado === "finalizado";
@@ -31,9 +36,9 @@ function ResultadoCard({
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="truncate font-semibold text-white">
-            {partido.equipo_local}{" "}
+            {traducirEquipo(partido.equipo_local, idioma)}{" "}
             <span className="text-polla-muted font-normal">vs</span>{" "}
-            {partido.equipo_visitante}
+            {traducirEquipo(partido.equipo_visitante, idioma)}
           </div>
           {finalizado && (
             <div className="font-heading text-polla-gold mt-1 text-2xl tabular-nums">
@@ -89,6 +94,7 @@ function ResultadoCard({
 }
 
 export default async function ResultadosPage() {
+  const idioma = await getIdioma();
   const [partidosRes, apuestasRes] = await Promise.all([
     getPartidos(),
     getApuestas(),
@@ -116,7 +122,7 @@ export default async function ResultadosPage() {
 
   return (
     <>
-      <SiteHeader live={hayLive} />
+      <SiteHeader live={hayLive} idioma={idioma} />
       <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-8">
         <div className="mb-8 flex items-center gap-3">
           <Trophy className="text-polla-gold size-8" />
@@ -134,11 +140,17 @@ export default async function ResultadosPage() {
         ) : (
           <div className="grid gap-3">
             {conApuestas.map((p) => (
-              <ResultadoCard key={p.id} partido={p} apuestas={porPartido.get(p.id)!} />
+              <ResultadoCard
+                key={p.id}
+                partido={p}
+                apuestas={porPartido.get(p.id)!}
+                idioma={idioma}
+              />
             ))}
           </div>
         )}
       </main>
+      <SiteFooter />
     </>
   );
 }
