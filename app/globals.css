@@ -1,26 +1,223 @@
 @import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+@custom-variant dark (&:is(.dark *));
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
+
+  --font-sans: var(--font-inter);
   --font-mono: var(--font-geist-mono);
+  --font-heading: var(--font-bebas);
+
+  /* Tokens de marca — Polla Mundial 2026 (estadio nocturno) */
+  --color-polla-dark: #0a0a0f;
+  --color-polla-surface: #12121a;
+  --color-polla-elevated: #1a1a2e;
+  --color-polla-navy: #16213e;
+  --color-polla-deep: #0f3460;
+  --color-polla-gold: #f5c518;
+  --color-polla-red: #e94560;
+  --color-polla-muted: #8892a4;
+  --color-polla-line: #1e2d40;
+
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+
+  /* Animaciones de marca */
+  --animate-shimmer: shimmer 2.5s linear infinite;
+  --animate-live: live-pulse 1.6s ease-in-out infinite;
+  --animate-rise: rise 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+  --animate-float: float 6s ease-in-out infinite;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+/*
+ * Dark mode obligatorio: una sola paleta nocturna. Tanto :root como .dark
+ * comparten valores para que no exista un "light mode" alternativo, y la
+ * clase `dark` del <html> activa las variantes dark: de shadcn (base-nova).
+ */
+:root,
+.dark {
+  --background: #0a0a0f;
+  --foreground: #ffffff;
+  --card: #12121a;
+  --card-foreground: #ffffff;
+  --popover: #1a1a2e;
+  --popover-foreground: #ffffff;
+  --primary: #f5c518;
+  --primary-foreground: #0a0a0f;
+  --secondary: #16213e;
+  --secondary-foreground: #ffffff;
+  --muted: #16213e;
+  --muted-foreground: #8892a4;
+  --accent: #1a1a2e;
+  --accent-foreground: #ffffff;
+  --destructive: #e94560;
+  --border: #1e2d40;
+  --input: #1e2d40;
+  --ring: #f5c518;
+  --chart-1: #f5c518;
+  --chart-2: #e94560;
+  --chart-3: #0f3460;
+  --chart-4: #16213e;
+  --chart-5: #8892a4;
+  --radius: 0.75rem;
+  --sidebar: #12121a;
+  --sidebar-foreground: #ffffff;
+  --sidebar-primary: #f5c518;
+  --sidebar-primary-foreground: #0a0a0f;
+  --sidebar-accent: #1a1a2e;
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: #1e2d40;
+  --sidebar-ring: #f5c518;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  html {
+    @apply font-sans;
+  }
+  /* Marcadores y números tabulares siempre legibles */
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+@layer utilities {
+  /* Gradiente del hero: cielo de estadio nocturno */
+  .bg-hero {
+    background-image: linear-gradient(
+      135deg,
+      #0a0a0f 0%,
+      #16213e 50%,
+      #0f3460 100%
+    );
+  }
+
+  /* Textura sutil de césped/luces sobre el hero */
+  .bg-stadium {
+    background-image:
+      radial-gradient(
+        ellipse 80% 50% at 50% -10%,
+        rgba(245, 197, 24, 0.12),
+        transparent 60%
+      ),
+      radial-gradient(
+        ellipse 60% 50% at 100% 110%,
+        rgba(233, 69, 96, 0.1),
+        transparent 60%
+      ),
+      repeating-linear-gradient(
+        100deg,
+        transparent 0px,
+        transparent 38px,
+        rgba(255, 255, 255, 0.015) 38px,
+        rgba(255, 255, 255, 0.015) 76px
+      );
+  }
+
+  /* Brillo que recorre los CTA dorados al hacer hover */
+  .shimmer {
+    position: relative;
+    overflow: hidden;
+  }
+  .shimmer::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    transform: translateX(-150%);
+    background: linear-gradient(
+      100deg,
+      transparent 30%,
+      rgba(255, 255, 255, 0.45) 50%,
+      transparent 70%
+    );
+  }
+  .shimmer:hover::after {
+    animation: shimmer 0.9s ease;
+  }
+
+  /* Texto con relleno dorado luminoso */
+  .text-gold-glow {
+    color: #f5c518;
+    text-shadow: 0 0 24px rgba(245, 197, 24, 0.35);
+  }
+}
+
+@keyframes shimmer {
+  to {
+    transform: translateX(150%);
+  }
+}
+
+@keyframes live-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(233, 69, 96, 0.55);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(233, 69, 96, 0);
+  }
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
 }

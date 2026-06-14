@@ -1,65 +1,71 @@
-import Image from "next/image";
+import { CalendarX2 } from "lucide-react";
 
-export default function Home() {
+import { getApuestas } from "@/actions/apuestas";
+import { getPartidos } from "@/actions/partidos";
+import { Hero } from "@/components/hero";
+import { PartidoCard } from "@/components/partido-card";
+import { SiteHeader } from "@/components/site-header";
+import { POLLA } from "@/lib/polla";
+
+export const dynamic = "force-dynamic";
+
+export default async function Home() {
+  const [partidosRes, apuestasRes] = await Promise.all([
+    getPartidos(),
+    getApuestas(),
+  ]);
+
+  const partidos = partidosRes.success ? partidosRes.data : [];
+  const apuestas = apuestasRes.success ? apuestasRes.data : [];
+  // Personas distintas que han apostado y total en juego (apuestas pagadas).
+  const participantes = new Set(apuestas.map((a) => a.nombre)).size;
+  const totalEnJuego = apuestas.filter((a) => a.pagado).length * POLLA.costo;
+  const hayLive = partidos.some((p) => p.estado === "en_juego");
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
+    <>
+      <SiteHeader live={hayLive} />
+      <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-8">
+        <Hero premio={totalEnJuego} participantes={participantes} />
+
+        <section className="mt-12">
+          <div className="mb-6 flex items-end justify-between gap-4">
+            <h2 className="font-heading text-3xl tracking-wide text-white sm:text-4xl">
+              Partidos
+            </h2>
+            {partidos.length > 0 && (
+              <span className="text-polla-muted text-sm font-medium">
+                {partidos.length} en total
+              </span>
+            )}
+          </div>
+
+          {!partidosRes.success ? (
+            <p className="text-polla-red rounded-2xl bg-polla-red/10 px-4 py-3 ring-1 ring-polla-red/30">
+              No se pudieron cargar los partidos: {partidosRes.error}
+            </p>
+          ) : partidos.length === 0 ? (
+            <div className="bg-polla-surface ring-polla-line flex flex-col items-center gap-3 rounded-2xl px-6 py-16 text-center ring-1">
+              <CalendarX2 className="text-polla-muted size-10" />
+              <p className="text-polla-muted">
+                Todavía no hay partidos. El administrador debe sincronizarlos.
+              </p>
+            </div>
+          ) : (
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {partidos.map((p, i) => (
+                <PartidoCard key={p.id} partido={p} index={i} />
+              ))}
+            </div>
+          )}
+        </section>
       </main>
-    </div>
+
+      <footer className="border-polla-line/70 border-t">
+        <div className="text-polla-muted mx-auto max-w-5xl px-4 py-6 text-center text-xs">
+          Polla Mundial 2026 · Pronostica el marcador exacto y llévate el premio.
+        </div>
+      </footer>
+    </>
   );
 }

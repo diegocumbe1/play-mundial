@@ -1,0 +1,370 @@
+"use client";
+
+import { useState } from "react";
+import Image from "next/image";
+import { useRouter } from "next/navigation";
+import { useForm } from "react-hook-form";
+import { Minus, Plus, QrCode, Ticket, Trophy, X } from "lucide-react";
+import { toast } from "sonner";
+
+import { crearApuestas } from "@/actions/apuestas";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { lanzarConfetti } from "@/lib/confetti";
+import { formatFechaCorta } from "@/lib/format";
+import { formatCOP, POLLA } from "@/lib/polla";
+import { cn } from "@/lib/utils";
+import type { Partido } from "@/types";
+
+interface DatosValues {
+  nombre: string;
+  email: string;
+}
+
+interface CartItem {
+  key: string;
+  partido_id: string;
+  goles_local: number;
+  goles_visitante: number;
+}
+
+function Stepper({
+  value,
+  onChange,
+  label,
+}: {
+  value: number;
+  onChange: (v: number) => void;
+  label: string;
+}) {
+  return (
+    <div className="flex items-center gap-1.5">
+      <button
+        type="button"
+        aria-label={`Menos ${label}`}
+        onClick={() => onChange(Math.max(0, value - 1))}
+        className="text-polla-muted hover:text-white hover:border-polla-gold/60 border-polla-line flex size-9 items-center justify-center rounded-lg border transition-colors"
+      >
+        <Minus className="size-4" />
+      </button>
+      <span className="font-heading w-9 text-center text-3xl text-white tabular-nums">
+        {value}
+      </span>
+      <button
+        type="button"
+        aria-label={`Más ${label}`}
+        onClick={() => onChange(value + 1)}
+        className="text-polla-muted hover:text-white hover:border-polla-gold/60 border-polla-line flex size-9 items-center justify-center rounded-lg border transition-colors"
+      >
+        <Plus className="size-4" />
+      </button>
+    </div>
+  );
+}
+
+function MiniEquipo({ nombre, logo }: { nombre: string; logo: string | null }) {
+  return (
+    <div className="flex min-w-0 items-center gap-2">
+      <div className="bg-polla-elevated ring-polla-line flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-full ring-1">
+        {logo ? (
+          <Image src={logo} alt={nombre} width={26} height={26} className="size-6 object-contain" />
+        ) : (
+          <span className="text-xs">⚽</span>
+        )}
+      </div>
+      <span className="truncate text-sm font-bold tracking-wide text-white uppercase">
+        {nombre}
+      </span>
+    </div>
+  );
+}
+
+export function PronosticoForm({ partidos }: { partidos: Partido[] }) {
+  const router = useRouter();
+  // Valores que se están editando por partido (antes de "Agregar").
+  const [editing, setEditing] = useState<
+    Record<string, { local: number; visitante: number }>
+  >(() => Object.fromEntries(partidos.map((p) => [p.id, { local: 0, visitante: 0 }])));
+  // Carrito: cada item es una apuesta (un cobro).
+  const [cart, setCart] = useState<CartItem[]>([]);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [enviando, setEnviando] = useState(false);
+  const [qrError, setQrError] = useState(false);
+
+  const {
+    register,
+    handleSubmit,
+    getValues,
+    formState: { isValid },
+  } = useForm<DatosValues>({
+    mode: "onChange",
+    defaultValues: { nombre: "", email: "" },
+  });
+
+  const total = cart.length * POLLA.costo;
+
+  function setStepper(id: string, patch: Partial<{ local: number; visitante: number }>) {
+    setEditing((prev) => ({ ...prev, [id]: { ...prev[id], ...patch } }));
+  }
+
+  function agregar(partidoId: string) {
+    const { local, visitante } = editing[partidoId];
+    setCart((prev) => [
+      ...prev,
+      {
+        key:
+          typeof crypto !== "undefined" && crypto.randomUUID
+            ? crypto.randomUUID()
+            : `${partidoId}-${Date.now()}-${Math.random()}`,
+        partido_id: partidoId,
+        goles_local: local,
+        goles_visitante: visitante,
+      },
+    ]);
+    setStepper(partidoId, { local: 0, visitante: 0 });
+  }
+
+  function quitar(key: string) {
+    setCart((prev) => prev.filter((c) => c.key !== key));
+  }
+
+  function onContinuar() {
+    if (cart.length === 0) {
+      toast.error("Agrega al menos una apuesta");
+      return;
+    }
+    setModalOpen(true);
+  }
+
+  async function confirmar(pagado: boolean) {
+    const { nombre, email } = getValues();
+    setEnviando(true);
+    const result = await crearApuestas({
+      nombre,
+      email: email.trim() === "" ? null : email.trim(),
+      pagado,
+      apuestas: cart.map((c) => ({
+        partido_id: c.partido_id,
+        goles_local: c.goles_local,
+        goles_visitante: c.goles_visitante,
+      })),
+    });
+    setEnviando(false);
+
+    if (!result.success) {
+      toast.error(result.error);
+      return;
+    }
+    setModalOpen(false);
+    lanzarConfetti();
+    toast.success(`¡Listo! Registraste ${result.data.count} apuesta(s).`);
+    router.push("/resultados");
+  }
+
+  return (
+    <>
+      <form onSubmit={handleSubmit(onContinuar)} className="grid gap-6 pb-28">
+        <div className="bg-polla-surface ring-polla-line grid gap-4 rounded-2xl p-5 ring-1 sm:grid-cols-2">
+          <div className="grid gap-2">
+            <Label htmlFor="nombre" className="text-polla-muted">
+              Nombre *
+            </Label>
+            <Input
+              id="nombre"
+              placeholder="Tu nombre"
+              className="h-11 focus-visible:border-polla-gold focus-visible:ring-polla-gold/30"
+              {...register("nombre", { required: true, minLength: 1 })}
+            />
+          </div>
+          <div className="grid gap-2">
+            <Label htmlFor="email" className="text-polla-muted">
+              Email (opcional)
+            </Label>
+            <Input
+              id="email"
+              type="email"
+              placeholder="tucorreo@ejemplo.com"
+              className="h-11 focus-visible:border-polla-gold focus-visible:ring-polla-gold/30"
+              {...register("email")}
+            />
+          </div>
+        </div>
+
+        <p className="text-polla-muted text-sm">
+          Arma tu marcador y pulsa{" "}
+          <span className="text-polla-gold font-semibold">Agregar apuesta</span>.
+          Puedes hacer varias al mismo partido —{" "}
+          <span className="text-polla-gold font-semibold">
+            {formatCOP(POLLA.costo)} cada una
+          </span>
+          .
+        </p>
+
+        <div className="grid gap-3">
+          {partidos.map((p) => {
+            const ed = editing[p.id];
+            const apuestasPartido = cart.filter((c) => c.partido_id === p.id);
+            return (
+              <div
+                key={p.id}
+                className={cn(
+                  "bg-polla-surface ring-polla-line rounded-2xl p-4 ring-1 transition-colors",
+                  apuestasPartido.length > 0
+                    ? "ring-polla-gold/60"
+                    : "hover:ring-polla-line",
+                )}
+              >
+                <div className="text-polla-muted mb-3 text-xs font-medium">
+                  {formatFechaCorta(p.fecha)}
+                </div>
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="grid flex-1 gap-2">
+                    <MiniEquipo nombre={p.equipo_local} logo={p.equipo_local_logo} />
+                    <MiniEquipo nombre={p.equipo_visitante} logo={p.equipo_visitante_logo} />
+                  </div>
+
+                  <div className="flex flex-col gap-2 sm:items-end">
+                    <Stepper
+                      value={ed.local}
+                      onChange={(v) => setStepper(p.id, { local: v })}
+                      label={`goles ${p.equipo_local}`}
+                    />
+                    <Stepper
+                      value={ed.visitante}
+                      onChange={(v) => setStepper(p.id, { visitante: v })}
+                      label={`goles ${p.equipo_visitante}`}
+                    />
+                  </div>
+                </div>
+
+                <Button
+                  type="button"
+                  onClick={() => agregar(p.id)}
+                  className="bg-polla-elevated mt-4 w-full gap-2 rounded-xl font-bold text-white hover:bg-polla-elevated/80"
+                >
+                  <Ticket className="size-4" />
+                  Agregar apuesta · {formatCOP(POLLA.costo)}
+                </Button>
+
+                {apuestasPartido.length > 0 && (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {apuestasPartido.map((c) => (
+                      <span
+                        key={c.key}
+                        className="bg-polla-gold/15 text-polla-gold ring-polla-gold/40 inline-flex items-center gap-1.5 rounded-full py-1 pr-1.5 pl-3 text-sm font-bold ring-1"
+                      >
+                        {c.goles_local}–{c.goles_visitante}
+                        <button
+                          type="button"
+                          aria-label="Quitar apuesta"
+                          onClick={() => quitar(c.key)}
+                          className="hover:bg-polla-gold/20 flex size-5 items-center justify-center rounded-full"
+                        >
+                          <X className="size-3.5" />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Barra de total fija */}
+        <div className="border-polla-line/70 bg-polla-dark/85 fixed inset-x-0 bottom-0 z-40 border-t backdrop-blur-md">
+          <div className="mx-auto flex max-w-3xl items-center justify-between gap-4 px-4 py-3">
+            <div>
+              <div className="text-polla-muted text-xs tracking-wide uppercase">
+                {cart.length} apuesta(s)
+              </div>
+              <div className="font-heading text-polla-gold text-2xl">
+                {formatCOP(total)}
+              </div>
+            </div>
+            <Button
+              type="submit"
+              disabled={!isValid || cart.length === 0}
+              className="bg-polla-gold text-polla-dark hover:bg-polla-gold/90 h-12 gap-2 rounded-xl px-6 text-base font-bold"
+            >
+              <Ticket className="size-5" />
+              Continuar
+            </Button>
+          </div>
+        </div>
+      </form>
+
+      <Dialog open={modalOpen} onOpenChange={setModalOpen}>
+        <DialogContent className="bg-polla-surface border-polla-line">
+          <DialogHeader>
+            <DialogTitle className="font-heading text-polla-gold text-2xl tracking-wide">
+              Confirmar apuestas
+            </DialogTitle>
+            <DialogDescription className="text-polla-muted">
+              {cart.length} apuesta(s) · transfiere{" "}
+              <span className="text-polla-gold font-semibold">
+                {formatCOP(total)}
+              </span>{" "}
+              y confirma.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex flex-col items-center gap-4 py-2">
+            <div className="bg-polla-elevated ring-polla-line flex size-44 items-center justify-center overflow-hidden rounded-2xl ring-1">
+              {qrError ? (
+                <div className="text-polla-muted flex flex-col items-center gap-2 p-4 text-center text-xs">
+                  <QrCode className="size-8" />
+                  Coloca tu QR en
+                  <code className="text-polla-gold">public/qr-pago.png</code>
+                </div>
+              ) : (
+                /* eslint-disable-next-line @next/next/no-img-element */
+                <img
+                  src={POLLA.qrSrc}
+                  alt="QR de pago"
+                  className="size-full object-contain"
+                  onError={() => setQrError(true)}
+                />
+              )}
+            </div>
+            <div className="text-center text-sm">
+              <div className="font-semibold text-white">{POLLA.banco.entidad}</div>
+              <div className="text-polla-muted">{POLLA.banco.numero}</div>
+              <div className="text-polla-muted">{POLLA.banco.titular}</div>
+            </div>
+          </div>
+
+          <DialogFooter className="flex-col gap-2 sm:flex-col sm:gap-2">
+            <Button
+              type="button"
+              onClick={() => confirmar(true)}
+              disabled={enviando}
+              className="bg-polla-gold text-polla-dark hover:bg-polla-gold/90 w-full gap-2 font-bold"
+            >
+              <Trophy className="size-4" />
+              {enviando ? "Registrando…" : "Ya transferí, confirmar"}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => confirmar(false)}
+              disabled={enviando}
+              className="w-full"
+            >
+              Registrar y pagar después
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
