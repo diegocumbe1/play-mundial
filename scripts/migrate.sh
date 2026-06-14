@@ -1,43 +1,58 @@
 #!/usr/bin/env bash
 # =============================================================================
 # Aplica TODAS las migraciones de supabase/migrations en orden.
-# Las migraciones son idempotentes: puedes correr esto las veces que quieras
-# sin que falle, aunque ya hayas aplicado algunas a mano.
+# Idempotente: puedes correrlo varias veces sin que falle.
+#
+# No usa URI (así los caracteres especiales de la contraseña no rompen nada).
+# El host se deduce de NEXT_PUBLIC_SUPABASE_URL en .env.local; la contraseña
+# se pide aparte (oculta) o se toma de PGPASSWORD.
 #
 # Uso:
-#   1) Consigue la connection string en el dashboard de Supabase:
-#      Settings -> Database -> "Connection string" -> URI (Session pooler).
-#      Reemplaza [YOUR-PASSWORD] por la contraseña de tu base de datos.
-#   2) Córrelo de alguna de estas formas:
-#      DATABASE_URL='postgresql://...' ./scripts/migrate.sh
-#      ./scripts/migrate.sh 'postgresql://...'
-#      ./scripts/migrate.sh          (te la pedirá de forma interactiva)
+#   ./scripts/migrate.sh                 # te pide la contraseña
+#   PGPASSWORD='...' ./scripts/migrate.sh
+#
+# Overrides opcionales (p. ej. para usar el pooler en vez de la conexión directa):
+#   PGHOST=aws-0-xx.pooler.supabase.com PGUSER=postgres.<ref> ./scripts/migrate.sh
 # =============================================================================
 set -euo pipefail
 
-# Ir a la raíz del repo (carpeta padre de /scripts).
 cd "$(dirname "$0")/.."
 
 MIGRATIONS_DIR="supabase/migrations"
 
 # --- Verificar psql -----------------------------------------------------------
 if ! command -v psql >/dev/null 2>&1; then
-  echo "❌ No se encontró 'psql'. Instálalo con:"
-  echo "     brew install libpq && brew link --force libpq"
-  echo "   (o instala PostgreSQL)."
+  echo "❌ No se encontró 'psql'. Instálalo: brew install libpq && brew link --force libpq"
   exit 1
 fi
 
-# --- Obtener la connection string --------------------------------------------
-DB_URL="${DATABASE_URL:-${1:-}}"
-if [ -z "${DB_URL}" ]; then
-  echo "Pega tu connection string de Supabase (Settings -> Database -> URI):"
-  read -r DB_URL
-fi
-if [ -z "${DB_URL}" ]; then
-  echo "❌ No se proporcionó la connection string."
+# --- Deducir el ref del proyecto desde .env.local -----------------------------
+if [ ! -f .env.local ]; then
+  echo "❌ No existe .env.local"
   exit 1
 fi
+SUPA_URL="$(grep -E '^NEXT_PUBLIC_SUPABASE_URL=' .env.local | cut -d= -f2- | tr -d '"' | tr -d "'")"
+REF="$(printf '%s' "$SUPA_URL" | sed -E 's#https?://##; s#\.supabase\.co.*##')"
+if [ -z "$REF" ]; then
+  echo "❌ No pude leer el ref de NEXT_PUBLIC_SUPABASE_URL en .env.local"
+  exit 1
+fi
+
+# --- Parámetros de conexión (con overrides por env) ---------------------------
+export PGHOST="${PGHOST:-db.$REF.supabase.co}"
+export PGPORT="${PGPORT:-5432}"
+export PGUSER="${PGUSER:-postgres}"
+export PGDATABASE="${PGDATABASE:-postgres}"
+
+# --- Contraseña ---------------------------------------------------------------
+if [ -z "${PGPASSWORD:-}" ]; then
+  printf "Contraseña de la base de datos (Supabase → Settings → Database): "
+  read -rs PGPASSWORD
+  echo ""
+fi
+export PGPASSWORD
+
+echo "▶ Conectando a $PGHOST:$PGPORT como $PGUSER…"
 
 # --- Aplicar migraciones en orden --------------------------------------------
 shopt -s nullglob
@@ -47,11 +62,10 @@ if [ ${#files[@]} -eq 0 ]; then
   exit 1
 fi
 
-echo "▶ Aplicando ${#files[@]} migración(es)…"
 for f in "${files[@]}"; do
   echo ""
   echo "── $f"
-  psql "$DB_URL" -v ON_ERROR_STOP=1 -f "$f"
+  psql -v ON_ERROR_STOP=1 -f "$f"
 done
 
 echo ""
