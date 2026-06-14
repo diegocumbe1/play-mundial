@@ -109,6 +109,29 @@ export async function registrarResultado(
   return { success: true, data: data as Partido };
 }
 
+/** Marca si el premio del partido ya se le pagó al/los ganador(es). Admin. */
+export async function marcarPremioPagado(
+  partidoId: string,
+  pagado: boolean,
+): Promise<ActionResult> {
+  if (!(await getUser())) {
+    return { success: false, error: "No autorizado" };
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("partidos")
+    .update({ premio_pagado: pagado })
+    .eq("id", partidoId);
+
+  if (error) {
+    return { success: false, error: error.message };
+  }
+
+  revalidatePath("/admin");
+  return { success: true, data: undefined };
+}
+
 /**
  * Inserta/actualiza partidos provenientes de la API externa, identificados
  * por `external_id`. Pensado para el proceso de sincronización (cron / route

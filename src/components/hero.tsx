@@ -3,29 +3,9 @@ import { ArrowRight } from "lucide-react";
 
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { formatCOP } from "@/lib/format";
 
-function Stat({ valor, label }: { valor: string; label: string }) {
-  return (
-    <div className="flex flex-col">
-      <span className="font-heading text-gold-glow text-4xl leading-none tracking-wide sm:text-5xl">
-        {valor}
-      </span>
-      <span className="text-polla-muted mt-1.5 text-xs font-medium tracking-widest uppercase">
-        {label}
-      </span>
-    </div>
-  );
-}
-
-/** Hero del home: cielo de estadio nocturno, stats grandes y CTA dorado. */
-export function Hero({
-  premio,
-  participantes,
-}: {
-  premio: number;
-  participantes: number;
-}) {
+/** Hero del home: cielo de estadio nocturno, mensaje y CTA dorado. */
+export function Hero() {
   return (
     <section className="bg-hero ring-polla-line relative overflow-hidden rounded-3xl ring-1">
       <div className="bg-stadium absolute inset-0" aria-hidden />
@@ -51,16 +31,11 @@ export function Hero({
         </h1>
 
         <p className="text-polla-muted mt-4 max-w-xl text-base sm:text-lg">
-          El que más acierte el marcador exacto se lleva el premio. 1 punto por
-          resultado perfecto. Sin vueltas.
+          Apuesta por partido y acierta el marcador exacto para llevarte el
+          premio. Cada partido es su propia polla: no se acumula.
         </p>
 
-        <div className="mt-10 flex flex-wrap items-end gap-10 sm:gap-16">
-          <Stat valor={formatCOP(premio)} label="Premio acumulado" />
-          <Stat valor={participantes.toLocaleString("es-CO")} label="Participantes" />
-        </div>
-
-        <div className="mt-10">
+        <div className="mt-8">
           <Link
             href="/jugar"
             className={cn(

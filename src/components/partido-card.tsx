@@ -1,4 +1,5 @@
 import Image from "next/image";
+import Link from "next/link";
 
 import { EstadoBadge } from "@/components/estado-badge";
 import { cn } from "@/lib/utils";
@@ -48,7 +49,8 @@ export function PartidoCard({
   const hayMarcador = partido.goles_local !== null && partido.goles_visitante !== null;
 
   return (
-    <article
+    <Link
+      href={`/partidos/${partido.id}`}
       style={{ animationDelay: `${Math.min(index, 8) * 60}ms` }}
       className={cn(
         "group bg-polla-surface ring-polla-line animate-rise relative flex flex-col rounded-2xl p-5 ring-1 transition-all duration-300",
@@ -97,6 +99,6 @@ export function PartidoCard({
           {formatFechaCorta(partido.fecha)}
         </span>
       </div>
-    </article>
+    </Link>
   );
 }

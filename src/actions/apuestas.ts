@@ -24,10 +24,23 @@ const apuestaItemSchema = z.object({
 
 const crearApuestasSchema = z.object({
   nombre: z.string().trim().min(1, "El nombre es obligatorio"),
-  email: z.string().email("Email inválido").nullable(),
+  telefono: z
+    .string()
+    .trim()
+    .regex(/^[+()\d\s.-]{7,20}$/, "Teléfono inválido")
+    .nullable(),
   pagado: z.boolean().default(false),
   apuestas: z.array(apuestaItemSchema).min(1, "Debes apostar al menos un partido"),
 });
+
+type ApuestaRow = Apuesta & { email?: string | null };
+
+function normalizarApuesta(row: ApuestaRow): Apuesta {
+  return {
+    ...row,
+    telefono: row.telefono ?? row.email ?? null,
+  };
+}
 
 /** Registra (o actualiza) las apuestas de una persona. */
 export async function crearApuestas(
@@ -38,7 +51,7 @@ export async function crearApuestas(
     return { success: false, error: parsed.error.issues[0].message };
   }
 
-  const { nombre, email, pagado, apuestas } = parsed.data;
+  const { nombre, telefono, pagado, apuestas } = parsed.data;
   const supabase = createServiceRoleClient();
 
   // Valida que todos los partidos sigan abiertos (programados y futuros).
@@ -74,16 +87,29 @@ export async function crearApuestas(
     goles_local: a.goles_local,
     goles_visitante: a.goles_visitante,
     nombre,
-    email,
+    telefono,
     pagado,
   }));
 
   // Insert (no upsert): cada apuesta es independiente, incluso varias del
   // mismo nombre al mismo partido.
-  const { data, error } = await supabase
+  let { data, error } = await supabase
     .from("apuestas")
     .insert(filas)
     .select("id");
+
+  if (error?.code === "PGRST204") {
+    const filasLegacy = filas.map(({ telefono: email, ...fila }) => ({
+      ...fila,
+      email,
+    }));
+    const retry = await supabase
+      .from("apuestas")
+      .insert(filasLegacy)
+      .select("id");
+    data = retry.data;
+    error = retry.error;
+  }
 
   if (error) {
     return { success: false, error: error.message };
@@ -107,7 +133,10 @@ export async function getApuestas(): Promise<ActionResult<Apuesta[]>> {
     return { success: false, error: error.message };
   }
 
-  return { success: true, data: (data ?? []) as Apuesta[] };
+  return {
+    success: true,
+    data: ((data ?? []) as ApuestaRow[]).map(normalizarApuesta),
+  };
 }
 
 /** Marca una apuesta como pagada o pendiente. Solo admin. */

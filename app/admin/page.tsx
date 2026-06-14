@@ -14,6 +14,7 @@ import { DeleteAllApuestasButton } from "@/components/admin/delete-all-apuestas-
 import { DeleteApuestaButton } from "@/components/admin/delete-apuesta-button";
 import { LogoutButton } from "@/components/admin/logout-button";
 import { PagoToggle } from "@/components/admin/pago-toggle";
+import { PremioPagoToggle } from "@/components/admin/premio-pago-toggle";
 import { ResultadoForm } from "@/components/admin/resultado-form";
 import { SyncButton } from "@/components/admin/sync-button";
 import { EstadoBadge } from "@/components/estado-badge";
@@ -191,22 +192,29 @@ export default async function AdminPage() {
                     {/* Detalle */}
                     <div className="border-polla-line/60 border-t">
                       {finalizado && (
-                        <div className="bg-polla-elevated/40 text-polla-muted px-4 py-2 text-xs">
+                        <div className="bg-polla-elevated/40 flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 text-xs">
                           {r.ganadores.length > 0 ? (
                             <>
-                              Marcador {p.goles_local}–{p.goles_visitante} ·{" "}
-                              {r.ganadores.length} ganador(es) ·{" "}
-                              <span className="text-polla-gold font-semibold">
-                                {formatCOP(r.premioPorGanador)} c/u
+                              <span className="text-polla-muted">
+                                Marcador {p.goles_local}–{p.goles_visitante} ·{" "}
+                                {r.ganadores.length} ganador(es) ·{" "}
+                                <span className="text-polla-gold font-semibold">
+                                  {formatCOP(r.premioPorGanador)} c/u
+                                </span>{" "}
+                                · Casa {formatCOP(r.enCasa)}
                               </span>
+                              <PremioPagoToggle
+                                partidoId={p.id}
+                                pagado={p.premio_pagado}
+                              />
                             </>
                           ) : (
-                            <>
+                            <span className="text-polla-muted">
                               Nadie acertó ·{" "}
                               <span className="text-polla-gold font-semibold">
                                 {formatCOP(r.enCasa)} queda en casa
                               </span>
-                            </>
+                            </span>
                           )}
                         </div>
                       )}
@@ -220,7 +228,14 @@ export default async function AdminPage() {
                               {ganadores.has(a.id) && (
                                 <Trophy className="text-polla-gold size-4 shrink-0" />
                               )}
-                              {a.nombre}
+                              <span className="min-w-0">
+                                <span className="block truncate">{a.nombre}</span>
+                                {a.telefono && (
+                                  <span className="text-polla-muted block truncate text-xs font-normal">
+                                    {a.telefono}
+                                  </span>
+                                )}
+                              </span>
                             </span>
                             <span className="font-heading text-white tabular-nums">
                               {a.goles_local}–{a.goles_visitante}

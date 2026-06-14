@@ -35,6 +35,8 @@ export interface Partido {
   goles_local: number | null;
   goles_visitante: number | null;
   estado: EstadoPartido;
+  /** Si el premio del partido ya se le pagó al/los ganador(es). */
+  premio_pagado: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -72,7 +74,7 @@ export interface Apuesta {
   id: string;
   partido_id: string;
   nombre: string;
-  email: string | null;
+  telefono: string | null;
   goles_local: number;
   goles_visitante: number;
   /** Estado de pago de esta apuesta. */

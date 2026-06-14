@@ -4,7 +4,7 @@ import { useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
-import { Minus, Plus, QrCode, Ticket, Trophy, X } from "lucide-react";
+import { Minus, Plus, QrCode, Search, Ticket, Trophy, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { crearApuestas } from "@/actions/apuestas";
@@ -27,7 +27,7 @@ import type { Partido } from "@/types";
 
 interface DatosValues {
   nombre: string;
-  email: string;
+  telefono: string;
 }
 
 interface CartItem {
@@ -47,23 +47,23 @@ function Stepper({
   label: string;
 }) {
   return (
-    <div className="flex items-center gap-1.5">
+    <div className="flex shrink-0 items-center gap-1.5">
       <button
         type="button"
         aria-label={`Menos ${label}`}
         onClick={() => onChange(Math.max(0, value - 1))}
-        className="text-polla-muted hover:text-white hover:border-polla-gold/60 border-polla-line flex size-9 items-center justify-center rounded-lg border transition-colors"
+        className="text-polla-muted hover:text-white hover:border-polla-gold/60 border-polla-line flex size-8 items-center justify-center rounded-lg border transition-colors sm:size-9"
       >
         <Minus className="size-4" />
       </button>
-      <span className="font-heading w-9 text-center text-3xl text-white tabular-nums">
+      <span className="font-heading w-8 text-center text-2xl text-white tabular-nums sm:w-9 sm:text-3xl">
         {value}
       </span>
       <button
         type="button"
         aria-label={`Más ${label}`}
         onClick={() => onChange(value + 1)}
-        className="text-polla-muted hover:text-white hover:border-polla-gold/60 border-polla-line flex size-9 items-center justify-center rounded-lg border transition-colors"
+        className="text-polla-muted hover:text-white hover:border-polla-gold/60 border-polla-line flex size-8 items-center justify-center rounded-lg border transition-colors sm:size-9"
       >
         <Plus className="size-4" />
       </button>
@@ -88,6 +88,25 @@ function MiniEquipo({ nombre, logo }: { nombre: string; logo: string | null }) {
   );
 }
 
+function EquipoPronostico({
+  nombre,
+  logo,
+  goles,
+  onGolesChange,
+}: {
+  nombre: string;
+  logo: string | null;
+  goles: number;
+  onGolesChange: (v: number) => void;
+}) {
+  return (
+    <div className="flex min-w-0 items-center justify-between gap-3">
+      <MiniEquipo nombre={nombre} logo={logo} />
+      <Stepper value={goles} onChange={onGolesChange} label={`goles ${nombre}`} />
+    </div>
+  );
+}
+
 export function PronosticoForm({ partidos }: { partidos: Partido[] }) {
   const router = useRouter();
   // Valores que se están editando por partido (antes de "Agregar").
@@ -99,6 +118,14 @@ export function PronosticoForm({ partidos }: { partidos: Partido[] }) {
   const [modalOpen, setModalOpen] = useState(false);
   const [enviando, setEnviando] = useState(false);
   const [qrError, setQrError] = useState(false);
+  const [q, setQ] = useState("");
+
+  const query = q.trim().toLowerCase();
+  const visibles = partidos.filter((p) =>
+    `${p.equipo_local} ${p.equipo_visitante} ${p.liga ?? ""}`
+      .toLowerCase()
+      .includes(query),
+  );
 
   const {
     register,
@@ -107,7 +134,7 @@ export function PronosticoForm({ partidos }: { partidos: Partido[] }) {
     formState: { isValid },
   } = useForm<DatosValues>({
     mode: "onChange",
-    defaultValues: { nombre: "", email: "" },
+    defaultValues: { nombre: "", telefono: "" },
   });
 
   const total = cart.length * POLLA.costo;
@@ -146,11 +173,11 @@ export function PronosticoForm({ partidos }: { partidos: Partido[] }) {
   }
 
   async function confirmar(pagado: boolean) {
-    const { nombre, email } = getValues();
+    const { nombre, telefono } = getValues();
     setEnviando(true);
     const result = await crearApuestas({
       nombre,
-      email: email.trim() === "" ? null : email.trim(),
+      telefono: telefono.trim() === "" ? null : telefono.trim(),
       pagado,
       apuestas: cart.map((c) => ({
         partido_id: c.partido_id,
@@ -186,15 +213,17 @@ export function PronosticoForm({ partidos }: { partidos: Partido[] }) {
             />
           </div>
           <div className="grid gap-2">
-            <Label htmlFor="email" className="text-polla-muted">
-              Email (opcional)
+            <Label htmlFor="telefono" className="text-polla-muted">
+              Teléfono (opcional)
             </Label>
             <Input
-              id="email"
-              type="email"
-              placeholder="tucorreo@ejemplo.com"
+              id="telefono"
+              type="tel"
+              inputMode="tel"
+              autoComplete="tel"
+              placeholder="Tu número de contacto"
               className="h-11 focus-visible:border-polla-gold focus-visible:ring-polla-gold/30"
-              {...register("email")}
+              {...register("telefono")}
             />
           </div>
         </div>
@@ -209,8 +238,25 @@ export function PronosticoForm({ partidos }: { partidos: Partido[] }) {
           .
         </p>
 
-        <div className="grid gap-3">
-          {partidos.map((p) => {
+        {/* Buscador por país / equipo */}
+        <div className="relative">
+          <Search className="text-polla-muted pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2" />
+          <Input
+            type="search"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Buscar país o equipo (ej. Colombia)…"
+            className="h-12 pl-10 focus-visible:border-polla-gold focus-visible:ring-polla-gold/30"
+          />
+        </div>
+
+        {visibles.length === 0 ? (
+          <p className="text-polla-muted rounded-2xl bg-polla-surface px-4 py-8 text-center ring-1 ring-polla-line">
+            Sin partidos para “{q}”.
+          </p>
+        ) : (
+          <div className="grid gap-3">
+            {visibles.map((p) => {
             const ed = editing[p.id];
             const apuestasPartido = cart.filter((c) => c.partido_id === p.id);
             return (
@@ -226,24 +272,19 @@ export function PronosticoForm({ partidos }: { partidos: Partido[] }) {
                 <div className="text-polla-muted mb-3 text-xs font-medium">
                   {formatFechaCorta(p.fecha)}
                 </div>
-                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="grid flex-1 gap-2">
-                    <MiniEquipo nombre={p.equipo_local} logo={p.equipo_local_logo} />
-                    <MiniEquipo nombre={p.equipo_visitante} logo={p.equipo_visitante_logo} />
-                  </div>
-
-                  <div className="flex flex-col gap-2 sm:items-end">
-                    <Stepper
-                      value={ed.local}
-                      onChange={(v) => setStepper(p.id, { local: v })}
-                      label={`goles ${p.equipo_local}`}
-                    />
-                    <Stepper
-                      value={ed.visitante}
-                      onChange={(v) => setStepper(p.id, { visitante: v })}
-                      label={`goles ${p.equipo_visitante}`}
-                    />
-                  </div>
+                <div className="grid gap-2">
+                  <EquipoPronostico
+                    nombre={p.equipo_local}
+                    logo={p.equipo_local_logo}
+                    goles={ed.local}
+                    onGolesChange={(v) => setStepper(p.id, { local: v })}
+                  />
+                  <EquipoPronostico
+                    nombre={p.equipo_visitante}
+                    logo={p.equipo_visitante_logo}
+                    goles={ed.visitante}
+                    onGolesChange={(v) => setStepper(p.id, { visitante: v })}
+                  />
                 </div>
 
                 <Button
@@ -277,8 +318,9 @@ export function PronosticoForm({ partidos }: { partidos: Partido[] }) {
                 )}
               </div>
             );
-          })}
-        </div>
+            })}
+          </div>
+        )}
 
         {/* Barra de total fija */}
         <div className="border-polla-line/70 bg-polla-dark/85 fixed inset-x-0 bottom-0 z-40 border-t backdrop-blur-md">
