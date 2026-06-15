@@ -51,7 +51,7 @@ export async function crearApuestas(
     return { success: false, error: parsed.error.issues[0].message };
   }
 
-  const { nombre, telefono, pagado, apuestas } = parsed.data;
+  const { nombre, telefono, apuestas } = parsed.data;
   const supabase = createServiceRoleClient();
 
   // Valida que todos los partidos sigan abiertos (programados y futuros).
@@ -88,7 +88,7 @@ export async function crearApuestas(
     goles_visitante: a.goles_visitante,
     nombre,
     telefono,
-    pagado,
+    pagado: false,
   }));
 
   // Insert (no upsert): cada apuesta es independiente, incluso varias del

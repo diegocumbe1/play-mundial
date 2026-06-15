@@ -5,11 +5,22 @@ import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
-import { Info, Minus, Plus, QrCode, Search, Ticket, Trophy, X } from "lucide-react";
+import {
+  Download,
+  ExternalLink,
+  Info,
+  Minus,
+  Plus,
+  QrCode,
+  Search,
+  Ticket,
+  Trophy,
+  X,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import { crearApuestas } from "@/actions/apuestas";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -188,13 +199,13 @@ export function PronosticoForm({
     setModalOpen(true);
   }
 
-  async function confirmar(pagado: boolean) {
+  async function confirmar() {
     const { nombre, telefono } = getValues();
     setEnviando(true);
     const result = await crearApuestas({
       nombre,
       telefono: telefono.trim() === "" ? null : telefono.trim(),
-      pagado,
+      pagado: false,
       apuestas: cart.map((c) => ({
         partido_id: c.partido_id,
         goles_local: c.goles_local,
@@ -209,7 +220,9 @@ export function PronosticoForm({
     }
     setModalOpen(false);
     lanzarConfetti();
-    toast.success(`¡Listo! Registraste ${result.data.count} apuesta(s).`);
+    toast.success(
+      `¡Listo! Registraste ${result.data.count} apuesta(s). Quedan pendientes de validar pago.`,
+    );
     router.push("/resultados");
   }
 
@@ -364,7 +377,7 @@ export function PronosticoForm({
       </form>
 
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
-        <DialogContent className="bg-polla-surface border-polla-line">
+        <DialogContent className="bg-polla-surface border-polla-line max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="font-heading text-polla-gold text-2xl tracking-wide">
               Confirmar apuestas
@@ -379,9 +392,9 @@ export function PronosticoForm({
           </DialogHeader>
 
           <div className="flex flex-col items-center gap-4 py-2">
-            <div className="bg-polla-elevated ring-polla-line flex size-44 items-center justify-center overflow-hidden rounded-2xl ring-1">
+            <div className="ring-polla-line flex w-full max-w-80 items-center justify-center overflow-hidden rounded-2xl bg-white ring-1">
               {qrError ? (
-                <div className="text-polla-muted flex flex-col items-center gap-2 p-4 text-center text-xs">
+                <div className="text-polla-muted flex aspect-square w-full flex-col items-center justify-center gap-2 p-4 text-center text-xs">
                   <QrCode className="size-8" />
                   Coloca tu QR en
                   <code className="text-polla-gold">public/qr-pago.png</code>
@@ -391,16 +404,45 @@ export function PronosticoForm({
                 <img
                   src={POLLA.qrSrc}
                   alt="QR de pago"
-                  className="size-full object-contain"
+                  className="h-auto w-full"
                   onError={() => setQrError(true)}
                 />
               )}
+            </div>
+            <div className="grid w-full max-w-80 grid-cols-2 gap-2">
+              <a
+                href={POLLA.qrSrc}
+                download="qr-pago-paola-gomez.png"
+                className={cn(
+                  buttonVariants({ variant: "outline", size: "lg" }),
+                  "border-polla-gold/50 text-polla-gold hover:bg-polla-gold/10",
+                )}
+              >
+                <Download className="size-4" />
+                Descargar QR
+              </a>
+              <a
+                href={POLLA.qrSrc}
+                target="_blank"
+                rel="noreferrer"
+                className={cn(
+                  buttonVariants({ variant: "outline", size: "lg" }),
+                  "border-polla-line text-white hover:bg-white/5",
+                )}
+              >
+                <ExternalLink className="size-4" />
+                Abrir QR
+              </a>
             </div>
             <div className="text-center text-sm">
               <div className="font-semibold text-white">{POLLA.banco.entidad}</div>
               <div className="text-polla-muted">{POLLA.banco.numero}</div>
               <div className="text-polla-muted">{POLLA.banco.titular}</div>
             </div>
+            <p className="text-polla-muted max-w-xs text-center text-xs">
+              Después de enviar, el admin validará el pago y lo marcará como
+              recibido.
+            </p>
           </div>
 
           <Link
@@ -415,12 +457,12 @@ export function PronosticoForm({
           <DialogFooter>
             <Button
               type="button"
-              onClick={() => confirmar(true)}
+              onClick={() => confirmar()}
               disabled={enviando}
               className="bg-polla-gold text-polla-dark hover:bg-polla-gold/90 w-full gap-2 font-bold"
             >
               <Trophy className="size-4" />
-              {enviando ? "Registrando…" : "Ya transferí, confirmar"}
+              {enviando ? "Registrando…" : "Registrar apuesta"}
             </Button>
           </DialogFooter>
         </DialogContent>

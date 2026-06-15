@@ -62,6 +62,8 @@ function mapFixture(f: ApiFixture): PartidoExterno {
     goles_local: f.goals.home,
     goles_visitante: f.goals.away,
     estado: mapEstado(f.fixture.status.short),
+    // HT = medio tiempo, BT = descanso antes del tiempo extra.
+    en_pausa: f.fixture.status.short === "HT" || f.fixture.status.short === "BT",
   };
 }
 

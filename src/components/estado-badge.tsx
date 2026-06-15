@@ -24,15 +24,25 @@ const ESTILOS: Record<EstadoPartido, { label: string; className: string; dot: st
   },
 };
 
+/** Estilo de un partido en vivo que está pausado (medio tiempo / descanso). */
+const PAUSA = {
+  label: "Medio tiempo",
+  className: "bg-polla-gold/15 text-polla-gold ring-1 ring-polla-gold/40",
+  dot: "bg-polla-gold animate-pulse",
+};
+
 /** Pill de estado de un partido con la identidad mundialista. */
 export function EstadoBadge({
   estado,
+  enPausa = false,
   className,
 }: {
   estado: EstadoPartido;
+  /** Si el partido en juego está pausado: muestra "Medio tiempo". */
+  enPausa?: boolean;
   className?: string;
 }) {
-  const e = ESTILOS[estado];
+  const e = estado === "en_juego" && enPausa ? PAUSA : ESTILOS[estado];
   return (
     <span
       className={cn(

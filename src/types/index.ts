@@ -35,6 +35,8 @@ export interface Partido {
   goles_local: number | null;
   goles_visitante: number | null;
   estado: EstadoPartido;
+  /** Si el partido en juego está pausado (medio tiempo / descanso). */
+  en_pausa: boolean;
   /** Si el premio del partido ya se le pagó al/los ganador(es). */
   premio_pagado: boolean;
   created_at: string;
@@ -64,6 +66,7 @@ export type PartidoExterno = Pick<
   | "goles_local"
   | "goles_visitante"
   | "estado"
+  | "en_pausa"
 >;
 
 /**

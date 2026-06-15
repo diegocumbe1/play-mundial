@@ -78,7 +78,7 @@ export default async function PartidoDetallePage({
 
         <div className="bg-polla-surface ring-polla-line rounded-3xl p-6 ring-1 sm:p-10">
           <div className="mb-6 flex items-center justify-between gap-2">
-            <EstadoBadge estado={partido.estado} />
+            <EstadoBadge estado={partido.estado} enPausa={partido.en_pausa} />
             <span className="text-polla-muted text-sm">
               {traducirLiga(partido.liga, idioma)}
             </span>

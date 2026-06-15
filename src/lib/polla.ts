@@ -13,9 +13,9 @@ export const POLLA = {
   porcentajeCasa: 0.2,
   /** Datos para la transferencia (se muestran en el modal de confirmación). */
   banco: {
-    entidad: "Nequi",
-    titular: "Diego Cumbe",
-    numero: "300 000 0000",
+    entidad: "Bre-B · Nequi",
+    titular: "Paola Gomez",
+    numero: "Llave @3132542284",
   },
   /** Ruta del QR de pago dentro de /public. */
   qrSrc: "/qr-pago.png",

@@ -156,6 +156,7 @@ export default async function AdminPage() {
                 const r = calcularResultadoPartido(p, lista);
                 const ganadores = new Set(r.ganadores.map((g) => g.id));
                 const finalizado = p.estado === "finalizado";
+                const pendientes = lista.length - r.apuestasPagadas;
                 return (
                   <details
                     key={p.id}
@@ -170,7 +171,12 @@ export default async function AdminPage() {
                           </div>
                           <div className="text-polla-muted mt-0.5 flex flex-wrap gap-x-3 text-xs">
                             <span>{lista.length} apuesta(s)</span>
-                            <span>· {r.apuestasPagadas} pagada(s)</span>
+                            <span>· {r.apuestasPagadas} recibida(s)</span>
+                            {pendientes > 0 && (
+                              <span className="text-polla-red">
+                                · {pendientes} pendiente(s)
+                              </span>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -185,7 +191,7 @@ export default async function AdminPage() {
                             {formatCOP(r.casaBase)}
                           </div>
                         </div>
-                        <EstadoBadge estado={p.estado} />
+                        <EstadoBadge estado={p.estado} enPausa={p.en_pausa} />
                       </div>
                     </summary>
 
@@ -222,9 +228,9 @@ export default async function AdminPage() {
                         {lista.map((a) => (
                           <div
                             key={a.id}
-                            className="grid grid-cols-[1fr_auto_auto_auto] items-center gap-3 px-4 py-2.5"
+                            className="grid gap-3 px-4 py-3 sm:grid-cols-[minmax(0,1fr)_auto_auto_auto_auto] sm:items-center"
                           >
-                            <span className="flex min-w-0 items-center gap-1.5 truncate font-medium text-white">
+                            <span className="flex min-w-0 items-center gap-2 font-medium text-white">
                               {ganadores.has(a.id) && (
                                 <Trophy className="text-polla-gold size-4 shrink-0" />
                               )}
@@ -237,11 +243,19 @@ export default async function AdminPage() {
                                 )}
                               </span>
                             </span>
-                            <span className="font-heading text-white tabular-nums">
-                              {a.goles_local}–{a.goles_visitante}
-                            </span>
-                            <PagoToggle id={a.id} pagado={a.pagado} />
-                            <DeleteApuestaButton id={a.id} nombre={a.nombre} />
+                            <div className="flex flex-wrap items-center gap-3 sm:contents">
+                              <span className="bg-polla-elevated text-polla-muted rounded-lg px-2.5 py-1 text-xs">
+                                Marcador{" "}
+                                <span className="font-heading text-white tabular-nums">
+                                  {a.goles_local}–{a.goles_visitante}
+                                </span>
+                              </span>
+                              <span className="text-polla-muted text-xs font-semibold">
+                                {formatCOP(POLLA.costo)}
+                              </span>
+                              <PagoToggle id={a.id} pagado={a.pagado} />
+                              <DeleteApuestaButton id={a.id} nombre={a.nombre} />
+                            </div>
                           </div>
                         ))}
                       </div>
@@ -282,7 +296,7 @@ export default async function AdminPage() {
                     </div>
                   </div>
                   <div className="flex items-center gap-3">
-                    <EstadoBadge estado={p.estado} />
+                    <EstadoBadge estado={p.estado} enPausa={p.en_pausa} />
                     <ResultadoForm partido={p} />
                   </div>
                 </div>

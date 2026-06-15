@@ -64,7 +64,7 @@ export function PartidoCard({
       )}
     >
       <div className="mb-4 flex items-center justify-between gap-2">
-        <EstadoBadge estado={partido.estado} />
+        <EstadoBadge estado={partido.estado} enPausa={partido.en_pausa} />
         <span className="text-polla-muted text-xs font-medium">
           {traducirLiga(partido.liga, idioma)}
         </span>
