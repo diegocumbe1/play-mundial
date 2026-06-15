@@ -5,7 +5,8 @@ import { z } from "zod";
 
 import { getUser } from "@/lib/auth";
 import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
-import type { ActionResult, Apuesta } from "@/types";
+import { calcularResultadoPartido } from "@/lib/polla";
+import type { ActionResult, Apuesta, Partido, ResultadoCliente } from "@/types";
 
 /**
  * Server Actions para apuestas ("polla por partido").
@@ -24,6 +25,7 @@ const apuestaItemSchema = z.object({
 
 const crearApuestasSchema = z.object({
   nombre: z.string().trim().min(1, "El nombre es obligatorio"),
+  cliente_id: z.string().trim().min(8, "Cliente inválido"),
   telefono: z
     .string()
     .trim()
@@ -33,11 +35,16 @@ const crearApuestasSchema = z.object({
   apuestas: z.array(apuestaItemSchema).min(1, "Debes apostar al menos un partido"),
 });
 
-type ApuestaRow = Apuesta & { email?: string | null };
+type ApuestaRow = Omit<Apuesta, "cliente_id" | "telefono"> & {
+  cliente_id?: string | null;
+  telefono?: string | null;
+  email?: string | null;
+};
 
 function normalizarApuesta(row: ApuestaRow): Apuesta {
   return {
     ...row,
+    cliente_id: row.cliente_id ?? null,
     telefono: row.telefono ?? row.email ?? null,
   };
 }
@@ -51,7 +58,7 @@ export async function crearApuestas(
     return { success: false, error: parsed.error.issues[0].message };
   }
 
-  const { nombre, telefono, apuestas } = parsed.data;
+  const { nombre, cliente_id, telefono, apuestas } = parsed.data;
   const supabase = createServiceRoleClient();
 
   // Valida que todos los partidos sigan abiertos (programados y futuros).
@@ -86,6 +93,7 @@ export async function crearApuestas(
     partido_id: a.partido_id,
     goles_local: a.goles_local,
     goles_visitante: a.goles_visitante,
+    cliente_id,
     nombre,
     telefono,
     pagado: false,
@@ -99,16 +107,40 @@ export async function crearApuestas(
     .select("id");
 
   if (error?.code === "PGRST204") {
-    const filasLegacy = filas.map(({ telefono: email, ...fila }) => ({
-      ...fila,
-      email,
+    const filasSinCliente = filas.map((fila) => ({
+      partido_id: fila.partido_id,
+      goles_local: fila.goles_local,
+      goles_visitante: fila.goles_visitante,
+      cliente_id: undefined,
+      nombre: fila.nombre,
+      telefono: fila.telefono,
+      pagado: fila.pagado,
     }));
-    const retry = await supabase
+
+    const retrySinCliente = await supabase
       .from("apuestas")
-      .insert(filasLegacy)
+      .insert(filasSinCliente)
       .select("id");
-    data = retry.data;
-    error = retry.error;
+
+    data = retrySinCliente.data;
+    error = retrySinCliente.error;
+
+    if (error?.code === "PGRST204") {
+      const filasLegacy = filas.map((fila) => ({
+        partido_id: fila.partido_id,
+        goles_local: fila.goles_local,
+        goles_visitante: fila.goles_visitante,
+        nombre: fila.nombre,
+        email: fila.telefono,
+        pagado: fila.pagado,
+      }));
+      const retryLegacy = await supabase
+        .from("apuestas")
+        .insert(filasLegacy)
+        .select("id");
+      data = retryLegacy.data;
+      error = retryLegacy.error;
+    }
   }
 
   if (error) {
@@ -137,6 +169,108 @@ export async function getApuestas(): Promise<ActionResult<Apuesta[]>> {
     success: true,
     data: ((data ?? []) as ApuestaRow[]).map(normalizarApuesta),
   };
+}
+
+/** Lista las apuestas asociadas al navegador/dispositivo anónimo del jugador. */
+export async function getApuestasPorCliente(
+  clienteId: string | null,
+): Promise<ActionResult<Apuesta[]>> {
+  const parsed = z.string().trim().min(8).safeParse(clienteId);
+  if (!parsed.success) {
+    return { success: true, data: [] };
+  }
+
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("apuestas")
+    .select("*")
+    .eq("cliente_id", parsed.data)
+    .order("created_at", { ascending: true });
+
+  if (error) {
+    if (error.code === "42703" || error.code === "PGRST204") {
+      return { success: true, data: [] };
+    }
+    return { success: false, error: error.message };
+  }
+
+  return {
+    success: true,
+    data: ((data ?? []) as ApuestaRow[]).map(normalizarApuesta),
+  };
+}
+
+/** Resultados personales para el navegador/dispositivo anónimo del jugador. */
+export async function getResultadosPorCliente(
+  clienteId: string | null,
+): Promise<ActionResult<ResultadoCliente>> {
+  const parsed = z.string().trim().min(8).safeParse(clienteId);
+  if (!parsed.success) {
+    return { success: true, data: { apuestas: [], resumenes: [] } };
+  }
+
+  const supabase = await createClient();
+  const { data: propiasRaw, error: propiasError } = await supabase
+    .from("apuestas")
+    .select("*")
+    .eq("cliente_id", parsed.data)
+    .order("created_at", { ascending: true });
+
+  if (propiasError) {
+    if (propiasError.code === "42703" || propiasError.code === "PGRST204") {
+      return { success: true, data: { apuestas: [], resumenes: [] } };
+    }
+    return { success: false, error: propiasError.message };
+  }
+
+  const propias = ((propiasRaw ?? []) as ApuestaRow[]).map(normalizarApuesta);
+  const partidoIds = [...new Set(propias.map((a) => a.partido_id))];
+
+  if (partidoIds.length === 0) {
+    return { success: true, data: { apuestas: [], resumenes: [] } };
+  }
+
+  const [partidosRes, apuestasRes] = await Promise.all([
+    supabase.from("partidos").select("*").in("id", partidoIds),
+    supabase.from("apuestas").select("*").in("partido_id", partidoIds),
+  ]);
+
+  if (partidosRes.error) {
+    return { success: false, error: partidosRes.error.message };
+  }
+  if (apuestasRes.error) {
+    return { success: false, error: apuestasRes.error.message };
+  }
+
+  const propiasIds = new Set(propias.map((a) => a.id));
+  const apuestasPorPartido = new Map<string, Apuesta[]>();
+  for (const apuesta of ((apuestasRes.data ?? []) as ApuestaRow[]).map(
+    normalizarApuesta,
+  )) {
+    const lista = apuestasPorPartido.get(apuesta.partido_id) ?? [];
+    lista.push(apuesta);
+    apuestasPorPartido.set(apuesta.partido_id, lista);
+  }
+
+  const resumenes = ((partidosRes.data ?? []) as Partido[]).map((partido) => {
+    const resultado = calcularResultadoPartido(
+      partido,
+      apuestasPorPartido.get(partido.id) ?? [],
+    );
+    return {
+      partido_id: partido.id,
+      apuestasPagadas: resultado.apuestasPagadas,
+      pozo: resultado.pozo,
+      premioPool: resultado.premioPool,
+      premioPorGanador: resultado.premioPorGanador,
+      enCasa: resultado.enCasa,
+      ganadoresClienteIds: resultado.ganadores
+        .filter((g) => propiasIds.has(g.id))
+        .map((g) => g.id),
+    };
+  });
+
+  return { success: true, data: { apuestas: propias, resumenes } };
 }
 
 /** Marca una apuesta como pagada o pendiente. Solo admin. */

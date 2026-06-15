@@ -76,6 +76,7 @@ export type PartidoExterno = Pick<
 export interface Apuesta {
   id: string;
   partido_id: string;
+  cliente_id: string | null;
   nombre: string;
   telefono: string | null;
   goles_local: number;
@@ -110,6 +111,20 @@ export interface ResultadoPartido {
   premioPorGanador: number;
   /** Monto final que queda para la casa (base + residuo + pozo si nadie gana). */
   enCasa: number;
+}
+
+/** Resumen de resultado para un jugador anónimo, sin exponer apuestas ajenas. */
+export interface ResultadoCliente {
+  apuestas: Apuesta[];
+  resumenes: {
+    partido_id: string;
+    apuestasPagadas: number;
+    pozo: number;
+    premioPool: number;
+    premioPorGanador: number;
+    enCasa: number;
+    ganadoresClienteIds: string[];
+  }[];
 }
 
 /** Resultado estándar devuelto por las Server Actions. */

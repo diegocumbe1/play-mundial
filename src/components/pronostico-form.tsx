@@ -31,6 +31,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { getOrCreateClienteId } from "@/lib/cliente-id";
 import { lanzarConfetti } from "@/lib/confetti";
 import { formatFechaCorta } from "@/lib/format";
 import { traducirEquipo, traducirLiga, type Idioma } from "@/lib/idioma";
@@ -204,6 +205,7 @@ export function PronosticoForm({
     setEnviando(true);
     const result = await crearApuestas({
       nombre,
+      cliente_id: getOrCreateClienteId(),
       telefono: telefono.trim() === "" ? null : telefono.trim(),
       pagado: false,
       apuestas: cart.map((c) => ({
