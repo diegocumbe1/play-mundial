@@ -1,5 +1,7 @@
 import type { EstadoPartido, PartidoExterno } from "@/types";
 
+import { fetchConReintentos } from "./fetch-con-reintentos";
+
 /**
  * Proveedor: football-data.org (v4).
  *
@@ -88,7 +90,7 @@ export async function fetchFootballDataFixtures(): Promise<PartidoExterno[]> {
     url.searchParams.set("season", SEASON);
   }
 
-  const res = await fetch(url, {
+  const res = await fetchConReintentos(url, {
     headers: { "X-Auth-Token": token },
     cache: "no-store",
   });

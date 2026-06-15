@@ -1,5 +1,7 @@
 import type { EstadoPartido, PartidoExterno } from "@/types";
 
+import { fetchConReintentos } from "./fetch-con-reintentos";
+
 /**
  * Proveedor: API-Football (https://www.api-football.com/).
  *
@@ -77,7 +79,7 @@ export async function fetchApiFootballFixtures(): Promise<PartidoExterno[]> {
   url.searchParams.set("league", LEAGUE_ID);
   url.searchParams.set("season", SEASON);
 
-  const res = await fetch(url, {
+  const res = await fetchConReintentos(url, {
     headers: { "x-apisports-key": apiKey },
     cache: "no-store",
   });
