@@ -17,6 +17,8 @@ export const POLLA = {
     titular: "Paola Gomez",
     numero: "Llave @3132542284",
   },
+  /** WhatsApp del admin para avisar pagos. Formato internacional sin +. */
+  whatsappAdmin: "573002528399",
   /** Ruta del QR de pago dentro de /public. */
   qrSrc: "/qr-pago.png",
 } as const;

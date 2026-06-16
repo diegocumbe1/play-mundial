@@ -1,14 +1,21 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
-import { Loader2, Ticket, Trophy } from "lucide-react";
+import {
+  CheckCircle2,
+  ChevronDown,
+  Loader2,
+  Ticket,
+  Trophy,
+} from "lucide-react";
 
 import { getResultadosPorCliente } from "@/actions/apuestas";
 import { getClienteId } from "@/lib/cliente-id";
 import { traducirEquipo, type Idioma } from "@/lib/idioma";
 import { formatCOP } from "@/lib/polla";
-import type { Apuesta, Partido, ResultadoCliente } from "@/types";
+import type { ApuestaCliente, Partido, ResultadoCliente } from "@/types";
 
 const ORDEN: Record<string, number> = {
   en_juego: 0,
@@ -38,13 +45,19 @@ function ResultadoCard({
   idioma,
 }: {
   partido: Partido;
-  apuestas: Apuesta[];
+  apuestas: ApuestaCliente[];
   resumen: ResultadoCliente["resumenes"][number] | undefined;
   idioma: Idioma;
 }) {
   const finalizado = partido.estado === "finalizado";
+  const enJuego = partido.estado === "en_juego";
+  const tieneMarcador =
+    (enJuego || finalizado) &&
+    partido.goles_local !== null &&
+    partido.goles_visitante !== null;
   const ganadores = new Set(resumen?.ganadoresClienteIds ?? []);
   const tieneGanador = apuestas.some((a) => ganadores.has(a.id));
+  const marcadores = resumen?.marcadores ?? [];
 
   return (
     <div className="bg-polla-surface ring-polla-line rounded-2xl p-4 ring-1">
@@ -55,9 +68,12 @@ function ResultadoCard({
             <span className="text-polla-muted font-normal">vs</span>{" "}
             {traducirEquipo(partido.equipo_visitante, idioma)}
           </div>
-          {finalizado && (
+          {tieneMarcador && (
             <div className="font-heading text-polla-gold mt-1 text-2xl tabular-nums">
               {partido.goles_local} – {partido.goles_visitante}
+              <span className="text-polla-muted ml-2 align-middle font-sans text-xs font-semibold tracking-wide uppercase">
+                {finalizado ? "Final" : "Ahora"}
+              </span>
             </div>
           )}
         </div>
@@ -98,6 +114,88 @@ function ResultadoCard({
           </div>
         ))}
       </div>
+
+      {marcadores.length > 0 && (
+        <details className="group border-polla-line/50 mt-3 border-t pt-3">
+          <summary className="text-polla-muted hover:text-white flex cursor-pointer list-none items-center justify-between gap-3 text-sm transition [&::-webkit-details-marker]:hidden">
+            <span className="inline-flex items-center gap-2">
+              <Image
+                src="/icon.svg"
+                alt=""
+                width={24}
+                height={24}
+                className="size-6 rounded-full ring-1 ring-white/20"
+              />
+              Ver marcadores de la polla
+            </span>
+            <ChevronDown className="size-4 transition group-open:rotate-180" />
+          </summary>
+
+          <div className="mt-3 grid gap-2">
+            {marcadores.map((marcador) => {
+              const esPropio = marcador.propias > 0;
+
+              return (
+                <div
+                  key={`${marcador.goles_local}-${marcador.goles_visitante}`}
+                  className={
+                    marcador.esMarcadorActual
+                      ? "bg-polla-gold/10 ring-polla-gold/40 flex items-center justify-between gap-3 rounded-xl px-3 py-2 ring-1"
+                      : esPropio
+                        ? "bg-polla-deep/25 ring-polla-gold/30 flex items-center justify-between gap-3 rounded-xl px-3 py-2 ring-1"
+                        : "bg-polla-dark/40 ring-polla-line/50 flex items-center justify-between gap-3 rounded-xl px-3 py-2 ring-1"
+                  }
+                >
+                  <div className="flex min-w-0 items-center gap-2">
+                    <Image
+                      src="/icon.svg"
+                      alt="Apuesta anonima"
+                      width={28}
+                      height={28}
+                      className="size-7 shrink-0 rounded-full ring-1 ring-white/20"
+                    />
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-heading text-lg leading-none text-white tabular-nums">
+                          {marcador.goles_local}-{marcador.goles_visitante}
+                        </span>
+                        {esPropio && (
+                          <span className="bg-polla-gold/15 text-polla-gold ring-polla-gold/40 rounded-full px-2 py-0.5 text-[10px] font-bold ring-1">
+                            {marcador.propias === 1
+                              ? "Tu marcador"
+                              : `Tus ${marcador.propias} apuestas`}
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-polla-muted text-xs">
+                        {marcador.cantidad}{" "}
+                        {marcador.cantidad === 1 ? "persona" : "personas"}
+                        {marcador.pagadas > 0
+                          ? ` · ${marcador.pagadas} pagada(s)`
+                          : ""}
+                      </div>
+                    </div>
+                  </div>
+
+                  {marcador.esMarcadorActual && (
+                    <div className="text-right">
+                      <span className="text-polla-gold inline-flex shrink-0 items-center gap-1 text-xs font-bold">
+                        <CheckCircle2 className="size-4" />
+                        {finalizado ? "Correcto" : "Por ahora"}
+                      </span>
+                      {marcador.premioPorPersona > 0 && (
+                        <div className="font-heading text-polla-gold text-xl leading-none tabular-nums">
+                          {formatCOP(marcador.premioPorPersona)} c/u
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </details>
+      )}
 
       {finalizado && (
         <p className="text-polla-muted border-polla-line/50 mt-3 border-t pt-3 text-sm">
@@ -159,7 +257,7 @@ export function ResultadosPersonales({
   }, []);
 
   const { conApuestas, porPartido, resumenPorPartido } = useMemo(() => {
-    const porPartido = new Map<string, Apuesta[]>();
+    const porPartido = new Map<string, ApuestaCliente[]>();
     for (const apuesta of resultado.apuestas) {
       const lista = porPartido.get(apuesta.partido_id) ?? [];
       lista.push(apuesta);

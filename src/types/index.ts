@@ -87,6 +87,18 @@ export interface Apuesta {
   updated_at: string;
 }
 
+/** Apuesta visible en pantallas publicas: sin nombre, telefono ni cliente_id. */
+export type ApuestaCliente = Pick<
+  Apuesta,
+  | "id"
+  | "partido_id"
+  | "goles_local"
+  | "goles_visitante"
+  | "pagado"
+  | "created_at"
+  | "updated_at"
+>;
+
 /** Una apuesta tal como la arma el formulario (sin ids ni datos de persona). */
 export interface ApuestaInput {
   partido_id: string;
@@ -115,7 +127,7 @@ export interface ResultadoPartido {
 
 /** Resumen de resultado para un jugador anónimo, sin exponer apuestas ajenas. */
 export interface ResultadoCliente {
-  apuestas: Apuesta[];
+  apuestas: ApuestaCliente[];
   resumenes: {
     partido_id: string;
     apuestasPagadas: number;
@@ -124,6 +136,15 @@ export interface ResultadoCliente {
     premioPorGanador: number;
     enCasa: number;
     ganadoresClienteIds: string[];
+    marcadores: {
+      goles_local: number;
+      goles_visitante: number;
+      cantidad: number;
+      pagadas: number;
+      propias: number;
+      esMarcadorActual: boolean;
+      premioPorPersona: number;
+    }[];
   }[];
 }
 

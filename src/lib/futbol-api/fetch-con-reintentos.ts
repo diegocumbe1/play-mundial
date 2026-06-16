@@ -10,7 +10,7 @@
 interface OpcionesReintento {
   /** Nº máximo de intentos (incluido el primero). Default 3. */
   intentos?: number;
-  /** Timeout por intento en ms. Default 10000. */
+  /** Timeout por intento en ms. Default 8000. */
   timeoutMs?: number;
   /** Backoff base en ms (se duplica por intento). Default 500. */
   backoffMs?: number;
@@ -28,7 +28,7 @@ export async function fetchConReintentos(
   init: RequestInit,
   opciones: OpcionesReintento = {},
 ): Promise<Response> {
-  const { intentos = 3, timeoutMs = 10_000, backoffMs = 500 } = opciones;
+  const { intentos = 3, timeoutMs = 8_000, backoffMs = 500 } = opciones;
 
   let ultimoError: unknown;
 

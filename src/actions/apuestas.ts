@@ -6,7 +6,13 @@ import { z } from "zod";
 import { getUser } from "@/lib/auth";
 import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
 import { calcularResultadoPartido } from "@/lib/polla";
-import type { ActionResult, Apuesta, Partido, ResultadoCliente } from "@/types";
+import type {
+  ActionResult,
+  Apuesta,
+  ApuestaCliente,
+  Partido,
+  ResultadoCliente,
+} from "@/types";
 
 /**
  * Server Actions para apuestas ("polla por partido").
@@ -46,6 +52,18 @@ function normalizarApuesta(row: ApuestaRow): Apuesta {
     ...row,
     cliente_id: row.cliente_id ?? null,
     telefono: row.telefono ?? row.email ?? null,
+  };
+}
+
+function sanitizarApuestaCliente(apuesta: Apuesta): ApuestaCliente {
+  return {
+    id: apuesta.id,
+    partido_id: apuesta.partido_id,
+    goles_local: apuesta.goles_local,
+    goles_visitante: apuesta.goles_visitante,
+    pagado: apuesta.pagado,
+    created_at: apuesta.created_at,
+    updated_at: apuesta.updated_at,
   };
 }
 
@@ -154,6 +172,10 @@ export async function crearApuestas(
 
 /** Lista todas las apuestas (admin). */
 export async function getApuestas(): Promise<ActionResult<Apuesta[]>> {
+  if (!(await getUser())) {
+    return { success: false, error: "No autorizado" };
+  }
+
   const supabase = await createClient();
 
   const { data, error } = await supabase
@@ -174,13 +196,13 @@ export async function getApuestas(): Promise<ActionResult<Apuesta[]>> {
 /** Lista las apuestas asociadas al navegador/dispositivo anónimo del jugador. */
 export async function getApuestasPorCliente(
   clienteId: string | null,
-): Promise<ActionResult<Apuesta[]>> {
+): Promise<ActionResult<ApuestaCliente[]>> {
   const parsed = z.string().trim().min(8).safeParse(clienteId);
   if (!parsed.success) {
     return { success: true, data: [] };
   }
 
-  const supabase = await createClient();
+  const supabase = createServiceRoleClient();
   const { data, error } = await supabase
     .from("apuestas")
     .select("*")
@@ -196,7 +218,9 @@ export async function getApuestasPorCliente(
 
   return {
     success: true,
-    data: ((data ?? []) as ApuestaRow[]).map(normalizarApuesta),
+    data: ((data ?? []) as ApuestaRow[])
+      .map(normalizarApuesta)
+      .map(sanitizarApuestaCliente),
   };
 }
 
@@ -209,7 +233,7 @@ export async function getResultadosPorCliente(
     return { success: true, data: { apuestas: [], resumenes: [] } };
   }
 
-  const supabase = await createClient();
+  const supabase = createServiceRoleClient();
   const { data: propiasRaw, error: propiasError } = await supabase
     .from("apuestas")
     .select("*")
@@ -253,10 +277,56 @@ export async function getResultadosPorCliente(
   }
 
   const resumenes = ((partidosRes.data ?? []) as Partido[]).map((partido) => {
+    const apuestasPartido = apuestasPorPartido.get(partido.id) ?? [];
     const resultado = calcularResultadoPartido(
       partido,
-      apuestasPorPartido.get(partido.id) ?? [],
+      apuestasPartido,
     );
+    const tieneMarcadorActual =
+      (partido.estado === "en_juego" || partido.estado === "finalizado") &&
+      partido.goles_local !== null &&
+      partido.goles_visitante !== null;
+    const marcadoresPorLlave = new Map<
+      string,
+      {
+        goles_local: number;
+        goles_visitante: number;
+        cantidad: number;
+        pagadas: number;
+        propias: number;
+        esMarcadorActual: boolean;
+        premioPorPersona: number;
+      }
+    >();
+
+    for (const apuesta of apuestasPartido) {
+      const llave = `${apuesta.goles_local}-${apuesta.goles_visitante}`;
+      const actual = marcadoresPorLlave.get(llave) ?? {
+        goles_local: apuesta.goles_local,
+        goles_visitante: apuesta.goles_visitante,
+        cantidad: 0,
+        pagadas: 0,
+        propias: 0,
+        esMarcadorActual:
+          tieneMarcadorActual &&
+          apuesta.goles_local === partido.goles_local &&
+          apuesta.goles_visitante === partido.goles_visitante,
+        premioPorPersona: 0,
+      };
+      actual.cantidad += 1;
+      if (apuesta.pagado) actual.pagadas += 1;
+      if (propiasIds.has(apuesta.id)) actual.propias += 1;
+      marcadoresPorLlave.set(llave, actual);
+    }
+
+    for (const marcador of marcadoresPorLlave.values()) {
+      if (marcador.esMarcadorActual && marcador.pagadas > 0) {
+        marcador.premioPorPersona = Math.floor(
+          resultado.premioPool / marcador.pagadas,
+        );
+      }
+    }
+
     return {
       partido_id: partido.id,
       apuestasPagadas: resultado.apuestasPagadas,
@@ -267,10 +337,20 @@ export async function getResultadosPorCliente(
       ganadoresClienteIds: resultado.ganadores
         .filter((g) => propiasIds.has(g.id))
         .map((g) => g.id),
+      marcadores: [...marcadoresPorLlave.values()].sort(
+        (a, b) =>
+          Number(b.esMarcadorActual) - Number(a.esMarcadorActual) ||
+          b.cantidad - a.cantidad ||
+          a.goles_local - b.goles_local ||
+          a.goles_visitante - b.goles_visitante,
+      ),
     };
   });
 
-  return { success: true, data: { apuestas: propias, resumenes } };
+  return {
+    success: true,
+    data: { apuestas: propias.map(sanitizarApuestaCliente), resumenes },
+  };
 }
 
 /** Marca una apuesta como pagada o pendiente. Solo admin. */

@@ -8,6 +8,9 @@ import { fetchFixtures } from "@/lib/futbol-api";
  * Protegido por CRON_SECRET: Vercel Cron envía `Authorization: Bearer <secret>`.
  */
 export const dynamic = "force-dynamic";
+// El fetch al proveedor puede reintentar varias veces; damos margen para que
+// la función no muera antes de terminar (Vercel Hobby permite hasta 60s).
+export const maxDuration = 30;
 
 export async function GET(request: Request) {
   const secret = process.env.CRON_SECRET;

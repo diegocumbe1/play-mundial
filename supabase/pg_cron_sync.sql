@@ -24,8 +24,11 @@ select cron.schedule(
   '*/15 * * * *',
   $$
     select net.http_get(
-      url     := '<TU_URL>/api/sync',
-      headers := jsonb_build_object('Authorization', 'Bearer <TU_CRON_SECRET>')
+      url                  := '<TU_URL>/api/sync',
+      headers              := jsonb_build_object('Authorization', 'Bearer <TU_CRON_SECRET>'),
+      -- pg_net corta a los 5s por defecto y escribe status_code = NULL.
+      -- El sync puede reintentar el fetch al proveedor, así que damos 30s.
+      timeout_milliseconds := 30000
     );
   $$
 );

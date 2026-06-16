@@ -7,8 +7,19 @@ import { getIdioma } from "@/lib/idioma-server";
 
 export const dynamic = "force-dynamic";
 
-export default async function JugarPage() {
+function getSearchValue(value: string | string[] | undefined) {
+  return Array.isArray(value) ? value[0] : value;
+}
+
+export default async function JugarPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ partido?: string | string[]; equipo?: string | string[] }>;
+}) {
   const idioma = await getIdioma();
+  const query = await searchParams;
+  const partidoInicial = getSearchValue(query.partido) ?? "";
+  const equipoInicial = getSearchValue(query.equipo) ?? "";
   const result = await getPartidos();
   const todos = result.success ? result.data : [];
   // Solo se puede pronosticar partidos que aún no han empezado.
@@ -38,7 +49,12 @@ export default async function JugarPage() {
             </p>
           </div>
         ) : (
-          <PronosticoForm partidos={disponibles} idioma={idioma} />
+          <PronosticoForm
+            partidos={disponibles}
+            idioma={idioma}
+            partidoInicialId={partidoInicial}
+            busquedaInicial={equipoInicial}
+          />
         )}
       </main>
     </>

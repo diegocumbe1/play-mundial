@@ -1,6 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Ticket } from "lucide-react";
 
 import { getPartidos } from "@/actions/partidos";
 import { PartidoCard } from "@/components/partido-card";
@@ -79,6 +79,7 @@ export default async function EquipoPage({
   const proximos = partidos
     .filter((p) => p.estado === "programado" || p.estado === "en_juego")
     .sort(ordenar);
+  const proximosApostables = proximos.filter((p) => p.estado === "programado");
   const jugados = partidos
     .filter((p) => p.estado === "finalizado" || p.estado === "cancelado")
     .sort((a, b) => b.fecha.localeCompare(a.fecha));
@@ -94,7 +95,7 @@ export default async function EquipoPage({
           <ArrowLeft className="size-4" /> Volver
         </Link>
 
-        <div className="flex items-center gap-4">
+        <div className="flex flex-wrap items-center gap-4">
           <div className="bg-polla-elevated ring-polla-line flex size-16 items-center justify-center overflow-hidden rounded-full ring-1">
             {logo ? (
               <Image src={logo} alt={displayNombre} width={48} height={48} className="size-12 object-contain" />
@@ -105,6 +106,15 @@ export default async function EquipoPage({
           <h1 className="font-heading text-4xl tracking-wide text-white sm:text-5xl">
             {displayNombre}
           </h1>
+          {proximosApostables.length > 0 && (
+            <Link
+              href={`/jugar?equipo=${encodeURIComponent(nombre)}`}
+              className="bg-polla-gold text-polla-dark hover:bg-polla-gold/90 inline-flex h-11 items-center justify-center gap-2 rounded-xl px-4 text-sm font-bold transition-colors"
+            >
+              <Ticket className="size-4" />
+              Apostar
+            </Link>
+          )}
         </div>
 
         {partidos.length === 0 ? (

@@ -9,6 +9,7 @@ import {
   Download,
   ExternalLink,
   Info,
+  MessageCircle,
   Minus,
   Plus,
   QrCode,
@@ -124,9 +125,13 @@ function EquipoPronostico({
 export function PronosticoForm({
   partidos,
   idioma = "es",
+  partidoInicialId = "",
+  busquedaInicial = "",
 }: {
   partidos: Partido[];
   idioma?: Idioma;
+  partidoInicialId?: string;
+  busquedaInicial?: string;
 }) {
   const router = useRouter();
   // Valores que se están editando por partido (antes de "Agregar").
@@ -138,22 +143,27 @@ export function PronosticoForm({
   const [modalOpen, setModalOpen] = useState(false);
   const [enviando, setEnviando] = useState(false);
   const [qrError, setQrError] = useState(false);
-  const [q, setQ] = useState("");
+  const [q, setQ] = useState(busquedaInicial);
 
   const query = q.trim().toLowerCase();
-  const visibles = partidos.filter((p) =>
-    [
-      p.equipo_local,
-      p.equipo_visitante,
-      p.liga ?? "",
-      traducirEquipo(p.equipo_local, idioma),
-      traducirEquipo(p.equipo_visitante, idioma),
-      traducirLiga(p.liga, idioma),
-    ]
-      .join(" ")
-      .toLowerCase()
-      .includes(query),
-  );
+  const partidoInicial = partidoInicialId
+    ? partidos.find((p) => p.id === partidoInicialId)
+    : undefined;
+  const visibles = partidoInicial
+    ? [partidoInicial]
+    : partidos.filter((p) =>
+        [
+          p.equipo_local,
+          p.equipo_visitante,
+          p.liga ?? "",
+          traducirEquipo(p.equipo_local, idioma),
+          traducirEquipo(p.equipo_visitante, idioma),
+          traducirLiga(p.liga, idioma),
+        ]
+          .join(" ")
+          .toLowerCase()
+          .includes(query),
+      );
 
   const {
     register,
@@ -166,6 +176,33 @@ export function PronosticoForm({
   });
 
   const total = cart.length * POLLA.costo;
+  const partidosEnCarrito = new Set(cart.map((item) => item.partido_id)).size;
+  const nombrePago = getValues("nombre").trim();
+  const partidosPorId = new Map(partidos.map((partido) => [partido.id, partido]));
+  const detalleApuestas = cart.map((item, index) => {
+    const partido = partidosPorId.get(item.partido_id);
+    const local = partido
+      ? traducirEquipo(partido.equipo_local, idioma)
+      : "Partido";
+    const visitante = partido
+      ? traducirEquipo(partido.equipo_visitante, idioma)
+      : "sin identificar";
+
+    return `${index + 1}. ${local} vs ${visitante}: ${item.goles_local}-${item.goles_visitante}`;
+  });
+  const mensajePago = [
+    "Hola, ya realice mi pago.",
+    `Nombre: ${nombrePago || "Pendiente"}`,
+    `Monto: ${formatCOP(total)}`,
+    `Apuestas: ${cart.length}`,
+    `Partidos: ${partidosEnCarrito}`,
+    "Detalle:",
+    ...detalleApuestas,
+    "Por favor confirmar y habilitar mi apuesta.",
+  ].join("\n");
+  const whatsappPagoUrl = `https://wa.me/${POLLA.whatsappAdmin}?text=${encodeURIComponent(
+    mensajePago,
+  )}`;
 
   function setStepper(id: string, patch: Partial<{ local: number; visitante: number }>) {
     setEditing((prev) => ({ ...prev, [id]: { ...prev[id], ...patch } }));
@@ -269,17 +306,25 @@ export function PronosticoForm({
           .
         </p>
 
+        {partidoInicial && (
+          <div className="border-polla-gold/40 bg-polla-gold/10 text-polla-gold rounded-2xl border px-4 py-3 text-sm font-semibold">
+            Apostando al partido seleccionado.
+          </div>
+        )}
+
         {/* Buscador por país / equipo */}
-        <div className="relative">
-          <Search className="text-polla-muted pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2" />
-          <Input
-            type="search"
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="Buscar país o equipo (ej. Colombia)…"
-            className="h-12 pl-10 focus-visible:border-polla-gold focus-visible:ring-polla-gold/30"
-          />
-        </div>
+        {!partidoInicial && (
+          <div className="relative">
+            <Search className="text-polla-muted pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2" />
+            <Input
+              type="search"
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="Buscar país o equipo (ej. Colombia)…"
+              className="h-12 pl-10 focus-visible:border-polla-gold focus-visible:ring-polla-gold/30"
+            />
+          </div>
+        )}
 
         {visibles.length === 0 ? (
           <p className="text-polla-muted rounded-2xl bg-polla-surface px-4 py-8 text-center ring-1 ring-polla-line">
@@ -436,6 +481,18 @@ export function PronosticoForm({
                 Abrir QR
               </a>
             </div>
+            <a
+              href={whatsappPagoUrl}
+              target="_blank"
+              rel="noreferrer"
+              className={cn(
+                buttonVariants({ variant: "outline", size: "lg" }),
+                "border-polla-gold/60 bg-polla-gold/10 text-polla-gold hover:bg-polla-gold/15 w-full max-w-80 font-bold",
+              )}
+            >
+              <MessageCircle className="size-4" />
+              Comunicar pago
+            </a>
             <div className="text-center text-sm">
               <div className="font-semibold text-white">{POLLA.banco.entidad}</div>
               <div className="text-polla-muted">{POLLA.banco.numero}</div>

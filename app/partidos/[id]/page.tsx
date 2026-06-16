@@ -1,7 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, ArrowRight } from "lucide-react";
+import { ArrowLeft, ArrowRight, Ticket } from "lucide-react";
 
 import { getApuestas } from "@/actions/apuestas";
 import { getPartidos } from "@/actions/partidos";
@@ -64,6 +64,7 @@ export default async function PartidoDetallePage({
   const hayMarcador =
     partido.goles_local !== null && partido.goles_visitante !== null;
   const finalizado = partido.estado === "finalizado";
+  const puedeApostar = partido.estado === "programado";
 
   return (
     <>
@@ -107,6 +108,16 @@ export default async function PartidoDetallePage({
           <p className="text-polla-muted mt-6 text-center text-sm">
             {formatFecha(partido.fecha)}
           </p>
+
+          {puedeApostar && (
+            <Link
+              href={`/jugar?partido=${encodeURIComponent(partido.id)}`}
+              className="bg-polla-gold text-polla-dark hover:bg-polla-gold/90 mt-6 inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl px-5 text-base font-bold transition-colors"
+            >
+              <Ticket className="size-5" />
+              Apostar este partido
+            </Link>
+          )}
 
           {/* Pozo / premio */}
           {r.apuestasPagadas > 0 && (
