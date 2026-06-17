@@ -1,6 +1,7 @@
 import Link from "next/link";
+import { Lock } from "lucide-react";
 
-/** Footer con el enlace a términos y privacidad. */
+/** Footer con el enlace a términos y privacidad, y acceso discreto al admin. */
 export function SiteFooter() {
   return (
     <footer className="border-polla-line/70 mt-16 border-t">
@@ -13,7 +14,17 @@ export function SiteFooter() {
             Términos y condiciones · Política de privacidad
           </Link>
         </p>
-        <p>Polla Mundial 2026</p>
+        <p className="flex items-center justify-center gap-3">
+          <span>Polla Mundial 2026</span>
+          <span aria-hidden>·</span>
+          <Link
+            href="/admin"
+            className="hover:text-polla-gold inline-flex items-center gap-1 font-medium"
+          >
+            <Lock className="size-3" />
+            Admin
+          </Link>
+        </p>
       </div>
     </footer>
   );
