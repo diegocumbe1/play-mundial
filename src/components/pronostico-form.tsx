@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState, useSyncExternalStore } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -44,6 +44,9 @@ interface DatosValues {
   nombre: string;
   telefono: string;
 }
+
+/** No-op para useSyncExternalStore: localStorage no cambia durante la sesión. */
+const emptySubscribe = () => () => {};
 
 interface CartItem {
   key: string;
@@ -169,11 +172,44 @@ export function PronosticoForm({
     register,
     handleSubmit,
     getValues,
+    setValue,
     formState: { isValid },
   } = useForm<DatosValues>({
     mode: "onChange",
     defaultValues: { nombre: "", telefono: "" },
   });
+
+  // Datos guardados de una apuesta anterior (solo se rellenan si el usuario lo
+  // pide). Se leen del navegador con useSyncExternalStore para no desajustar la
+  // hidratación; nunca se mandan automáticamente.
+  const rawDatos = useSyncExternalStore(
+    emptySubscribe,
+    () => {
+      try {
+        return localStorage.getItem("polla:datos");
+      } catch {
+        return null;
+      }
+    },
+    () => null,
+  );
+  const recordado = useMemo<DatosValues | null>(() => {
+    if (!rawDatos) return null;
+    try {
+      const d = JSON.parse(rawDatos) as Partial<DatosValues>;
+      return d.nombre ? { nombre: d.nombre, telefono: d.telefono ?? "" } : null;
+    } catch {
+      return null;
+    }
+  }, [rawDatos]);
+  const [datosUsados, setDatosUsados] = useState(false);
+
+  function usarDatosGuardados() {
+    if (!recordado) return;
+    setValue("nombre", recordado.nombre, { shouldValidate: true });
+    setValue("telefono", recordado.telefono, { shouldValidate: true });
+    setDatosUsados(true);
+  }
 
   const total = cart.length * POLLA.costo;
   const partidosEnCarrito = new Set(cart.map((item) => item.partido_id)).size;
@@ -257,6 +293,18 @@ export function PronosticoForm({
       toast.error(result.error);
       return;
     }
+    // Recordar nombre/teléfono para una próxima apuesta (solo en el navegador).
+    try {
+      localStorage.setItem(
+        "polla:datos",
+        JSON.stringify({
+          nombre: nombre.trim(),
+          telefono: (telefono ?? "").trim(),
+        }),
+      );
+    } catch {
+      // ignorar
+    }
     setModalOpen(false);
     lanzarConfetti();
     toast.success(
@@ -268,6 +316,22 @@ export function PronosticoForm({
   return (
     <>
       <form onSubmit={handleSubmit(onContinuar)} className="grid gap-6 pb-28">
+        {recordado && !datosUsados && (
+          <button
+            type="button"
+            onClick={usarDatosGuardados}
+            className="border-polla-gold/40 bg-polla-gold/10 text-polla-gold hover:bg-polla-gold/15 flex items-center justify-between gap-3 rounded-2xl border px-4 py-3 text-left text-sm font-semibold transition-colors"
+          >
+            <span className="min-w-0 truncate">
+              Usar mis datos: {recordado.nombre}
+              {recordado.telefono ? ` · ${recordado.telefono}` : ""}
+            </span>
+            <span className="text-polla-gold/80 shrink-0 text-xs uppercase">
+              Rellenar
+            </span>
+          </button>
+        )}
+
         <div className="bg-polla-surface ring-polla-line grid gap-4 rounded-2xl p-5 ring-1 sm:grid-cols-2">
           <div className="grid gap-2">
             <Label htmlFor="nombre" className="text-polla-muted">
