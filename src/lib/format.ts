@@ -1,25 +1,49 @@
-import { format } from "date-fns";
-import { es } from "date-fns/locale";
-
 import type { EstadoPartido } from "@/types";
+
+/**
+ * Zona horaria fija para toda la app. Sin esto, las fechas se formatean en la
+ * zona del runtime: en Vercel (UTC) un partido de las 12:00 PM Colombia salía
+ * como "5:00 PM". Forzamos Colombia para que siempre coincida con la realidad.
+ */
+const TZ = "America/Bogota";
+
+const cap = (s: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
 
 /** Formatea una fecha ISO a algo legible en español. Ej: "14 jun 2026, 15:00". */
 export function formatFecha(iso: string): string {
-  return format(new Date(iso), "d MMM yyyy, HH:mm", { locale: es });
+  const partes = new Intl.DateTimeFormat("es-CO", {
+    timeZone: TZ,
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(new Date(iso));
+  const g = (t: string) => partes.find((p) => p.type === t)?.value ?? "";
+  return `${g("day")} ${cap(g("month").replace(".", ""))} ${g("year")}, ${g("hour")}:${g("minute")}`;
 }
 
 /**
  * Formato corto estilo colombiano para las cards de partido.
- * Ej: "Jue 19 Jun · 3:00 PM".
+ * Ej: "Mié 17 Jun · 12:00 PM". Siempre en hora de Colombia.
  */
 export function formatFechaCorta(iso: string): string {
-  const d = new Date(iso);
-  const fecha = format(d, "EEE d MMM", { locale: es });
-  // Hora 12h con meridiano limpio "AM/PM" (date-fns en es da "p. m.").
-  const hora = format(d, "h:mm", { locale: es });
-  const meridiano = d.getHours() < 12 ? "AM" : "PM";
-  const cap = fecha.charAt(0).toUpperCase() + fecha.slice(1);
-  return `${cap} · ${hora} ${meridiano}`;
+  const partes = new Intl.DateTimeFormat("es-CO", {
+    timeZone: TZ,
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  }).formatToParts(new Date(iso));
+  const g = (t: string) => partes.find((p) => p.type === t)?.value ?? "";
+  const weekday = cap(g("weekday").replace(".", ""));
+  const month = cap(g("month").replace(".", ""));
+  // dayPeriod en es-CO viene como "a. m." / "p. m."; lo normalizamos.
+  const meridiano = g("dayPeriod").toLowerCase().includes("p") ? "PM" : "AM";
+  return `${weekday} ${g("day")} ${month} · ${g("hour")}:${g("minute")} ${meridiano}`;
 }
 
 /** Formatea un número como pesos colombianos sin decimales. Ej: "$1.200.000". */
