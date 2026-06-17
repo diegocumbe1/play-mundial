@@ -40,7 +40,7 @@ export default async function Home() {
     <>
       <SiteHeader live={hayLive} idioma={idioma} />
       <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-8">
-        <Hero />
+        <Hero proximos={upcoming} idioma={idioma} />
 
         {!partidosRes.success ? (
           <p className="text-polla-red mt-12 rounded-2xl bg-polla-red/10 px-4 py-3 ring-1 ring-polla-red/30">
