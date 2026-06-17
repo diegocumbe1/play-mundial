@@ -6,15 +6,30 @@ import Link from "next/link";
 import {
   CheckCircle2,
   ChevronDown,
+  Download,
+  ExternalLink,
+  Info,
   Loader2,
+  MessageCircle,
+  QrCode,
   Ticket,
   Trophy,
 } from "lucide-react";
+import { toast } from "sonner";
 
 import { getResultadosPorCliente } from "@/actions/apuestas";
+import { Button, buttonVariants } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { getClienteId } from "@/lib/cliente-id";
 import { traducirEquipo, type Idioma } from "@/lib/idioma";
-import { formatCOP } from "@/lib/polla";
+import { formatCOP, POLLA } from "@/lib/polla";
+import { cn } from "@/lib/utils";
 import type { ApuestaCliente, Partido, ResultadoCliente } from "@/types";
 
 const ORDEN: Record<string, number> = {
@@ -216,6 +231,136 @@ function ResultadoCard({
   );
 }
 
+function ModalPagoPendiente({
+  open,
+  onOpenChange,
+  detalle,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  detalle: string[];
+}) {
+  const [qrError, setQrError] = useState(false);
+  const [pagoComunicado, setPagoComunicado] = useState(false);
+  const total = detalle.length * POLLA.costo;
+  const mensajePago = [
+    "Hola, ya realice mi pago.",
+    `Monto: ${formatCOP(total)}`,
+    `Apuestas: ${detalle.length}`,
+    "Detalle:",
+    ...detalle,
+    "Por favor confirmar y habilitar mi apuesta.",
+  ].join("\n");
+  const whatsappPagoUrl = `https://wa.me/${POLLA.whatsappAdmin}?text=${encodeURIComponent(
+    mensajePago,
+  )}`;
+
+  function comunicarPago() {
+    if (pagoComunicado) {
+      toast.info("El pago ya fue comunicado para estas apuestas.");
+      return;
+    }
+
+    setPagoComunicado(true);
+    window.open(whatsappPagoUrl, "_blank", "noopener,noreferrer");
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="bg-polla-surface border-polla-line max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="font-heading text-polla-gold text-2xl tracking-wide">
+            Pago pendiente
+          </DialogTitle>
+          <DialogDescription className="text-polla-muted">
+            {detalle.length} apuesta(s) ya registrada(s) · transfiere{" "}
+            <span className="text-polla-gold font-semibold">
+              {formatCOP(total)}
+            </span>
+            .
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="flex flex-col items-center gap-4 py-2">
+          <div className="ring-polla-line flex w-full max-w-80 items-center justify-center overflow-hidden rounded-2xl bg-white ring-1">
+            {qrError ? (
+              <div className="text-polla-muted flex aspect-square w-full flex-col items-center justify-center gap-2 p-4 text-center text-xs">
+                <QrCode className="size-8" />
+                Coloca tu QR en
+                <code className="text-polla-gold">public/qr-pago.png</code>
+              </div>
+            ) : (
+              /* eslint-disable-next-line @next/next/no-img-element */
+              <img
+                src={POLLA.qrSrc}
+                alt="QR de pago"
+                className="h-auto w-full"
+                onError={() => setQrError(true)}
+              />
+            )}
+          </div>
+          <div className="grid w-full max-w-80 grid-cols-2 gap-2">
+            <a
+              href={POLLA.qrSrc}
+              download="qr-pago-paola-gomez.png"
+              className={cn(
+                buttonVariants({ variant: "outline", size: "lg" }),
+                "border-polla-gold/50 text-polla-gold hover:bg-polla-gold/10",
+              )}
+            >
+              <Download className="size-4" />
+              Descargar QR
+            </a>
+            <a
+              href={POLLA.qrSrc}
+              target="_blank"
+              rel="noreferrer"
+              className={cn(
+                buttonVariants({ variant: "outline", size: "lg" }),
+                "border-polla-line text-white hover:bg-white/5",
+              )}
+            >
+              <ExternalLink className="size-4" />
+              Abrir QR
+            </a>
+          </div>
+          <div className="bg-polla-dark/40 ring-polla-line/70 grid w-full max-w-80 gap-1 rounded-xl px-3 py-2 text-xs ring-1">
+            {detalle.map((item, index) => (
+              <div key={`${index}-${item}`} className="text-polla-muted">
+                {item}
+              </div>
+            ))}
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="lg"
+            onClick={comunicarPago}
+            disabled={pagoComunicado}
+            className="border-polla-gold/60 bg-polla-gold/10 text-polla-gold hover:bg-polla-gold/15 w-full max-w-80 font-bold"
+          >
+            <MessageCircle className="size-4" />
+            {pagoComunicado ? "Pago comunicado" : "Comunicar pago"}
+          </Button>
+          <div className="text-center text-sm">
+            <div className="font-semibold text-white">{POLLA.banco.entidad}</div>
+            <div className="text-polla-muted">{POLLA.banco.numero}</div>
+            <div className="text-polla-muted">{POLLA.banco.titular}</div>
+          </div>
+          <Link
+            href="/terminos"
+            target="_blank"
+            className="text-polla-muted hover:text-polla-gold inline-flex items-center gap-1.5 text-xs"
+          >
+            <Info className="size-3.5" />
+            Cómo funciona · Términos y privacidad
+          </Link>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export function ResultadosPersonales({
   partidos,
   idioma,
@@ -225,6 +370,7 @@ export function ResultadosPersonales({
 }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [pagoOpen, setPagoOpen] = useState(false);
   const [resultado, setResultado] = useState<ResultadoCliente>({
     apuestas: [],
     resumenes: [],
@@ -256,7 +402,8 @@ export function ResultadosPersonales({
     };
   }, []);
 
-  const { conApuestas, porPartido, resumenPorPartido } = useMemo(() => {
+  const { conApuestas, porPartido, resumenPorPartido, detallePendiente } =
+    useMemo(() => {
     const porPartido = new Map<string, ApuestaCliente[]>();
     for (const apuesta of resultado.apuestas) {
       const lista = porPartido.get(apuesta.partido_id) ?? [];
@@ -276,8 +423,23 @@ export function ResultadosPersonales({
           a.fecha.localeCompare(b.fecha),
       );
 
-    return { conApuestas, porPartido, resumenPorPartido };
-  }, [partidos, resultado]);
+    const partidosPorId = new Map(partidos.map((p) => [p.id, p]));
+    const detallePendiente = resultado.apuestas
+      .filter((a) => !a.pagado)
+      .map((a, index) => {
+        const partido = partidosPorId.get(a.partido_id);
+        const local = partido
+          ? traducirEquipo(partido.equipo_local, idioma)
+          : "Partido";
+        const visitante = partido
+          ? traducirEquipo(partido.equipo_visitante, idioma)
+          : "sin identificar";
+
+        return `${index + 1}. ${local} vs ${visitante}: ${a.goles_local}-${a.goles_visitante}`;
+      });
+
+    return { conApuestas, porPartido, resumenPorPartido, detallePendiente };
+  }, [idioma, partidos, resultado]);
 
   if (loading) {
     return (
@@ -315,6 +477,25 @@ export function ResultadosPersonales({
 
   return (
     <div className="grid gap-3">
+      {detallePendiente.length > 0 && (
+        <div className="border-polla-gold/40 bg-polla-gold/10 text-polla-gold flex flex-col gap-3 rounded-2xl border px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <div className="font-bold">Tienes pago pendiente</div>
+            <div className="text-polla-muted text-sm">
+              {detallePendiente.length} apuesta(s) ya registrada(s). Puedes ver
+              el QR sin crear una apuesta nueva.
+            </div>
+          </div>
+          <Button
+            type="button"
+            onClick={() => setPagoOpen(true)}
+            className="bg-polla-gold text-polla-dark hover:bg-polla-gold/90 gap-2 rounded-xl font-bold"
+          >
+            <QrCode className="size-4" />
+            Ver QR
+          </Button>
+        </div>
+      )}
       {conApuestas.map((p) => (
         <ResultadoCard
           key={p.id}
@@ -324,6 +505,13 @@ export function ResultadosPersonales({
           idioma={idioma}
         />
       ))}
+      {detallePendiente.length > 0 && (
+        <ModalPagoPendiente
+          open={pagoOpen}
+          onOpenChange={setPagoOpen}
+          detalle={detallePendiente}
+        />
+      )}
     </div>
   );
 }

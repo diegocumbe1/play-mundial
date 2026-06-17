@@ -55,6 +55,14 @@ interface CartItem {
   goles_visitante: number;
 }
 
+interface PagoPendiente {
+  nombre: string;
+  total: number;
+  apuestas: number;
+  partidos: number;
+  detalle: string[];
+}
+
 function Stepper({
   value,
   onChange,
@@ -141,12 +149,16 @@ export function PronosticoForm({
   const [editing, setEditing] = useState<
     Record<string, { local: number; visitante: number }>
   >(() => Object.fromEntries(partidos.map((p) => [p.id, { local: 0, visitante: 0 }])));
+  const [marcadorEditado, setMarcadorEditado] = useState<Record<string, boolean>>(
+    () => Object.fromEntries(partidos.map((p) => [p.id, false])),
+  );
   // Carrito: cada item es una apuesta (un cobro).
   const [cart, setCart] = useState<CartItem[]>([]);
   const [modalOpen, setModalOpen] = useState(false);
   const [enviando, setEnviando] = useState(false);
   const [apuestaRegistrada, setApuestaRegistrada] = useState(false);
   const [pagoComunicado, setPagoComunicado] = useState(false);
+  const [pagoPendiente, setPagoPendiente] = useState<PagoPendiente | null>(null);
   const [qrError, setQrError] = useState(false);
   const [q, setQ] = useState(busquedaInicial);
   const guardandoRef = useRef(false);
@@ -219,39 +231,72 @@ export function PronosticoForm({
   const partidosEnCarrito = new Set(cart.map((item) => item.partido_id)).size;
   const nombrePago = getValues("nombre").trim();
   const partidosPorId = new Map(partidos.map((partido) => [partido.id, partido]));
-  const detalleApuestas = cart.map((item, index) => {
-    const partido = partidosPorId.get(item.partido_id);
-    const local = partido
-      ? traducirEquipo(partido.equipo_local, idioma)
-      : "Partido";
-    const visitante = partido
-      ? traducirEquipo(partido.equipo_visitante, idioma)
-      : "sin identificar";
+  const crearDetalleApuestas = (items: CartItem[]) =>
+    items.map((item, index) => {
+      const partido = partidosPorId.get(item.partido_id);
+      const local = partido
+        ? traducirEquipo(partido.equipo_local, idioma)
+        : "Partido";
+      const visitante = partido
+        ? traducirEquipo(partido.equipo_visitante, idioma)
+        : "sin identificar";
 
-    return `${index + 1}. ${local} vs ${visitante}: ${item.goles_local}-${item.goles_visitante}`;
-  });
+      return `${index + 1}. ${local} vs ${visitante}: ${item.goles_local}-${item.goles_visitante}`;
+    });
+  const detalleApuestas = crearDetalleApuestas(cart);
+  const resumenPago: PagoPendiente = pagoPendiente ?? {
+    nombre: nombrePago,
+    total,
+    apuestas: cart.length,
+    partidos: partidosEnCarrito,
+    detalle: detalleApuestas,
+  };
   const mensajePago = [
     "Hola, ya realice mi pago.",
-    `Nombre: ${nombrePago || "Pendiente"}`,
-    `Monto: ${formatCOP(total)}`,
-    `Apuestas: ${cart.length}`,
-    `Partidos: ${partidosEnCarrito}`,
+    `Nombre: ${resumenPago.nombre || "Pendiente"}`,
+    `Monto: ${formatCOP(resumenPago.total)}`,
+    `Apuestas: ${resumenPago.apuestas}`,
+    `Partidos: ${resumenPago.partidos}`,
     "Detalle:",
-    ...detalleApuestas,
+    ...resumenPago.detalle,
     "Por favor confirmar y habilitar mi apuesta.",
   ].join("\n");
   const whatsappPagoUrl = `https://wa.me/${POLLA.whatsappAdmin}?text=${encodeURIComponent(
     mensajePago,
   )}`;
+  const modalTotal = resumenPago.total;
+  const modalCantidad = resumenPago.apuestas;
+  const modalDetalle = resumenPago.detalle;
 
-  function setStepper(id: string, patch: Partial<{ local: number; visitante: number }>) {
+  function crearResumenPago(items: CartItem[]): PagoPendiente {
+    const { nombre } = getValues();
+    const partidosUnicos = new Set(items.map((item) => item.partido_id)).size;
+
+    return {
+      nombre: nombre.trim(),
+      total: items.length * POLLA.costo,
+      apuestas: items.length,
+      partidos: partidosUnicos,
+      detalle: crearDetalleApuestas(items),
+    };
+  }
+
+  function setStepper(
+    id: string,
+    patch: Partial<{ local: number; visitante: number }>,
+    marcarEditado = true,
+  ) {
     setEditing((prev) => ({ ...prev, [id]: { ...prev[id], ...patch } }));
+    if (marcarEditado) {
+      setMarcadorEditado((prev) => ({ ...prev, [id]: true }));
+    }
   }
 
   function agregar(partidoId: string) {
     if (apuestaRegistrada) {
       setApuestaRegistrada(false);
       setPagoComunicado(false);
+      setPagoPendiente(null);
       comunicandoRef.current = false;
     }
 
@@ -268,7 +313,8 @@ export function PronosticoForm({
         goles_visitante: visitante,
       },
     ]);
-    setStepper(partidoId, { local: 0, visitante: 0 });
+    setStepper(partidoId, { local: 0, visitante: 0 }, false);
+    setMarcadorEditado((prev) => ({ ...prev, [partidoId]: false }));
   }
 
   function quitar(key: string) {
@@ -276,6 +322,29 @@ export function PronosticoForm({
   }
 
   function onContinuar() {
+    const marcadorPendiente = partidos.find((p) => {
+      if (!marcadorEditado[p.id]) return false;
+      const { local, visitante } = editing[p.id];
+
+      return !cart.some(
+        (item) =>
+          item.partido_id === p.id &&
+          item.goles_local === local &&
+          item.goles_visitante === visitante,
+      );
+    });
+
+    if (marcadorPendiente) {
+      const { local, visitante } = editing[marcadorPendiente.id];
+      toast.error(
+        `Agrega primero el marcador ${local}-${visitante} de ${traducirEquipo(
+          marcadorPendiente.equipo_local,
+          idioma,
+        )} vs ${traducirEquipo(marcadorPendiente.equipo_visitante, idioma)}.`,
+      );
+      return;
+    }
+
     if (cart.length === 0) {
       toast.error("Agrega al menos una apuesta");
       return;
@@ -329,6 +398,7 @@ export function PronosticoForm({
       // ignorar
     }
     setApuestaRegistrada(true);
+    setPagoPendiente(crearResumenPago(cart));
     lanzarConfetti();
     toast.success(
       `¡Listo! Registraste ${result.data.count} apuesta(s). Quedan pendientes de validar pago.`,
@@ -460,6 +530,8 @@ export function PronosticoForm({
           <div className="grid gap-3">
             {visibles.map((p) => {
             const ed = editing[p.id];
+            const marcadorActual = `${ed.local}-${ed.visitante}`;
+            const puedeAgregar = marcadorEditado[p.id];
             const apuestasPartido = cart.filter((c) => c.partido_id === p.id);
             const local = traducirEquipo(p.equipo_local, idioma);
             const visitante = traducirEquipo(p.equipo_visitante, idioma);
@@ -494,10 +566,13 @@ export function PronosticoForm({
                 <Button
                   type="button"
                   onClick={() => agregar(p.id)}
+                  disabled={!puedeAgregar}
                   className="bg-polla-elevated mt-4 w-full gap-2 rounded-xl font-bold text-white hover:bg-polla-elevated/80"
                 >
                   <Ticket className="size-4" />
-                  Agregar apuesta · {formatCOP(POLLA.costo)}
+                  {puedeAgregar
+                    ? `Agregar ${marcadorActual} · ${formatCOP(POLLA.costo)}`
+                    : "Elige marcador"}
                 </Button>
 
                 {apuestasPartido.length > 0 && (
@@ -556,9 +631,9 @@ export function PronosticoForm({
               Confirmar apuestas
             </DialogTitle>
             <DialogDescription className="text-polla-muted">
-              {cart.length} apuesta(s) · transfiere{" "}
+              {modalCantidad} apuesta(s) · transfiere{" "}
               <span className="text-polla-gold font-semibold">
-                {formatCOP(total)}
+                {formatCOP(modalTotal)}
               </span>{" "}
               y confirma.
             </DialogDescription>
@@ -607,6 +682,15 @@ export function PronosticoForm({
                 Abrir QR
               </a>
             </div>
+            {modalDetalle.length > 0 && (
+              <div className="bg-polla-dark/40 ring-polla-line/70 grid w-full max-w-80 gap-1 rounded-xl px-3 py-2 text-xs ring-1">
+                {modalDetalle.map((detalle, index) => (
+                  <div key={`${index}-${detalle}`} className="text-polla-muted">
+                    {detalle}
+                  </div>
+                ))}
+              </div>
+            )}
             <Button
               type="button"
               variant="outline"
