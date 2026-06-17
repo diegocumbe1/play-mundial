@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import Link from "next/link";
 import {
   ChevronDown,
   Coins,
@@ -292,7 +293,10 @@ export default async function AdminPage() {
     <div className="flex min-h-full flex-1 flex-col">
       <header className="bg-polla-dark/60 border-polla-line/70 sticky top-0 z-40 border-b backdrop-blur-md">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-3">
-          <div className="flex items-center gap-2">
+          <Link
+            href="/"
+            className="hover:bg-polla-elevated/50 -m-2 flex items-center gap-2 rounded-xl p-2 transition-colors"
+          >
             <Trophy className="text-polla-gold size-6" />
             <div>
               <span className="font-heading text-polla-gold block text-lg leading-none tracking-wide">
@@ -300,7 +304,7 @@ export default async function AdminPage() {
               </span>
               <span className="text-polla-muted text-xs">{user.email}</span>
             </div>
-          </div>
+          </Link>
           <div className="flex flex-wrap items-center gap-2">
             <NotificacionesToggle />
             <SyncButton />
