@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useSyncExternalStore } from "react";
+import { useMemo, useRef, useState, useSyncExternalStore } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -145,8 +145,12 @@ export function PronosticoForm({
   const [cart, setCart] = useState<CartItem[]>([]);
   const [modalOpen, setModalOpen] = useState(false);
   const [enviando, setEnviando] = useState(false);
+  const [apuestaRegistrada, setApuestaRegistrada] = useState(false);
+  const [pagoComunicado, setPagoComunicado] = useState(false);
   const [qrError, setQrError] = useState(false);
   const [q, setQ] = useState(busquedaInicial);
+  const guardandoRef = useRef(false);
+  const comunicandoRef = useRef(false);
 
   const query = q.trim().toLowerCase();
   const partidoInicial = partidoInicialId
@@ -245,6 +249,12 @@ export function PronosticoForm({
   }
 
   function agregar(partidoId: string) {
+    if (apuestaRegistrada) {
+      setApuestaRegistrada(false);
+      setPagoComunicado(false);
+      comunicandoRef.current = false;
+    }
+
     const { local, visitante } = editing[partidoId];
     setCart((prev) => [
       ...prev,
@@ -273,26 +283,39 @@ export function PronosticoForm({
     setModalOpen(true);
   }
 
-  async function confirmar() {
+  async function registrarApuestasPendientes() {
+    if (apuestaRegistrada) return true;
+    if (guardandoRef.current) return false;
+
     const { nombre, telefono } = getValues();
+    guardandoRef.current = true;
     setEnviando(true);
-    const result = await crearApuestas({
-      nombre,
-      cliente_id: getOrCreateClienteId(),
-      telefono: telefono.trim() === "" ? null : telefono.trim(),
-      pagado: false,
-      apuestas: cart.map((c) => ({
-        partido_id: c.partido_id,
-        goles_local: c.goles_local,
-        goles_visitante: c.goles_visitante,
-      })),
-    });
-    setEnviando(false);
+    let result: Awaited<ReturnType<typeof crearApuestas>>;
+    try {
+      result = await crearApuestas({
+        nombre,
+        cliente_id: getOrCreateClienteId(),
+        telefono: telefono.trim() === "" ? null : telefono.trim(),
+        pagado: false,
+        apuestas: cart.map((c) => ({
+          partido_id: c.partido_id,
+          goles_local: c.goles_local,
+          goles_visitante: c.goles_visitante,
+        })),
+      });
+    } catch {
+      toast.error("No pudimos registrar la apuesta. Intenta nuevamente.");
+      return false;
+    } finally {
+      guardandoRef.current = false;
+      setEnviando(false);
+    }
 
     if (!result.success) {
       toast.error(result.error);
-      return;
+      return false;
     }
+
     // Recordar nombre/teléfono para una próxima apuesta (solo en el navegador).
     try {
       localStorage.setItem(
@@ -305,11 +328,50 @@ export function PronosticoForm({
     } catch {
       // ignorar
     }
-    setModalOpen(false);
+    setApuestaRegistrada(true);
     lanzarConfetti();
     toast.success(
       `¡Listo! Registraste ${result.data.count} apuesta(s). Quedan pendientes de validar pago.`,
     );
+    return true;
+  }
+
+  async function confirmar() {
+    const registrada = await registrarApuestasPendientes();
+    if (!registrada) return;
+
+    setModalOpen(false);
+    setCart([]);
+    router.push("/resultados");
+  }
+
+  async function comunicarPago() {
+    if (pagoComunicado || comunicandoRef.current) {
+      toast.info("El pago ya fue comunicado para esta apuesta.");
+      return;
+    }
+
+    comunicandoRef.current = true;
+    const ventanaWhatsapp = window.open("", "_blank");
+    if (ventanaWhatsapp) ventanaWhatsapp.opener = null;
+    const registrada = await registrarApuestasPendientes();
+
+    if (!registrada) {
+      comunicandoRef.current = false;
+      ventanaWhatsapp?.close();
+      return;
+    }
+
+    setPagoComunicado(true);
+
+    if (ventanaWhatsapp) {
+      ventanaWhatsapp.location.href = whatsappPagoUrl;
+    } else {
+      window.location.href = whatsappPagoUrl;
+    }
+
+    setModalOpen(false);
+    setCart([]);
     router.push("/resultados");
   }
 
@@ -545,18 +607,23 @@ export function PronosticoForm({
                 Abrir QR
               </a>
             </div>
-            <a
-              href={whatsappPagoUrl}
-              target="_blank"
-              rel="noreferrer"
+            <Button
+              type="button"
+              variant="outline"
+              size="lg"
+              onClick={comunicarPago}
+              disabled={enviando || pagoComunicado}
               className={cn(
-                buttonVariants({ variant: "outline", size: "lg" }),
                 "border-polla-gold/60 bg-polla-gold/10 text-polla-gold hover:bg-polla-gold/15 w-full max-w-80 font-bold",
               )}
             >
               <MessageCircle className="size-4" />
-              Comunicar pago
-            </a>
+              {pagoComunicado
+                ? "Pago comunicado"
+                : enviando
+                  ? "Registrando…"
+                  : "Comunicar pago"}
+            </Button>
             <div className="text-center text-sm">
               <div className="font-semibold text-white">{POLLA.banco.entidad}</div>
               <div className="text-polla-muted">{POLLA.banco.numero}</div>
@@ -581,11 +648,15 @@ export function PronosticoForm({
             <Button
               type="button"
               onClick={() => confirmar()}
-              disabled={enviando}
+              disabled={enviando || apuestaRegistrada}
               className="bg-polla-gold text-polla-dark hover:bg-polla-gold/90 w-full gap-2 font-bold"
             >
               <Trophy className="size-4" />
-              {enviando ? "Registrando…" : "Registrar apuesta"}
+              {apuestaRegistrada
+                ? "Apuesta registrada"
+                : enviando
+                  ? "Registrando…"
+                  : "Registrar apuesta"}
             </Button>
           </DialogFooter>
         </DialogContent>
