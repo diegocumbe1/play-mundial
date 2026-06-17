@@ -5,12 +5,14 @@ import { ArrowLeft, ArrowRight, Ticket } from "lucide-react";
 
 import { getApuestas } from "@/actions/apuestas";
 import { getPartidos } from "@/actions/partidos";
+import { Actualizado } from "@/components/actualizado";
 import { EstadoBadge } from "@/components/estado-badge";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import { formatFecha } from "@/lib/format";
 import { traducirEquipo, traducirLiga } from "@/lib/idioma";
 import { getIdioma } from "@/lib/idioma-server";
+import { estadoEfectivo } from "@/lib/partido-vivo";
 import { calcularResultadoPartido, formatCOP } from "@/lib/polla";
 import { cn } from "@/lib/utils";
 
@@ -63,12 +65,15 @@ export default async function PartidoDetallePage({
   const r = calcularResultadoPartido(partido, apuestas);
   const hayMarcador =
     partido.goles_local !== null && partido.goles_visitante !== null;
-  const finalizado = partido.estado === "finalizado";
-  const puedeApostar = partido.estado === "programado";
+  // Estado derivado de la hora (el del proveedor gratuito es inestable).
+  const estado = estadoEfectivo(partido);
+  const enJuego = estado === "en_juego";
+  const finalizado = estado === "finalizado";
+  const puedeApostar = estado === "programado";
 
   return (
     <>
-      <SiteHeader live={partido.estado === "en_juego"} idioma={idioma} />
+      <SiteHeader live={enJuego} idioma={idioma} />
       <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-8">
         <Link
           href="/"
@@ -79,7 +84,7 @@ export default async function PartidoDetallePage({
 
         <div className="bg-polla-surface ring-polla-line rounded-3xl p-6 ring-1 sm:p-10">
           <div className="mb-6 flex items-center justify-between gap-2">
-            <EstadoBadge estado={partido.estado} enPausa={partido.en_pausa} />
+            <EstadoBadge estado={estado} enPausa={partido.en_pausa} />
             <span className="text-polla-muted text-sm">
               {traducirLiga(partido.liga, idioma)}
             </span>
@@ -106,7 +111,11 @@ export default async function PartidoDetallePage({
           </div>
 
           <p className="text-polla-muted mt-6 text-center text-sm">
-            {formatFecha(partido.fecha)}
+            {enJuego ? (
+              <Actualizado iso={partido.updated_at} />
+            ) : (
+              formatFecha(partido.fecha)
+            )}
           </p>
 
           {puedeApostar && (

@@ -1,10 +1,12 @@
 import Image from "next/image";
 import Link from "next/link";
 
+import { Actualizado } from "@/components/actualizado";
 import { EstadoBadge } from "@/components/estado-badge";
 import { cn } from "@/lib/utils";
 import { formatFechaCorta } from "@/lib/format";
 import { traducirEquipo, traducirLiga, type Idioma } from "@/lib/idioma";
+import { estadoEfectivo } from "@/lib/partido-vivo";
 import type { Partido } from "@/types";
 
 function Equipo({
@@ -47,8 +49,10 @@ export function PartidoCard({
   index?: number;
   idioma?: Idioma;
 }) {
-  const finalizado = partido.estado === "finalizado";
-  const enJuego = partido.estado === "en_juego";
+  // Estado derivado de la hora (el del proveedor gratuito es inestable).
+  const estado = estadoEfectivo(partido);
+  const finalizado = estado === "finalizado";
+  const enJuego = estado === "en_juego";
   const hayMarcador = partido.goles_local !== null && partido.goles_visitante !== null;
   const local = traducirEquipo(partido.equipo_local, idioma);
   const visitante = traducirEquipo(partido.equipo_visitante, idioma);
@@ -64,7 +68,7 @@ export function PartidoCard({
       )}
     >
       <div className="mb-4 flex items-center justify-between gap-2">
-        <EstadoBadge estado={partido.estado} enPausa={partido.en_pausa} />
+        <EstadoBadge estado={estado} enPausa={partido.en_pausa} />
         <span className="text-polla-muted text-xs font-medium">
           {traducirLiga(partido.liga, idioma)}
         </span>
@@ -101,7 +105,11 @@ export function PartidoCard({
 
       <div className="border-polla-line/70 mt-4 border-t pt-3 text-center">
         <span className="text-polla-muted text-xs font-medium">
-          {formatFechaCorta(partido.fecha)}
+          {enJuego ? (
+            <Actualizado iso={partido.updated_at} />
+          ) : (
+            formatFechaCorta(partido.fecha)
+          )}
         </span>
       </div>
     </Link>

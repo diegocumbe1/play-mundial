@@ -4,6 +4,7 @@ import { getPartidos } from "@/actions/partidos";
 import { PronosticoForm } from "@/components/pronostico-form";
 import { SiteHeader } from "@/components/site-header";
 import { getIdioma } from "@/lib/idioma-server";
+import { estadoEfectivo } from "@/lib/partido-vivo";
 
 export const dynamic = "force-dynamic";
 
@@ -22,9 +23,17 @@ export default async function JugarPage({
   const equipoInicial = getSearchValue(query.equipo) ?? "";
   const result = await getPartidos();
   const todos = result.success ? result.data : [];
-  // Solo se puede pronosticar partidos que aún no han empezado.
-  const disponibles = todos.filter((p) => p.estado === "programado");
-  const hayLive = todos.some((p) => p.estado === "en_juego");
+  // Solo se puede pronosticar partidos que aún no han empezado. Usamos el estado
+  // derivado de la hora (el del proveedor gratuito es inestable) más la hora de
+  // inicio, igual que la validación del servidor en createApuestas.
+  // eslint-disable-next-line react-hooks/purity -- hora actual evaluada por request (server)
+  const ahora = Date.now();
+  const disponibles = todos.filter(
+    (p) =>
+      estadoEfectivo(p, ahora) === "programado" &&
+      new Date(p.fecha).getTime() > ahora,
+  );
+  const hayLive = todos.some((p) => estadoEfectivo(p, ahora) === "en_juego");
 
   return (
     <>

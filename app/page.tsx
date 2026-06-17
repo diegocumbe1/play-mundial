@@ -4,6 +4,7 @@ import { MatchList } from "@/components/match-list";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import { getIdioma } from "@/lib/idioma-server";
+import { estadoEfectivo } from "@/lib/partido-vivo";
 
 export const dynamic = "force-dynamic";
 
@@ -13,12 +14,17 @@ export default async function Home() {
   const idioma = await getIdioma();
   const partidosRes = await getPartidos();
   const partidos = partidosRes.success ? partidosRes.data : [];
-  const hayLive = partidos.some((p) => p.estado === "en_juego");
 
+  // El estado del proveedor gratuito es inestable; derivamos "en vivo" de la
+  // hora (ver lib/partido-vivo). Evaluado por request gracias a force-dynamic.
   // eslint-disable-next-line react-hooks/purity -- hora actual evaluada por request (server)
-  const limiteSemana = Date.now() + SEMANA_MS;
+  const ahora = Date.now();
+  const estadoDe = (p: (typeof partidos)[number]) => estadoEfectivo(p, ahora);
+  const hayLive = partidos.some((p) => estadoDe(p) === "en_juego");
+
+  const limiteSemana = ahora + SEMANA_MS;
   const upcoming = partidos
-    .filter((p) => p.estado === "programado" || p.estado === "en_juego")
+    .filter((p) => estadoDe(p) === "programado" || estadoDe(p) === "en_juego")
     .sort((a, b) => a.fecha.localeCompare(b.fecha));
   const estaSemana = upcoming.filter(
     (p) => new Date(p.fecha).getTime() <= limiteSemana,
@@ -27,7 +33,7 @@ export default async function Home() {
     (p) => new Date(p.fecha).getTime() > limiteSemana,
   );
   const finalizados = partidos
-    .filter((p) => p.estado === "finalizado" || p.estado === "cancelado")
+    .filter((p) => estadoDe(p) === "finalizado" || estadoDe(p) === "cancelado")
     .sort((a, b) => b.fecha.localeCompare(a.fecha));
 
   return (
