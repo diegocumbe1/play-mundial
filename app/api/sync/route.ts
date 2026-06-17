@@ -1,5 +1,6 @@
 import { upsertPartidos } from "@/actions/partidos";
 import { fetchFixtures } from "@/lib/futbol-api";
+import { notificarPartidosFinalizados } from "@/lib/push";
 import { createServiceRoleClient } from "@/lib/supabase/server";
 
 /**
@@ -67,6 +68,9 @@ export async function GET(request: Request) {
     if (!result.success) {
       return Response.json({ error: result.error }, { status: 502 });
     }
+
+    // Avisar al admin de partidos recién finalizados con apuestas (idempotente).
+    await notificarPartidosFinalizados().catch(() => {});
 
     return Response.json({
       ok: true,

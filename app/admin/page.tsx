@@ -15,6 +15,7 @@ import { BuscadorPersonas } from "@/components/admin/buscador-personas";
 import { DeleteAllApuestasButton } from "@/components/admin/delete-all-apuestas-button";
 import { DeleteApuestaButton } from "@/components/admin/delete-apuesta-button";
 import { LogoutButton } from "@/components/admin/logout-button";
+import { NotificacionesToggle } from "@/components/admin/notificaciones-toggle";
 import { PagoToggle } from "@/components/admin/pago-toggle";
 import { PremioPagoToggle } from "@/components/admin/premio-pago-toggle";
 import { ResultadoForm } from "@/components/admin/resultado-form";
@@ -300,7 +301,8 @@ export default async function AdminPage() {
               <span className="text-polla-muted text-xs">{user.email}</span>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <NotificacionesToggle />
             <SyncButton />
             <LogoutButton />
           </div>

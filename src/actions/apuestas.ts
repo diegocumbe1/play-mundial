@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import { getUser } from "@/lib/auth";
+import { enviarPushAdmins } from "@/lib/push";
 import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
 import { calcularResultadoPartido } from "@/lib/polla";
 import type {
@@ -165,9 +166,19 @@ export async function crearApuestas(
     return { success: false, error: error.message };
   }
 
+  const count = data?.length ?? 0;
+  // Avisar al admin (no bloquea ni falla la creación si push está caído).
+  if (count > 0) {
+    await enviarPushAdmins({
+      title: "🎟️ Nueva apuesta",
+      body: `${nombre} registró ${count} apuesta(s) · valida el pago`,
+      url: "/admin",
+    }).catch(() => {});
+  }
+
   revalidatePath("/admin");
   revalidatePath("/resultados");
-  return { success: true, data: { count: data?.length ?? 0 } };
+  return { success: true, data: { count } };
 }
 
 /** Lista todas las apuestas (admin). */
