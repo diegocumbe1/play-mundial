@@ -3,7 +3,6 @@ import "server-only";
 import webpush from "web-push";
 
 import { createServiceRoleClient } from "@/lib/supabase/server";
-import { calcularResultadoPartido } from "@/lib/polla";
 import type { Apuesta, Partido } from "@/types";
 
 const PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
@@ -60,9 +59,9 @@ export async function enviarPushAdmins(payload: PushPayload): Promise<void> {
 }
 
 /**
- * Avisa de partidos que finalizaron y tienen apuestas, una sola vez cada uno.
- * Pensado para llamarse después de cada sincronización. Idempotente vía el
- * flag `aviso_final_enviado`. Nunca lanza (envuelve sus errores).
+ * Avisa del último partido finalizado no notificado que todavía tiene pagos
+ * pendientes. Se procesa de a uno para no saturar al admin si hay historial
+ * atrasado, e idempotente vía `aviso_final_enviado`.
  */
 export async function notificarPartidosFinalizados(): Promise<void> {
   if (!configurar()) return;
@@ -72,9 +71,12 @@ export async function notificarPartidosFinalizados(): Promise<void> {
     .from("partidos")
     .select("*")
     .eq("estado", "finalizado")
-    .eq("aviso_final_enviado", false);
+    .eq("aviso_final_enviado", false)
+    .order("fecha", { ascending: false });
 
   if (!partidos || partidos.length === 0) return;
+
+  const idsProcesados = (partidos as Partido[]).map((p) => p.id);
 
   for (const p of partidos as Partido[]) {
     try {
@@ -83,33 +85,34 @@ export async function notificarPartidosFinalizados(): Promise<void> {
         .select("*")
         .eq("partido_id", p.id);
       const apuestas = (aps ?? []) as Apuesta[];
+      const pendientes = apuestas.filter((a) => !a.pagado);
 
-      if (apuestas.length > 0) {
-        const r = calcularResultadoPartido(p, apuestas);
+      if (pendientes.length > 0) {
         const marcador = `${p.goles_local}–${p.goles_visitante}`;
-        const nombres = r.ganadores
-          .map((g) => g.nombre)
+        const nombres = pendientes
+          .map((a) => a.nombre)
           .slice(0, 3)
           .join(", ");
-        const body =
-          r.ganadores.length > 0
-            ? `${p.equipo_local} ${marcador} ${p.equipo_visitante} · ${r.ganadores.length} ganador(es): ${nombres}`
-            : `${p.equipo_local} ${marcador} ${p.equipo_visitante} · nadie acertó, queda en casa`;
+        const body = `${p.equipo_local} ${marcador} ${p.equipo_visitante} · ${pendientes.length} pago(s) pendiente(s): ${nombres}`;
 
         await enviarPushAdmins({
-          title: "⚽ Partido finalizado",
+          title: "⚽ Partido finalizado con pagos pendientes",
           body,
-          url: `/partidos/${p.id}`,
+          url: "/admin",
           tag: `final-${p.id}`,
         });
-      }
 
-      await supabase
-        .from("partidos")
-        .update({ aviso_final_enviado: true })
-        .eq("id", p.id);
+        break;
+      }
     } catch {
       // No frenar el resto si uno falla.
     }
+  }
+
+  if (idsProcesados.length > 0) {
+    await supabase
+      .from("partidos")
+      .update({ aviso_final_enviado: true })
+      .in("id", idsProcesados);
   }
 }
