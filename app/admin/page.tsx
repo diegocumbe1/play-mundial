@@ -308,6 +308,7 @@ function PartidoApuestasCard({ partido: p, apuestas: lista, r, estado }: ItemPar
                             id={a.id}
                             pagado={a.pagado}
                             metodoPago={a.metodo_pago}
+                            notaPago={a.nota_pago}
                           />
                           {ganadores.has(a.id) && (
                             <PremioPagoToggle
@@ -360,6 +361,7 @@ function PartidoApuestasCard({ partido: p, apuestas: lista, r, estado }: ItemPar
                   id={a.id}
                   pagado={a.pagado}
                   metodoPago={a.metodo_pago}
+                  notaPago={a.nota_pago}
                 />
                 {ganadores.has(a.id) && (
                   <PremioPagoToggle
@@ -493,6 +495,7 @@ export default async function AdminPage() {
       telefono: a.telefono,
       pagado: a.pagado,
       metodoPago: a.metodo_pago,
+      notaPago: a.nota_pago,
       creada: a.created_at,
       marcador: `${a.goles_local}–${a.goles_visitante}`,
       partido: `${x.partido.equipo_local} vs ${x.partido.equipo_visitante}`,

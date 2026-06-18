@@ -48,6 +48,7 @@ type ApuestaRow = Omit<Apuesta, "cliente_id" | "telefono"> & {
   telefono?: string | null;
   email?: string | null;
   metodo_pago?: MetodoPago | null;
+  nota_pago?: string | null;
 };
 
 function normalizarApuesta(row: ApuestaRow): Apuesta {
@@ -56,6 +57,7 @@ function normalizarApuesta(row: ApuestaRow): Apuesta {
     cliente_id: row.cliente_id ?? null,
     telefono: row.telefono ?? row.email ?? null,
     metodo_pago: row.metodo_pago ?? null,
+    nota_pago: row.nota_pago ?? null,
     premio_pagado: row.premio_pagado ?? false,
   };
 }
@@ -373,6 +375,7 @@ export async function marcarPago(
   id: string,
   pagado: boolean,
   metodoPago: MetodoPago | null = null,
+  nota: string | null = null,
 ): Promise<ActionResult> {
   if (!(await getUser())) {
     return { success: false, error: "No autorizado" };
@@ -382,14 +385,23 @@ export async function marcarPago(
     return { success: false, error: "Elige si el pago fue en efectivo o transferencia" };
   }
 
+  const notaLimpia = nota?.trim() ? nota.trim().slice(0, 500) : null;
+
   const supabase = await createClient();
-  const { error } = await supabase
-    .from("apuestas")
-    .update({
-      pagado,
-      metodo_pago: pagado ? metodoPago : null,
-    })
-    .eq("id", id);
+  const update = {
+    pagado,
+    metodo_pago: pagado ? metodoPago : null,
+    // Al volver a "pendiente" se descarta la nota; al pagar se guarda la que venga.
+    nota_pago: pagado ? notaLimpia : null,
+  };
+
+  let { error } = await supabase.from("apuestas").update(update).eq("id", id);
+
+  // Fallback si la columna nota_pago aún no existe (migración sin aplicar).
+  if (error && (error.code === "PGRST204" || error.code === "42703")) {
+    const { nota_pago: _omit, ...sinNota } = update;
+    ({ error } = await supabase.from("apuestas").update(sinNota).eq("id", id));
+  }
 
   if (error) {
     return { success: false, error: error.message };

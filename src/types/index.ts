@@ -88,6 +88,8 @@ export interface Apuesta {
   pagado: boolean;
   /** Medio confirmado por el admin cuando marca la apuesta como pagada. */
   metodo_pago: MetodoPago | null;
+  /** Nota opcional del admin sobre el pago (ej. "lo recogió mi mamá"). */
+  nota_pago: string | null;
   /** Si el premio de esta apuesta ganadora ya fue entregado. */
   premio_pagado: boolean;
   created_at: string;

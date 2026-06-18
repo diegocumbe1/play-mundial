@@ -15,6 +15,7 @@ export type ApuestaBusqueda = {
   telefono: string | null;
   pagado: boolean;
   metodoPago: MetodoPago | null;
+  notaPago: string | null;
   creada: string;
   marcador: string;
   partido: string;
@@ -85,6 +86,7 @@ export function BuscadorPersonas({
                       id={a.id}
                       pagado={a.pagado}
                       metodoPago={a.metodoPago}
+                      notaPago={a.notaPago}
                     />
                     <DeleteApuestaButton id={a.id} nombre={a.nombre} />
                   </div>
