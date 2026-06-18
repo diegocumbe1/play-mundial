@@ -14,11 +14,13 @@ const LINKS: Record<Idioma, { href: string; label: string }[]> = {
     { href: "/", label: "Partidos" },
     { href: "/resultados", label: "Resultados" },
     { href: "/jugar", label: "Jugar" },
+    { href: "/admin", label: "Admin" },
   ],
   en: [
     { href: "/", label: "Matches" },
     { href: "/resultados", label: "Results" },
     { href: "/jugar", label: "Play" },
+    { href: "/admin", label: "Admin" },
   ],
 };
 
