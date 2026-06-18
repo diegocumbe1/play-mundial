@@ -11,6 +11,7 @@ import type {
   ActionResult,
   Apuesta,
   ApuestaCliente,
+  MetodoPago,
   Partido,
   ResultadoCliente,
 } from "@/types";
@@ -46,6 +47,7 @@ type ApuestaRow = Omit<Apuesta, "cliente_id" | "telefono"> & {
   cliente_id?: string | null;
   telefono?: string | null;
   email?: string | null;
+  metodo_pago?: MetodoPago | null;
 };
 
 function normalizarApuesta(row: ApuestaRow): Apuesta {
@@ -53,6 +55,7 @@ function normalizarApuesta(row: ApuestaRow): Apuesta {
     ...row,
     cliente_id: row.cliente_id ?? null,
     telefono: row.telefono ?? row.email ?? null,
+    metodo_pago: row.metodo_pago ?? null,
   };
 }
 
@@ -368,15 +371,23 @@ export async function getResultadosPorCliente(
 export async function marcarPago(
   id: string,
   pagado: boolean,
+  metodoPago: MetodoPago | null = null,
 ): Promise<ActionResult> {
   if (!(await getUser())) {
     return { success: false, error: "No autorizado" };
   }
 
+  if (pagado && !metodoPago) {
+    return { success: false, error: "Elige si el pago fue en efectivo o transferencia" };
+  }
+
   const supabase = await createClient();
   const { error } = await supabase
     .from("apuestas")
-    .update({ pagado })
+    .update({
+      pagado,
+      metodo_pago: pagado ? metodoPago : null,
+    })
     .eq("id", id);
 
   if (error) {

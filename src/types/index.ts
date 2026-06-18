@@ -17,6 +17,9 @@ export type EstadoPartido =
 /** Origen del registro de un partido. */
 export type FuentePartido = "manual" | "api";
 
+/** Medio por el que el participante pagó su apuesta. */
+export type MetodoPago = "efectivo" | "transferencia";
+
 /** Un partido sobre el que se hacen pronósticos. */
 export interface Partido {
   id: string;
@@ -83,6 +86,8 @@ export interface Apuesta {
   goles_visitante: number;
   /** Estado de pago de esta apuesta. */
   pagado: boolean;
+  /** Medio confirmado por el admin cuando marca la apuesta como pagada. */
+  metodo_pago: MetodoPago | null;
   created_at: string;
   updated_at: string;
 }

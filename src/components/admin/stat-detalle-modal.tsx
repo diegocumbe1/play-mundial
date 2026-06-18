@@ -32,18 +32,26 @@ export function StatDetalleModal({
   label,
   titulo,
   filas,
+  filtroPlaceholder = "Filtrar por país o equipo…",
+  itemLabel = "partido(s)",
 }: {
   icon: React.ReactNode;
   valor: React.ReactNode;
   label: string;
   titulo: string;
   filas: FilaDetalle[];
+  filtroPlaceholder?: string;
+  itemLabel?: string;
 }) {
   const [q, setQ] = useState("");
 
   const consulta = q.trim().toLowerCase();
   const filtradas = consulta
-    ? filas.filter((f) => f.label.toLowerCase().includes(consulta))
+    ? filas.filter(
+        (f) =>
+          f.label.toLowerCase().includes(consulta) ||
+          (f.sub ?? "").toLowerCase().includes(consulta),
+      )
     : filas;
   const totalFiltrado = filtradas.reduce((acc, f) => acc + f.monto, 0);
 
@@ -78,7 +86,7 @@ export function StatDetalleModal({
           <Input
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="Filtrar por país o equipo…"
+            placeholder={filtroPlaceholder}
             className="pl-9"
           />
         </div>
@@ -110,7 +118,7 @@ export function StatDetalleModal({
 
         <div className="border-polla-line/60 flex items-center justify-between border-t pt-3 text-sm">
           <span className="text-polla-muted">
-            {filtradas.length} partido(s)
+            {filtradas.length} {itemLabel}
           </span>
           <span className="font-heading text-white tabular-nums">
             {formatCOP(totalFiltrado)}

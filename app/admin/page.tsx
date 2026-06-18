@@ -2,9 +2,11 @@ import { redirect } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
 import {
+  Banknote,
   CheckCircle2,
   ChevronDown,
   Coins,
+  CreditCard,
   PiggyBank,
   Ticket,
   Trophy,
@@ -305,7 +307,11 @@ function PartidoApuestasCard({ partido: p, apuestas: lista, r, estado }: ItemPar
                               Creada {formatFecha(a.created_at)}
                             </div>
                           </div>
-                          <PagoToggle id={a.id} pagado={a.pagado} />
+                          <PagoToggle
+                            id={a.id}
+                            pagado={a.pagado}
+                            metodoPago={a.metodo_pago}
+                          />
                           <DeleteApuestaButton id={a.id} nombre={a.nombre} />
                         </div>
                       ))}
@@ -347,7 +353,11 @@ function PartidoApuestasCard({ partido: p, apuestas: lista, r, estado }: ItemPar
                 <span className="text-polla-muted text-xs font-semibold">
                   {formatCOP(POLLA.costo)}
                 </span>
-                <PagoToggle id={a.id} pagado={a.pagado} />
+                <PagoToggle
+                  id={a.id}
+                  pagado={a.pagado}
+                  metodoPago={a.metodo_pago}
+                />
                 <DeleteApuestaButton id={a.id} nombre={a.nombre} />
               </div>
             </div>
@@ -398,9 +408,33 @@ export default async function AdminPage() {
     0,
   );
   const pagadas = apuestas.filter((a) => a.pagado).length;
+  const pagosEfectivo = apuestas.filter(
+    (a) => a.pagado && a.metodo_pago === "efectivo",
+  );
+  const pagosTransferencia = apuestas.filter(
+    (a) => a.pagado && a.metodo_pago === "transferencia",
+  );
+  const totalEfectivo = pagosEfectivo.length * POLLA.costo;
+  const totalTransferencia = pagosTransferencia.length * POLLA.costo;
 
   const nombre = (x: ItemPartido) =>
     `${x.partido.equipo_local} vs ${x.partido.equipo_visitante}`;
+  const partidoPorId = new Map(partidos.map((p) => [p.id, p]));
+
+  const detalleMetodoPago = (lista: Apuesta[]): FilaDetalle[] =>
+    lista.map((a) => {
+      const partido = partidoPorId.get(a.partido_id);
+      const partidoLabel = partido
+        ? `${partido.equipo_local} vs ${partido.equipo_visitante}`
+        : "Partido sin identificar";
+      const contacto = a.telefono ? `${a.telefono} · ` : "";
+
+      return {
+        label: a.nombre,
+        monto: POLLA.costo,
+        sub: `${contacto}${partidoLabel} · ${a.goles_local}–${a.goles_visitante}`,
+      };
+    });
 
   const detalleRecaudo: FilaDetalle[] = items
     .filter((x) => x.r.pozo > 0)
@@ -449,6 +483,7 @@ export default async function AdminPage() {
       nombre: a.nombre,
       telefono: a.telefono,
       pagado: a.pagado,
+      metodoPago: a.metodo_pago,
       creada: a.created_at,
       marcador: `${a.goles_local}–${a.goles_visitante}`,
       partido: `${x.partido.equipo_local} vs ${x.partido.equipo_visitante}`,
@@ -507,6 +542,24 @@ export default async function AdminPage() {
             label={`Casa (${CASA_PCT}%) · finalizados`}
             titulo={`Casa (${CASA_PCT}%) · finalizados`}
             filas={detalleCasa}
+          />
+          <StatDetalleModal
+            icon={<Banknote className="size-5" />}
+            valor={formatCOP(totalEfectivo)}
+            label={`${pagosEfectivo.length} en efectivo`}
+            titulo="Pagos en efectivo"
+            filas={detalleMetodoPago(pagosEfectivo)}
+            filtroPlaceholder="Filtrar por persona, teléfono o partido…"
+            itemLabel="apuesta(s)"
+          />
+          <StatDetalleModal
+            icon={<CreditCard className="size-5" />}
+            valor={formatCOP(totalTransferencia)}
+            label={`${pagosTransferencia.length} por transferencia`}
+            titulo="Pagos por transferencia"
+            filas={detalleMetodoPago(pagosTransferencia)}
+            filtroPlaceholder="Filtrar por persona, teléfono o partido…"
+            itemLabel="apuesta(s)"
           />
         </div>
 

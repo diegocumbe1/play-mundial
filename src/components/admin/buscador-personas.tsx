@@ -7,12 +7,14 @@ import { DeleteApuestaButton } from "@/components/admin/delete-apuesta-button";
 import { PagoToggle } from "@/components/admin/pago-toggle";
 import { Input } from "@/components/ui/input";
 import { formatFecha } from "@/lib/format";
+import type { MetodoPago } from "@/types";
 
 export type ApuestaBusqueda = {
   id: string;
   nombre: string;
   telefono: string | null;
   pagado: boolean;
+  metodoPago: MetodoPago | null;
   creada: string;
   marcador: string;
   partido: string;
@@ -79,7 +81,11 @@ export function BuscadorPersonas({
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    <PagoToggle id={a.id} pagado={a.pagado} />
+                    <PagoToggle
+                      id={a.id}
+                      pagado={a.pagado}
+                      metodoPago={a.metodoPago}
+                    />
                     <DeleteApuestaButton id={a.id} nombre={a.nombre} />
                   </div>
                 </li>
