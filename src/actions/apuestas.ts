@@ -56,6 +56,7 @@ function normalizarApuesta(row: ApuestaRow): Apuesta {
     cliente_id: row.cliente_id ?? null,
     telefono: row.telefono ?? row.email ?? null,
     metodo_pago: row.metodo_pago ?? null,
+    premio_pagado: row.premio_pagado ?? false,
   };
 }
 
@@ -388,6 +389,30 @@ export async function marcarPago(
       pagado,
       metodo_pago: pagado ? metodoPago : null,
     })
+    .eq("id", id);
+
+  if (error) {
+    return { success: false, error: error.message };
+  }
+
+  revalidatePath("/admin");
+  revalidatePath("/resultados");
+  return { success: true, data: undefined };
+}
+
+/** Marca si el premio de una apuesta ganadora ya fue entregado. Solo admin. */
+export async function marcarPremioApuestaPagado(
+  id: string,
+  pagado: boolean,
+): Promise<ActionResult> {
+  if (!(await getUser())) {
+    return { success: false, error: "No autorizado" };
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("apuestas")
+    .update({ premio_pagado: pagado })
     .eq("id", id);
 
   if (error) {

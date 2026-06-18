@@ -5,15 +5,15 @@ import { useRouter } from "next/navigation";
 import { Check, Clock } from "lucide-react";
 import { toast } from "sonner";
 
-import { marcarPremioPagado } from "@/actions/partidos";
+import { marcarPremioApuestaPagado } from "@/actions/apuestas";
 import { cn } from "@/lib/utils";
 
-/** Chip para marcar si el premio ya se le pagó al ganador. */
+/** Chip para marcar si el premio ya se le pagó a una apuesta ganadora. */
 export function PremioPagoToggle({
-  partidoId,
+  apuestaId,
   pagado,
 }: {
-  partidoId: string;
+  apuestaId: string;
   pagado: boolean;
 }) {
   const router = useRouter();
@@ -21,7 +21,7 @@ export function PremioPagoToggle({
 
   function toggle() {
     startTransition(async () => {
-      const r = await marcarPremioPagado(partidoId, !pagado);
+      const r = await marcarPremioApuestaPagado(apuestaId, !pagado);
       if (!r.success) {
         toast.error(r.error);
         return;

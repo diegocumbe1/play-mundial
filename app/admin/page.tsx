@@ -210,9 +210,6 @@ function PartidoApuestasCard({ partido: p, apuestas: lista, r, estado }: ItemPar
                 </>
               )}
             </span>
-            {r.ganadores.length > 0 && (
-              <PremioPagoToggle partidoId={p.id} pagado={p.premio_pagado} />
-            )}
           </div>
         )}
         <div className="divide-polla-line/40 divide-y">
@@ -293,7 +290,7 @@ function PartidoApuestasCard({ partido: p, apuestas: lista, r, estado }: ItemPar
                       {marcador.apuestas.map((a) => (
                         <div
                           key={a.id}
-                          className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-center"
+                          className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto_auto] sm:items-center"
                         >
                           <div className="min-w-0">
                             <div className="flex min-w-0 items-center gap-2 font-medium text-white">
@@ -312,6 +309,12 @@ function PartidoApuestasCard({ partido: p, apuestas: lista, r, estado }: ItemPar
                             pagado={a.pagado}
                             metodoPago={a.metodo_pago}
                           />
+                          {ganadores.has(a.id) && (
+                            <PremioPagoToggle
+                              apuestaId={a.id}
+                              pagado={a.premio_pagado}
+                            />
+                          )}
                           <DeleteApuestaButton id={a.id} nombre={a.nombre} />
                         </div>
                       ))}
@@ -358,6 +361,12 @@ function PartidoApuestasCard({ partido: p, apuestas: lista, r, estado }: ItemPar
                   pagado={a.pagado}
                   metodoPago={a.metodo_pago}
                 />
+                {ganadores.has(a.id) && (
+                  <PremioPagoToggle
+                    apuestaId={a.id}
+                    pagado={a.premio_pagado}
+                  />
+                )}
                 <DeleteApuestaButton id={a.id} nombre={a.nombre} />
               </div>
             </div>
