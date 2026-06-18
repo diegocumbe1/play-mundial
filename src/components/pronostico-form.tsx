@@ -186,7 +186,6 @@ export function PronosticoForm({
 
   const {
     register,
-    handleSubmit,
     getValues,
     setValue,
     formState: { isValid },
@@ -294,6 +293,7 @@ export function PronosticoForm({
 
   function agregar(partidoId: string) {
     if (apuestaRegistrada) {
+      setCart([]);
       setApuestaRegistrada(false);
       setPagoComunicado(false);
       setPagoPendiente(null);
@@ -321,7 +321,14 @@ export function PronosticoForm({
     setCart((prev) => prev.filter((c) => c.key !== key));
   }
 
-  function onContinuar() {
+  async function onContinuar() {
+    if (enviando || guardandoRef.current) return;
+
+    if (!isValid || getValues("nombre").trim() === "") {
+      toast.error("Escribe tu nombre para registrar la apuesta.");
+      return;
+    }
+
     const marcadorPendiente = partidos.find((p) => {
       if (!marcadorEditado[p.id]) return false;
       const { local, visitante } = editing[p.id];
@@ -349,7 +356,11 @@ export function PronosticoForm({
       toast.error("Agrega al menos una apuesta");
       return;
     }
-    setModalOpen(true);
+
+    const registrada = await registrarApuestasPendientes();
+    if (registrada) {
+      setModalOpen(true);
+    }
   }
 
   async function registrarApuestasPendientes() {
@@ -399,19 +410,16 @@ export function PronosticoForm({
     }
     setApuestaRegistrada(true);
     setPagoPendiente(crearResumenPago(cart));
-    lanzarConfetti();
-    toast.success(
-      `¡Listo! Registraste ${result.data.count} apuesta(s). Quedan pendientes de validar pago.`,
-    );
     return true;
   }
 
-  async function confirmar() {
-    const registrada = await registrarApuestasPendientes();
-    if (!registrada) return;
-
+  function finalizarApuesta() {
     setModalOpen(false);
     setCart([]);
+    lanzarConfetti();
+    toast.success(
+      "Apuesta registrada. Queda pendiente de validación de pago por el admin.",
+    );
     router.push("/resultados");
   }
 
@@ -424,7 +432,7 @@ export function PronosticoForm({
     comunicandoRef.current = true;
     const ventanaWhatsapp = window.open("", "_blank");
     if (ventanaWhatsapp) ventanaWhatsapp.opener = null;
-    const registrada = await registrarApuestasPendientes();
+    const registrada = apuestaRegistrada || (await registrarApuestasPendientes());
 
     if (!registrada) {
       comunicandoRef.current = false;
@@ -437,17 +445,26 @@ export function PronosticoForm({
     if (ventanaWhatsapp) {
       ventanaWhatsapp.location.href = whatsappPagoUrl;
     } else {
-      window.location.href = whatsappPagoUrl;
+      window.location.assign(whatsappPagoUrl);
     }
 
     setModalOpen(false);
     setCart([]);
+    toast.success(
+      "Apuesta registrada. Queda pendiente de validación de pago por el admin.",
+    );
     router.push("/resultados");
   }
 
   return (
     <>
-      <form onSubmit={handleSubmit(onContinuar)} className="grid gap-6 pb-28">
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          void onContinuar();
+        }}
+        className="grid gap-6 pb-28"
+      >
         {recordado && !datosUsados && (
           <button
             type="button"
@@ -566,7 +583,7 @@ export function PronosticoForm({
                 <Button
                   type="button"
                   onClick={() => agregar(p.id)}
-                  disabled={!puedeAgregar}
+                  disabled={!puedeAgregar || enviando || apuestaRegistrada}
                   className="bg-polla-elevated mt-4 w-full gap-2 rounded-xl font-bold text-white hover:bg-polla-elevated/80"
                 >
                   <Ticket className="size-4" />
@@ -587,7 +604,8 @@ export function PronosticoForm({
                           type="button"
                           aria-label="Quitar apuesta"
                           onClick={() => quitar(c.key)}
-                          className="hover:bg-polla-gold/20 flex size-5 items-center justify-center rounded-full"
+                          disabled={enviando || apuestaRegistrada}
+                          className="hover:bg-polla-gold/20 disabled:opacity-50 flex size-5 items-center justify-center rounded-full"
                         >
                           <X className="size-3.5" />
                         </button>
@@ -614,133 +632,130 @@ export function PronosticoForm({
             </div>
             <Button
               type="submit"
-              disabled={!isValid || cart.length === 0}
+              disabled={!isValid || cart.length === 0 || enviando}
               className="bg-polla-gold text-polla-dark hover:bg-polla-gold/90 h-12 gap-2 rounded-xl px-6 text-base font-bold"
             >
               <Ticket className="size-5" />
-              Continuar
+              {enviando ? "Registrando..." : "Continuar"}
             </Button>
           </div>
         </div>
       </form>
 
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
-        <DialogContent className="bg-polla-surface border-polla-line max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-md">
+        <DialogContent className="bg-polla-surface border-polla-line grid max-h-[calc(100dvh-1rem)] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden p-0 sm:max-w-md">
           <DialogHeader>
-            <DialogTitle className="font-heading text-polla-gold text-2xl tracking-wide">
-              Confirmar apuestas
+            <DialogTitle className="font-heading text-polla-gold px-4 pt-4 pr-12 text-2xl tracking-wide">
+              Apuesta registrada
             </DialogTitle>
-            <DialogDescription className="text-polla-muted">
-              {modalCantidad} apuesta(s) · transfiere{" "}
+            <DialogDescription className="text-polla-muted px-4">
+              {modalCantidad} apuesta(s) ya quedaron en revisión. Transfiere{" "}
               <span className="text-polla-gold font-semibold">
                 {formatCOP(modalTotal)}
               </span>{" "}
-              y confirma.
+              y el admin validará el pago.
             </DialogDescription>
           </DialogHeader>
 
-          <div className="flex flex-col items-center gap-4 py-2">
-            <div className="ring-polla-line flex w-full max-w-80 items-center justify-center overflow-hidden rounded-2xl bg-white ring-1">
-              {qrError ? (
-                <div className="text-polla-muted flex aspect-square w-full flex-col items-center justify-center gap-2 p-4 text-center text-xs">
-                  <QrCode className="size-8" />
-                  Coloca tu QR en
-                  <code className="text-polla-gold">public/qr-pago.png</code>
-                </div>
-              ) : (
-                /* eslint-disable-next-line @next/next/no-img-element */
-                <img
-                  src={POLLA.qrSrc}
-                  alt="QR de pago"
-                  className="h-auto w-full"
-                  onError={() => setQrError(true)}
-                />
-              )}
-            </div>
-            <div className="grid w-full max-w-80 grid-cols-2 gap-2">
-              <a
-                href={POLLA.qrSrc}
-                download="qr-pago-paola-gomez.png"
-                className={cn(
-                  buttonVariants({ variant: "outline", size: "lg" }),
-                  "border-polla-gold/50 text-polla-gold hover:bg-polla-gold/10",
-                )}
-              >
-                <Download className="size-4" />
-                Descargar QR
-              </a>
-              <a
-                href={POLLA.qrSrc}
-                target="_blank"
-                rel="noreferrer"
-                className={cn(
-                  buttonVariants({ variant: "outline", size: "lg" }),
-                  "border-polla-line text-white hover:bg-white/5",
-                )}
-              >
-                <ExternalLink className="size-4" />
-                Abrir QR
-              </a>
-            </div>
-            {modalDetalle.length > 0 && (
-              <div className="bg-polla-dark/40 ring-polla-line/70 grid w-full max-w-80 gap-1 rounded-xl px-3 py-2 text-xs ring-1">
-                {modalDetalle.map((detalle, index) => (
-                  <div key={`${index}-${detalle}`} className="text-polla-muted">
-                    {detalle}
+          <div className="min-h-0 overflow-y-auto px-4 py-3">
+            <div className="flex flex-col items-center gap-4">
+              <div className="ring-polla-line flex w-full max-w-72 items-center justify-center overflow-hidden rounded-2xl bg-white ring-1 sm:max-w-80">
+                {qrError ? (
+                  <div className="text-polla-muted flex aspect-square w-full flex-col items-center justify-center gap-2 p-4 text-center text-xs">
+                    <QrCode className="size-8" />
+                    Coloca tu QR en
+                    <code className="text-polla-gold">public/qr-pago.png</code>
                   </div>
-                ))}
+                ) : (
+                  /* eslint-disable-next-line @next/next/no-img-element */
+                  <img
+                    src={POLLA.qrSrc}
+                    alt="QR de pago"
+                    className="h-auto w-full"
+                    onError={() => setQrError(true)}
+                  />
+                )}
               </div>
-            )}
-            <Button
-              type="button"
-              variant="outline"
-              size="lg"
-              onClick={comunicarPago}
-              disabled={enviando || pagoComunicado}
-              className={cn(
-                "border-polla-gold/60 bg-polla-gold/10 text-polla-gold hover:bg-polla-gold/15 w-full max-w-80 font-bold",
+              <div className="grid w-full max-w-80 grid-cols-2 gap-2">
+                <a
+                  href={POLLA.qrSrc}
+                  download="qr-pago-paola-gomez.png"
+                  className={cn(
+                    buttonVariants({ variant: "outline", size: "lg" }),
+                    "border-polla-gold/50 text-polla-gold hover:bg-polla-gold/10",
+                  )}
+                >
+                  <Download className="size-4" />
+                  Descargar QR
+                </a>
+                <a
+                  href={POLLA.qrSrc}
+                  target="_blank"
+                  rel="noreferrer"
+                  className={cn(
+                    buttonVariants({ variant: "outline", size: "lg" }),
+                    "border-polla-line text-white hover:bg-white/5",
+                  )}
+                >
+                  <ExternalLink className="size-4" />
+                  Abrir QR
+                </a>
+              </div>
+              {modalDetalle.length > 0 && (
+                <div className="bg-polla-dark/40 ring-polla-line/70 grid w-full max-w-80 gap-1 rounded-xl px-3 py-2 text-xs ring-1">
+                  {modalDetalle.map((detalle, index) => (
+                    <div key={`${index}-${detalle}`} className="text-polla-muted">
+                      {detalle}
+                    </div>
+                  ))}
+                </div>
               )}
-            >
-              <MessageCircle className="size-4" />
-              {pagoComunicado
-                ? "Pago comunicado"
-                : enviando
-                  ? "Registrando…"
-                  : "Comunicar pago"}
-            </Button>
-            <div className="text-center text-sm">
-              <div className="font-semibold text-white">{POLLA.banco.entidad}</div>
-              <div className="text-polla-muted">{POLLA.banco.numero}</div>
-              <div className="text-polla-muted">{POLLA.banco.titular}</div>
+              <Button
+                type="button"
+                variant="outline"
+                size="lg"
+                onClick={comunicarPago}
+                disabled={enviando || pagoComunicado}
+                className={cn(
+                  "border-polla-gold/60 bg-polla-gold/10 text-polla-gold hover:bg-polla-gold/15 w-full max-w-80 font-bold",
+                )}
+              >
+                <MessageCircle className="size-4" />
+                {pagoComunicado
+                  ? "Pago comunicado"
+                  : enviando
+                    ? "Registrando..."
+                    : "Comunicar pago"}
+              </Button>
+              <div className="text-center text-sm">
+                <div className="font-semibold text-white">{POLLA.banco.entidad}</div>
+                <div className="text-polla-muted">{POLLA.banco.numero}</div>
+                <div className="text-polla-muted">{POLLA.banco.titular}</div>
+              </div>
+              <p className="text-polla-muted max-w-xs text-center text-xs">
+                Después de enviar, el admin validará el pago y lo marcará como
+                recibido.
+              </p>
+              <Link
+                href="/terminos"
+                target="_blank"
+                className="text-polla-muted hover:text-polla-gold inline-flex items-center gap-1.5 text-xs"
+              >
+                <Info className="size-3.5" />
+                Cómo funciona · Términos y privacidad
+              </Link>
             </div>
-            <p className="text-polla-muted max-w-xs text-center text-xs">
-              Después de enviar, el admin validará el pago y lo marcará como
-              recibido.
-            </p>
           </div>
 
-          <Link
-            href="/terminos"
-            target="_blank"
-            className="text-polla-muted hover:text-polla-gold mx-auto inline-flex items-center gap-1.5 text-xs"
-          >
-            <Info className="size-3.5" />
-            Cómo funciona · Términos y privacidad
-          </Link>
-
-          <DialogFooter>
+          <DialogFooter className="border-polla-line bg-polla-surface/95 -mx-0 -mb-0 rounded-none p-4 shadow-[0_-12px_30px_rgba(0,0,0,0.28)] backdrop-blur">
             <Button
               type="button"
-              onClick={() => confirmar()}
-              disabled={enviando || apuestaRegistrada}
+              onClick={finalizarApuesta}
+              disabled={enviando || !apuestaRegistrada}
               className="bg-polla-gold text-polla-dark hover:bg-polla-gold/90 w-full gap-2 font-bold"
             >
               <Trophy className="size-4" />
-              {apuestaRegistrada
-                ? "Apuesta registrada"
-                : enviando
-                  ? "Registrando…"
-                  : "Registrar apuesta"}
+              {enviando ? "Registrando..." : "Finalizar apuesta"}
             </Button>
           </DialogFooter>
         </DialogContent>
