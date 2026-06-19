@@ -141,7 +141,9 @@ function PartidoApuestasCard({ partido: p, apuestas: lista, r, estado }: ItemPar
   const finalizado = estado === "finalizado";
   const enJuego = estado === "en_juego";
   const hayMarcador = p.goles_local !== null && p.goles_visitante !== null;
-  const pendientes = lista.length - r.apuestasPagadas;
+  const noPagaron = lista.filter((a) => a.no_pago).length;
+  // "No pagó" ya no espera nada: no cuenta como pendiente.
+  const pendientes = lista.length - r.apuestasPagadas - noPagaron;
   const marcadores = agruparPorMarcador({ partido: p, apuestas: lista, r, estado });
 
   return (
@@ -158,6 +160,9 @@ function PartidoApuestasCard({ partido: p, apuestas: lista, r, estado }: ItemPar
               <span>· {r.apuestasPagadas} recibida(s)</span>
               {pendientes > 0 && (
                 <span className="text-polla-red">· {pendientes} pendiente(s)</span>
+              )}
+              {noPagaron > 0 && (
+                <span className="text-polla-muted">· {noPagaron} no pagó</span>
               )}
             </div>
           </div>
@@ -309,6 +314,7 @@ function PartidoApuestasCard({ partido: p, apuestas: lista, r, estado }: ItemPar
                             pagado={a.pagado}
                             metodoPago={a.metodo_pago}
                             notaPago={a.nota_pago}
+                            noPago={a.no_pago}
                           />
                           {ganadores.has(a.id) && (
                             <PremioPagoToggle
@@ -362,6 +368,7 @@ function PartidoApuestasCard({ partido: p, apuestas: lista, r, estado }: ItemPar
                   pagado={a.pagado}
                   metodoPago={a.metodo_pago}
                   notaPago={a.nota_pago}
+                  noPago={a.no_pago}
                 />
                 {ganadores.has(a.id) && (
                   <PremioPagoToggle
@@ -496,6 +503,7 @@ export default async function AdminPage() {
       pagado: a.pagado,
       metodoPago: a.metodo_pago,
       notaPago: a.nota_pago,
+      noPago: a.no_pago,
       creada: a.created_at,
       marcador: `${a.goles_local}–${a.goles_visitante}`,
       partido: `${x.partido.equipo_local} vs ${x.partido.equipo_visitante}`,

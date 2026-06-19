@@ -90,6 +90,11 @@ export interface Apuesta {
   metodo_pago: MetodoPago | null;
   /** Nota opcional del admin sobre el pago (ej. "lo recogió mi mamá"). */
   nota_pago: string | null;
+  /**
+   * La apuesta se cerró sin pago: el dinero nunca llegó. No cuenta para el
+   * pozo (pagado queda en false) ni se sigue mostrando como pendiente.
+   */
+  no_pago: boolean;
   /** Si el premio de esta apuesta ganadora ya fue entregado. */
   premio_pagado: boolean;
   created_at: string;

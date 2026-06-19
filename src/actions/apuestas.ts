@@ -49,6 +49,7 @@ type ApuestaRow = Omit<Apuesta, "cliente_id" | "telefono"> & {
   email?: string | null;
   metodo_pago?: MetodoPago | null;
   nota_pago?: string | null;
+  no_pago?: boolean | null;
 };
 
 function normalizarApuesta(row: ApuestaRow): Apuesta {
@@ -58,6 +59,7 @@ function normalizarApuesta(row: ApuestaRow): Apuesta {
     telefono: row.telefono ?? row.email ?? null,
     metodo_pago: row.metodo_pago ?? null,
     nota_pago: row.nota_pago ?? null,
+    no_pago: row.no_pago ?? false,
     premio_pagado: row.premio_pagado ?? false,
   };
 }
@@ -393,15 +395,11 @@ export async function marcarPago(
     metodo_pago: pagado ? metodoPago : null,
     // Al volver a "pendiente" se descarta la nota; al pagar se guarda la que venga.
     nota_pago: pagado ? notaLimpia : null,
+    // Pagar o volver a pendiente siempre saca a la apuesta del estado "no pagó".
+    no_pago: false,
   };
 
-  let { error } = await supabase.from("apuestas").update(update).eq("id", id);
-
-  // Fallback si la columna nota_pago aún no existe (migración sin aplicar).
-  if (error && (error.code === "PGRST204" || error.code === "42703")) {
-    const { nota_pago: _omit, ...sinNota } = update;
-    ({ error } = await supabase.from("apuestas").update(sinNota).eq("id", id));
-  }
+  const { error } = await actualizarApuestaConFallback(supabase, id, update);
 
   if (error) {
     return { success: false, error: error.message };
@@ -410,6 +408,72 @@ export async function marcarPago(
   revalidatePath("/admin");
   revalidatePath("/resultados");
   return { success: true, data: undefined };
+}
+
+/**
+ * Cierra (o reabre) una apuesta como "no pagó": el dinero nunca llegó. Se
+ * mantiene el registro pero deja de contar como pendiente y queda fuera del
+ * pozo (pagado=false). Solo admin.
+ */
+export async function marcarNoPago(
+  id: string,
+  noPago: boolean,
+  nota: string | null = null,
+): Promise<ActionResult> {
+  if (!(await getUser())) {
+    return { success: false, error: "No autorizado" };
+  }
+
+  const notaLimpia = nota?.trim() ? nota.trim().slice(0, 500) : null;
+
+  const supabase = await createClient();
+  const update = noPago
+    ? // Marcar "no pagó": fuera del pozo y se guarda el motivo opcional.
+      { no_pago: true, pagado: false, metodo_pago: null, nota_pago: notaLimpia }
+    : // Reabrir: vuelve a "pendiente" y se descarta la nota.
+      { no_pago: false, nota_pago: null };
+
+  // Sin fallback: no_pago es la columna esencial aquí; si falta, hay que
+  // avisar en vez de aplicar el update incompleto silenciosamente.
+  const { error } = await supabase.from("apuestas").update(update).eq("id", id);
+
+  if (error) {
+    // Si la columna no_pago aún no existe, el estado no se puede aplicar.
+    if (error.code === "PGRST204" || error.code === "42703") {
+      return {
+        success: false,
+        error: "Falta aplicar la migración 'no_pago' en la base de datos",
+      };
+    }
+    return { success: false, error: error.message };
+  }
+
+  revalidatePath("/admin");
+  revalidatePath("/resultados");
+  return { success: true, data: undefined };
+}
+
+/**
+ * Aplica un update sobre una apuesta tolerando columnas opcionales aún no
+ * migradas (nota_pago / no_pago): reintenta sin ellas si el esquema las rechaza.
+ */
+async function actualizarApuestaConFallback(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  id: string,
+  update: Record<string, unknown>,
+) {
+  let { error } = await supabase.from("apuestas").update(update).eq("id", id);
+
+  if (error && (error.code === "PGRST204" || error.code === "42703")) {
+    const resto = { ...update };
+    delete resto.nota_pago;
+    delete resto.no_pago;
+    if (Object.keys(resto).length < Object.keys(update).length) {
+      ({ error } = await supabase.from("apuestas").update(resto).eq("id", id));
+    }
+  }
+
+  return { error };
 }
 
 /** Marca si el premio de una apuesta ganadora ya fue entregado. Solo admin. */
