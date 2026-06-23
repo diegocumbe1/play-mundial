@@ -37,12 +37,15 @@ export function PagoToggle({
   metodoPago,
   notaPago,
   noPago = false,
+  cobroCerrado = false,
 }: {
   id: string;
   pagado: boolean;
   metodoPago: MetodoPago | null;
   notaPago?: string | null;
   noPago?: boolean;
+  /** El partido ya inició: la apuesta no puede seguir pendiente de cobro. */
+  cobroCerrado?: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -93,17 +96,17 @@ export function PagoToggle({
           {metodoPago ? METODO_LABEL[metodoPago] : "Pago recibido"}
           {notaPago?.trim() && <StickyNote className="size-3.5 opacity-80" />}
         </button>
-      ) : noPago ? (
+      ) : noPago || cobroCerrado ? (
         <button
           type="button"
-          onClick={() => abrir({ tipo: "verNoPago" })}
+          onClick={() => !cobroCerrado && abrir({ tipo: "verNoPago" })}
           disabled={pending}
           className="text-polla-muted ring-polla-line hover:text-white inline-flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs font-semibold ring-1 transition-colors disabled:opacity-50"
-          title="Apuesta cerrada sin pago"
+          title={cobroCerrado ? "El partido ya inició" : "Apuesta cerrada sin pago"}
         >
           <Ban className="size-3.5" />
-          No pagó
-          {notaPago?.trim() && <StickyNote className="size-3.5 opacity-80" />}
+          {cobroCerrado ? "Cobro cerrado" : "No pagó"}
+          {!cobroCerrado && notaPago?.trim() && <StickyNote className="size-3.5 opacity-80" />}
         </button>
       ) : (
         <div className="inline-flex flex-wrap items-center gap-2">

@@ -8,7 +8,6 @@ import {
   Coins,
   CreditCard,
   PiggyBank,
-  Ticket,
   Trophy,
   Wallet,
 } from "lucide-react";
@@ -16,6 +15,10 @@ import {
 import { getApuestas } from "@/actions/apuestas";
 import { getPartidos } from "@/actions/partidos";
 import { ApuestasTabs } from "@/components/admin/apuestas-tabs";
+import {
+  ApuestasPagoModal,
+  type FilaPago,
+} from "@/components/admin/apuestas-pago-modal";
 import { BuscadorPersonas } from "@/components/admin/buscador-personas";
 import { DeleteAllApuestasButton } from "@/components/admin/delete-all-apuestas-button";
 import { DeleteApuestaButton } from "@/components/admin/delete-apuesta-button";
@@ -41,33 +44,6 @@ export const dynamic = "force-dynamic";
 
 const CASA_PCT = Math.round(POLLA.porcentajeCasa * 100);
 const PREMIO_PCT = 100 - CASA_PCT;
-
-/** Tarjeta de métrica simple (sin desglose). */
-function StatCard({
-  icon,
-  valor,
-  label,
-}: {
-  icon: React.ReactNode;
-  valor: React.ReactNode;
-  label: string;
-}) {
-  return (
-    <div className="bg-polla-surface ring-polla-line flex items-center gap-4 rounded-2xl p-5 ring-1">
-      <div className="bg-polla-elevated text-polla-gold flex size-11 shrink-0 items-center justify-center rounded-xl">
-        {icon} 
-      </div>
-      <div className="min-w-0 flex-1">
-        <div className="font-heading truncate text-2xl leading-none text-white tabular-nums">
-          {valor}
-        </div>
-        <div className="text-polla-muted mt-1 text-xs font-medium tracking-wide uppercase">
-          {label}
-        </div>
-      </div>
-    </div>
-  );
-}
 
 type ItemPartido = {
   partido: Partido;
@@ -143,8 +119,13 @@ function PartidoApuestasCard({ partido: p, apuestas: lista, r, estado }: ItemPar
   const enJuego = estado === "en_juego";
   const hayMarcador = p.goles_local !== null && p.goles_visitante !== null;
   const noPagaron = lista.filter((a) => a.no_pago).length;
-  // "No pagó" ya no espera nada: no cuenta como pendiente.
-  const pendientes = lista.length - r.apuestasPagadas - noPagaron;
+  const pendientes =
+    estado === "programado"
+      ? lista.filter((a) => !a.pagado && !a.no_pago).length
+      : 0;
+  const cobrosCerrados = lista.filter(
+    (a) => !a.pagado && (a.no_pago || estado !== "programado"),
+  ).length;
   const marcadores = agruparPorMarcador({ partido: p, apuestas: lista, r, estado });
 
   return (
@@ -164,6 +145,9 @@ function PartidoApuestasCard({ partido: p, apuestas: lista, r, estado }: ItemPar
               )}
               {noPagaron > 0 && (
                 <span className="text-polla-muted">· {noPagaron} no pagó</span>
+              )}
+              {cobrosCerrados > noPagaron && (
+                <span className="text-polla-muted">· {cobrosCerrados} cobro(s) cerrado(s)</span>
               )}
             </div>
           </div>
@@ -316,6 +300,7 @@ function PartidoApuestasCard({ partido: p, apuestas: lista, r, estado }: ItemPar
                             metodoPago={a.metodo_pago}
                             notaPago={a.nota_pago}
                             noPago={a.no_pago}
+                            cobroCerrado={!a.pagado && estado !== "programado"}
                           />
                           {ganadores.has(a.id) && (
                             <PremioPagoToggle
@@ -370,6 +355,7 @@ function PartidoApuestasCard({ partido: p, apuestas: lista, r, estado }: ItemPar
                   metodoPago={a.metodo_pago}
                   notaPago={a.nota_pago}
                   noPago={a.no_pago}
+                  cobroCerrado={!a.pagado && estado !== "programado"}
                 />
                 {ganadores.has(a.id) && (
                   <PremioPagoToggle
@@ -426,7 +412,41 @@ export default async function AdminPage() {
     (acc, x) => acc + (x.partido.estado === "finalizado" ? x.r.enCasa : 0),
     0,
   );
-  const pagadas = apuestas.filter((a) => a.pagado).length;
+  const filasPago = items.flatMap((item) =>
+    item.apuestas.map((a): FilaPago => {
+      const base = {
+        id: a.id,
+        nombre: a.nombre,
+        telefono: a.telefono,
+        partido: `${item.partido.equipo_local} vs ${item.partido.equipo_visitante}`,
+        marcador: `${a.goles_local}–${a.goles_visitante}`,
+      };
+
+      if (a.pagado) {
+        return {
+          ...base,
+          detalle: `${formatCOP(POLLA.costo)} · ${a.metodo_pago === "efectivo" ? "Efectivo" : "Transferencia"}`,
+          tipo: "pagada",
+        };
+      }
+      if (a.no_pago) {
+        return { ...base, detalle: "Marcada como no pagó", tipo: "cerrada" };
+      }
+      return {
+        ...base,
+        detalle:
+          item.estado === "programado"
+            ? "Partido próximo"
+            : item.estado === "en_juego"
+              ? "Partido iniciado"
+              : "Partido finalizado",
+        tipo: item.estado === "programado" ? "pendiente" : "cerrada",
+      };
+    }),
+  );
+  const pagosRecibidos = filasPago.filter((fila) => fila.tipo === "pagada");
+  const cobrosPendientes = filasPago.filter((fila) => fila.tipo === "pendiente");
+  const cobrosCerrados = filasPago.filter((fila) => fila.tipo === "cerrada");
   const pagosEfectivo = apuestas.filter(
     (a) => a.pagado && a.metodo_pago === "efectivo",
   );
@@ -539,10 +559,11 @@ export default async function AdminPage() {
       <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-6 sm:py-8">
         {/* Economía global */}
         <div className="mb-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <StatCard
-            icon={<Ticket className="size-5" />}
-            valor={`${pagadas}/${apuestas.length}`}
-            label="Apuestas pagadas"
+          <ApuestasPagoModal
+            total={apuestas.length}
+            pagadas={pagosRecibidos}
+            pendientes={cobrosPendientes}
+            cerradas={cobrosCerrados}
           />
           <StatDetalleModal
             icon={<Wallet className="size-5" />}
