@@ -61,6 +61,16 @@ type MarcadorAdmin = {
   premioPorPersona: number;
 };
 
+/** Prioriza los cobros aún por validar, sin alterar el orden del resto. */
+function ordenarApuestasPendientes(apuestas: Apuesta[], estado: EstadoPartido) {
+  if (estado !== "programado") return apuestas;
+
+  return [...apuestas].sort(
+    (a, b) =>
+      Number(!b.pagado && !b.no_pago) - Number(!a.pagado && !a.no_pago),
+  );
+}
+
 function agruparPorMarcador({
   partido,
   apuestas,
@@ -126,7 +136,13 @@ function PartidoApuestasCard({ partido: p, apuestas: lista, r, estado }: ItemPar
   const cobrosCerrados = lista.filter(
     (a) => !a.pagado && (a.no_pago || estado !== "programado"),
   ).length;
-  const marcadores = agruparPorMarcador({ partido: p, apuestas: lista, r, estado });
+  const apuestasOrdenadas = ordenarApuestasPendientes(lista, estado);
+  const marcadores = agruparPorMarcador({
+    partido: p,
+    apuestas: apuestasOrdenadas,
+    r,
+    estado,
+  });
 
   return (
     <details className="group bg-polla-surface ring-polla-line overflow-hidden rounded-2xl ring-1">
@@ -318,7 +334,7 @@ function PartidoApuestasCard({ partido: p, apuestas: lista, r, estado }: ItemPar
             </div>
           </details>
 
-          {lista.map((a) => (
+          {apuestasOrdenadas.map((a) => (
             <div
               key={a.id}
               className="grid gap-3 px-4 py-3 sm:grid-cols-[minmax(0,1fr)_auto_auto_auto_auto] sm:items-center"

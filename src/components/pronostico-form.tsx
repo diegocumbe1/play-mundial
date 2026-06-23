@@ -677,6 +677,9 @@ export function PronosticoForm({
                   />
                 )}
               </div>
+              <p className="text-polla-muted w-full max-w-80 text-center text-xs leading-relaxed">
+                {POLLA.mensajeQr}
+              </p>
               <CopyPaymentKeyButton llave={POLLA.banco.llave} />
               <div className="grid w-full max-w-80 grid-cols-2 gap-2">
                 <a

@@ -22,6 +22,9 @@ export const POLLA = {
   whatsappAdmin: "573132542284",
   /** Ruta del QR de pago dentro de /public. */
   qrSrc: "/qr-pago.png",
+  /** Aviso para quienes ven el QR desde el mismo celular. */
+  mensajeQr:
+    "El pago se hace desde tu app bancaria. Aquí no se cobra ni se redirige al banco: descarga el QR o copia la llave.",
 } as const;
 
 /** Formatea un número como pesos colombianos. Ej: 5000 -> "$ 5.000". */
