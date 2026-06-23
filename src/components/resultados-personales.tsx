@@ -18,6 +18,7 @@ import {
 import { toast } from "sonner";
 
 import { getResultadosPorCliente } from "@/actions/apuestas";
+import { CopyPaymentKeyButton } from "@/components/copy-payment-key-button";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
   Dialog,
@@ -299,6 +300,7 @@ function ModalPagoPendiente({
               />
             )}
           </div>
+          <CopyPaymentKeyButton llave={POLLA.banco.llave} />
           <div className="grid w-full max-w-80 grid-cols-2 gap-2">
             <a
               href={POLLA.qrSrc}

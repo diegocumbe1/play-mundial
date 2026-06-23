@@ -15,6 +15,7 @@ export const POLLA = {
   banco: {
     entidad: "Bre-B · Nequi",
     titular: "Paola Gomez",
+    llave: "@3132542284",
     numero: "Llave @3132542284",
   },
   /** WhatsApp del admin para avisar pagos. Formato internacional sin +. */
