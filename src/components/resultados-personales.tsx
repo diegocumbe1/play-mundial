@@ -34,8 +34,8 @@ import type { ApuestaCliente, Partido, ResultadoCliente } from "@/types";
 
 const ORDEN: Record<string, number> = {
   en_juego: 0,
-  finalizado: 1,
-  programado: 2,
+  programado: 1,
+  finalizado: 2,
   cancelado: 3,
 };
 
@@ -131,7 +131,7 @@ function ResultadoCard({
       </div>
 
       {marcadores.length > 0 && (
-        <details className="group border-polla-line/50 mt-3 border-t pt-3">
+        <details open className="group border-polla-line/50 mt-3 border-t pt-3">
           <summary className="text-polla-muted hover:text-white flex cursor-pointer list-none items-center justify-between gap-3 text-sm transition [&::-webkit-details-marker]:hidden">
             <span className="inline-flex items-center gap-2">
               <Image
@@ -420,7 +420,7 @@ export function ResultadosPersonales({
       .sort(
         (a, b) =>
           (ORDEN[a.estado] ?? 9) - (ORDEN[b.estado] ?? 9) ||
-          a.fecha.localeCompare(b.fecha),
+          b.fecha.localeCompare(a.fecha),
       );
 
     const partidosPorId = new Map(partidos.map((p) => [p.id, p]));

@@ -24,6 +24,7 @@ import { NotificacionesToggle } from "@/components/admin/notificaciones-toggle";
 import { PagoToggle } from "@/components/admin/pago-toggle";
 import { PremioPagoToggle } from "@/components/admin/premio-pago-toggle";
 import { ResultadoForm } from "@/components/admin/resultado-form";
+import { PageRefreshButton } from "@/components/page-refresh-button";
 import {
   StatDetalleModal,
   type FilaDetalle,
@@ -528,6 +529,7 @@ export default async function AdminPage() {
           </Link>
           <div className="flex flex-wrap items-center gap-2">
             <NotificacionesToggle />
+            <PageRefreshButton />
             <SyncButton />
             <LogoutButton />
           </div>

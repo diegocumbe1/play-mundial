@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { Languages, Menu, Trophy, X } from "lucide-react";
 
 import { cambiarIdiomaAction } from "@/actions/idioma";
+import { PageRefreshButton } from "@/components/page-refresh-button";
 import type { Idioma } from "@/lib/idioma";
 import { cn } from "@/lib/utils";
 
@@ -106,6 +107,8 @@ export function SiteHeader({
               </button>
             ))}
           </div>
+
+          <PageRefreshButton />
 
           <button
             type="button"
