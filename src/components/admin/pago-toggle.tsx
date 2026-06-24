@@ -26,6 +26,7 @@ const METODO_LABEL: Record<MetodoPago, string> = {
 // Qué muestra el modal abierto.
 type DialogModo =
   | { tipo: "pagar"; metodo: MetodoPago } // confirmar un pago nuevo
+  | { tipo: "pagarTardio" } // pago recibido, confirmado después del cierre
   | { tipo: "editarPago" } // ver/editar un pago ya validado
   | { tipo: "noPago" } // cerrar la apuesta como "no pagó"
   | { tipo: "verNoPago" }; // ver/editar/reabrir una apuesta "no pagó"
@@ -44,7 +45,7 @@ export function PagoToggle({
   metodoPago: MetodoPago | null;
   notaPago?: string | null;
   noPago?: boolean;
-  /** El partido ya inició: la apuesta no puede seguir pendiente de cobro. */
+  /** El partido ya inició: no puede quedar pendiente, pero el admin puede registrar un pago tardío. */
   cobroCerrado?: boolean;
 }) {
   const router = useRouter();
@@ -99,10 +100,16 @@ export function PagoToggle({
       ) : noPago || cobroCerrado ? (
         <button
           type="button"
-          onClick={() => !cobroCerrado && abrir({ tipo: "verNoPago" })}
+          onClick={() =>
+            abrir(cobroCerrado ? { tipo: "pagarTardio" } : { tipo: "verNoPago" })
+          }
           disabled={pending}
           className="text-polla-muted ring-polla-line hover:text-white inline-flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs font-semibold ring-1 transition-colors disabled:opacity-50"
-          title={cobroCerrado ? "El partido ya inició" : "Apuesta cerrada sin pago"}
+          title={
+            cobroCerrado
+              ? "Registrar un pago recibido después del cierre"
+              : "Apuesta cerrada sin pago"
+          }
         >
           <Ban className="size-3.5" />
           {cobroCerrado ? "Cobro cerrado" : "No pagó"}
@@ -149,6 +156,8 @@ export function PagoToggle({
             <DialogTitle>
               {modo?.tipo === "pagar"
                 ? `Confirmar pago · ${METODO_LABEL[modo.metodo]}`
+                : modo?.tipo === "pagarTardio"
+                  ? "Confirmar pago tardío"
                 : modo?.tipo === "editarPago"
                   ? "Detalle del pago"
                   : modo?.tipo === "noPago"
@@ -158,6 +167,8 @@ export function PagoToggle({
             <DialogDescription>
               {modo?.tipo === "pagar"
                 ? "Agrega una nota opcional sobre cómo se recibió este pago."
+                : modo?.tipo === "pagarTardio"
+                  ? "El partido ya inició, pero puedes registrar un pago que sí fue recibido antes o después del cierre."
                 : modo?.tipo === "editarPago"
                   ? `Pago recibido${
                       metodoPago ? ` por ${METODO_LABEL[metodoPago]}` : ""
@@ -201,6 +212,26 @@ export function PagoToggle({
               >
                 Confirmar pago
               </Button>
+            ) : modo?.tipo === "pagarTardio" ? (
+              <>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => ejecutar(() => marcarPago(id, true, "efectivo", nota))}
+                  disabled={pending}
+                >
+                  <Banknote className="size-4" />
+                  Confirmar efectivo
+                </Button>
+                <Button
+                  type="button"
+                  onClick={() => ejecutar(() => marcarPago(id, true, "transferencia", nota))}
+                  disabled={pending}
+                >
+                  <CreditCard className="size-4" />
+                  Confirmar transferencia
+                </Button>
+              </>
             ) : modo?.tipo === "editarPago" ? (
               <>
                 <Button
