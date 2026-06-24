@@ -24,6 +24,10 @@ import { DeleteAllApuestasButton } from "@/components/admin/delete-all-apuestas-
 import { DeleteApuestaButton } from "@/components/admin/delete-apuesta-button";
 import { LogoutButton } from "@/components/admin/logout-button";
 import { NotificacionesToggle } from "@/components/admin/notificaciones-toggle";
+import {
+  NotasPagoModal,
+  type NotaPagoPartido,
+} from "@/components/admin/notas-pago-modal";
 import { PagoToggle } from "@/components/admin/pago-toggle";
 import { PremioPagoToggle } from "@/components/admin/premio-pago-toggle";
 import { ResultadoForm } from "@/components/admin/resultado-form";
@@ -143,6 +147,17 @@ function PartidoApuestasCard({ partido: p, apuestas: lista, r, estado }: ItemPar
     r,
     estado,
   });
+  const notasPago: NotaPagoPartido[] = lista
+    .filter((a) => a.nota_pago?.trim())
+    .map((a) => ({
+      id: a.id,
+      nombre: a.nombre,
+      telefono: a.telefono,
+      marcador: `${a.goles_local}–${a.goles_visitante}`,
+      metodoPago: a.metodo_pago,
+      pagado: a.pagado,
+      nota: a.nota_pago!.trim(),
+    }));
 
   return (
     <details className="group bg-polla-surface ring-polla-line overflow-hidden rounded-2xl ring-1">
@@ -216,6 +231,12 @@ function PartidoApuestasCard({ partido: p, apuestas: lista, r, estado }: ItemPar
                 </>
               )}
             </span>
+            {notasPago.length > 0 && (
+              <NotasPagoModal
+                partido={`${p.equipo_local} vs ${p.equipo_visitante}`}
+                notas={notasPago}
+              />
+            )}
           </div>
         )}
         <div className="divide-polla-line/40 divide-y">
@@ -518,6 +539,24 @@ export default async function AdminPage() {
           : "Nadie acertó · pozo completo",
     }));
 
+  // Cada ganador pendiente recibe el premio calculado para su partido. Se
+  // mantiene por persona para que el modal sirva como lista de pagos a hacer.
+  const premiosPendientes: FilaDetalle[] = items.flatMap((item) =>
+    item.estado === "finalizado" && item.r.premioPorGanador > 0
+      ? item.r.ganadores
+          .filter((a) => !a.premio_pagado)
+          .map((a) => ({
+            label: a.nombre,
+            monto: item.r.premioPorGanador,
+            sub: `${a.telefono ? `${a.telefono} · ` : ""}${nombre(item)} · ${a.goles_local}–${a.goles_visitante}`,
+          }))
+      : [],
+  );
+  const totalPremiosPendientes = premiosPendientes.reduce(
+    (acc, premio) => acc + premio.monto,
+    0,
+  );
+
   // Agrupación por estado para las pestañas (solo partidos con apuestas).
   const conApuestas = items.filter((x) => x.apuestas.length > 0);
   const grupos = {
@@ -525,7 +564,7 @@ export default async function AdminPage() {
     pendientes: conApuestas.filter((x) => x.estado === "programado"),
     finalizados: conApuestas.filter(
       (x) => x.estado === "finalizado" || x.estado === "cancelado",
-    ),
+    ).sort((a, b) => Date.parse(b.partido.fecha) - Date.parse(a.partido.fecha)),
   };
   const card = (x: ItemPartido) => (
     <PartidoApuestasCard key={x.partido.id} {...x} />
@@ -601,6 +640,15 @@ export default async function AdminPage() {
             label={`Casa (${CASA_PCT}%) · finalizados`}
             titulo={`Casa (${CASA_PCT}%) · finalizados`}
             filas={detalleCasa}
+          />
+          <StatDetalleModal
+            icon={<Trophy className="size-5" />}
+            valor={formatCOP(totalPremiosPendientes)}
+            label={`${premiosPendientes.length} premio(s) pendiente(s)`}
+            titulo="Premios pendientes por entregar"
+            filas={premiosPendientes}
+            filtroPlaceholder="Filtrar por persona, teléfono o partido…"
+            itemLabel="premio(s) pendiente(s)"
           />
           <StatDetalleModal
             icon={<Banknote className="size-5" />}
