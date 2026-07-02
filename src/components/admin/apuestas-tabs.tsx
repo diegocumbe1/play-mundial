@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 
 import { cn } from "@/lib/utils";
 
-type TabId = "enCurso" | "pendientes" | "finalizados";
+export type TabId = "enCurso" | "pendientes" | "finalizados";
 
 /**
  * Pestañas para filtrar las apuestas por estado del partido. Las tarjetas se
@@ -16,19 +17,31 @@ export function ApuestasTabs({
   pendientes,
   finalizados,
   counts,
+  initialTab,
 }: {
   enCurso: React.ReactNode;
   pendientes: React.ReactNode;
   finalizados: React.ReactNode;
   counts: Record<TabId, number>;
+  initialTab?: TabId;
 }) {
-  const [tab, setTab] = useState<TabId>(() =>
-    counts.enCurso > 0
-      ? "enCurso"
-      : counts.pendientes > 0
-        ? "pendientes"
-        : "finalizados",
+  const searchParams = useSearchParams();
+  const [tab, setTab] = useState<TabId>(
+    () =>
+      initialTab ??
+      (counts.enCurso > 0
+        ? "enCurso"
+        : counts.pendientes > 0
+          ? "pendientes"
+          : "finalizados"),
   );
+
+  useEffect(() => {
+    if (searchParams.get("focus") !== "apuestas") return;
+    document
+      .getElementById("apuestas")
+      ?.scrollIntoView({ block: "start", behavior: "smooth" });
+  }, [searchParams]);
 
   const tabs: { id: TabId; label: string }[] = [
     { id: "enCurso", label: "En curso" },

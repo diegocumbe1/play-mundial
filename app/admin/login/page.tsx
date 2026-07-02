@@ -6,10 +6,23 @@ import { getUser } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
-export default async function AdminLoginPage() {
+function getNextPath(next?: string | string[]) {
+  const value = Array.isArray(next) ? next[0] : next;
+  return value?.startsWith("/admin") && !value.startsWith("/admin/login")
+    ? value
+    : "/admin";
+}
+
+export default async function AdminLoginPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ next?: string | string[] }>;
+}) {
+  const nextPath = getNextPath((await searchParams).next);
+
   // Si ya hay sesión, al panel.
   if (await getUser()) {
-    redirect("/admin");
+    redirect(nextPath);
   }
 
   return (
@@ -26,7 +39,7 @@ export default async function AdminLoginPage() {
         </div>
 
         <div className="bg-polla-surface ring-polla-line rounded-2xl p-6 ring-1">
-          <LoginForm />
+          <LoginForm nextPath={nextPath} />
         </div>
       </div>
     </main>

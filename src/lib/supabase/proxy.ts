@@ -45,7 +45,9 @@ export async function updateSession(request: NextRequest) {
 
   if (esRutaAdmin && !user) {
     const url = request.nextUrl.clone();
+    const next = `${request.nextUrl.pathname}${request.nextUrl.search}`;
     url.pathname = "/admin/login";
+    url.searchParams.set("next", next);
     return NextResponse.redirect(url);
   }
 

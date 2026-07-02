@@ -7,6 +7,7 @@ import {
   ChevronDown,
   Coins,
   CreditCard,
+  Gamepad2,
   PiggyBank,
   Trophy,
   Wallet,
@@ -14,7 +15,7 @@ import {
 
 import { getApuestas } from "@/actions/apuestas";
 import { getPartidos } from "@/actions/partidos";
-import { ApuestasTabs } from "@/components/admin/apuestas-tabs";
+import { ApuestasTabs, type TabId } from "@/components/admin/apuestas-tabs";
 import {
   ApuestasPagoModal,
   type FilaPago,
@@ -37,6 +38,7 @@ import {
   type FilaDetalle,
 } from "@/components/admin/stat-detalle-modal";
 import { SyncButton } from "@/components/admin/sync-button";
+import { AsistenteApuestasModal } from "@/components/admin/asistente-apuestas-modal";
 import { EstadoBadge } from "@/components/estado-badge";
 import { getUser } from "@/lib/auth";
 import { formatFecha } from "@/lib/format";
@@ -48,6 +50,7 @@ export const dynamic = "force-dynamic";
 
 const CASA_PCT = Math.round(POLLA.porcentajeCasa * 100);
 const PREMIO_PCT = 100 - CASA_PCT;
+const TABS: TabId[] = ["enCurso", "pendientes", "finalizados"];
 
 type ItemPartido = {
   partido: Partido;
@@ -410,11 +413,20 @@ function PartidoApuestasCard({ partido: p, apuestas: lista, r, estado }: ItemPar
   );
 }
 
-export default async function AdminPage() {
+export default async function AdminPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ tab?: string | string[] }>;
+}) {
   const user = await getUser();
   if (!user) {
     redirect("/admin/login");
   }
+  const query = await searchParams;
+  const requestedTab = Array.isArray(query.tab) ? query.tab[0] : query.tab;
+  const initialTab = TABS.includes(requestedTab as TabId)
+    ? (requestedTab as TabId)
+    : undefined;
 
   const [partidosRes, apuestasRes] = await Promise.all([
     getPartidos(),
@@ -603,6 +615,14 @@ export default async function AdminPage() {
             </div>
           </Link>
           <div className="flex flex-wrap items-center gap-2">
+            <Link
+              href="/jugar"
+              className="border-polla-line bg-polla-surface hover:bg-polla-elevated inline-flex h-7 items-center gap-1 rounded-lg border px-2.5 text-[0.8rem] font-medium whitespace-nowrap text-white transition-colors"
+            >
+              <Gamepad2 className="size-3.5" />
+              Jugar
+            </Link>
+            <AsistenteApuestasModal partidos={partidos} />
             <NotificacionesToggle />
             <PageRefreshButton />
             <SyncButton />
@@ -671,7 +691,7 @@ export default async function AdminPage() {
         </div>
 
         {/* Apuestas por partido, en pestañas por estado */}
-        <section className="mb-10">
+        <section id="apuestas" className="mb-10 scroll-mt-24">
           <div className="mb-4 flex items-center justify-between gap-3">
             <h2 className="font-heading text-2xl tracking-wide text-white">
               Apuestas por partido
@@ -690,6 +710,7 @@ export default async function AdminPage() {
                 enCurso={grupos.enCurso.map(card)}
                 pendientes={grupos.pendientes.map(card)}
                 finalizados={grupos.finalizados.map(card)}
+                initialTab={initialTab}
                 counts={{
                   enCurso: grupos.enCurso.length,
                   pendientes: grupos.pendientes.length,

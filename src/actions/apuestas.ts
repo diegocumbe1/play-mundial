@@ -43,6 +43,11 @@ const crearApuestasSchema = z.object({
   apuestas: z.array(apuestaItemSchema).min(1, "Debes apostar al menos un partido"),
 });
 
+const crearApuestasAdminSchema = crearApuestasSchema.extend({
+  pagado: z.boolean().default(false),
+  metodo_pago: z.enum(["efectivo", "transferencia"]).nullable().default(null),
+});
+
 type ApuestaRow = Omit<Apuesta, "cliente_id" | "telefono"> & {
   cliente_id?: string | null;
   telefono?: string | null;
@@ -180,13 +185,86 @@ export async function crearApuestas(
     await enviarPushAdmins({
       title: "🎟️ Nueva apuesta",
       body: `${nombre} registró ${count} apuesta(s) · valida el pago`,
-      url: "/admin",
+      url: "/admin?tab=pendientes&focus=apuestas#apuestas",
     }).catch(() => {});
   }
 
   revalidatePath("/admin");
   revalidatePath("/resultados");
   return { success: true, data: { count } };
+}
+
+/** Crea apuestas desde el admin, permitiendo dejarlas pagadas si ya recibió el dinero. */
+export async function crearApuestasAdmin(
+  input: z.infer<typeof crearApuestasAdminSchema>,
+): Promise<ActionResult<{ count: number }>> {
+  if (!(await getUser())) {
+    return { success: false, error: "No autorizado" };
+  }
+
+  const parsed = crearApuestasAdminSchema.safeParse(input);
+  if (!parsed.success) {
+    return { success: false, error: parsed.error.issues[0].message };
+  }
+
+  const { nombre, cliente_id, telefono, apuestas, pagado, metodo_pago } =
+    parsed.data;
+  if (pagado && !metodo_pago) {
+    return {
+      success: false,
+      error: "Elige si el pago fue en efectivo o transferencia",
+    };
+  }
+
+  const supabase = createServiceRoleClient();
+  const ids = apuestas.map((a) => a.partido_id);
+  const { data: partidos, error: errPartidos } = await supabase
+    .from("partidos")
+    .select("id, estado, fecha")
+    .in("id", ids);
+
+  if (errPartidos) {
+    return { success: false, error: errPartidos.message };
+  }
+
+  const abiertos = new Map(
+    (partidos ?? [])
+      .filter(
+        (p) =>
+          p.estado === "programado" &&
+          new Date(p.fecha as string).getTime() > Date.now(),
+      )
+      .map((p) => [p.id as string, true]),
+  );
+
+  if (apuestas.some((a) => !abiertos.has(a.partido_id))) {
+    return {
+      success: false,
+      error: "Alguno de los partidos ya inició y no admite apuestas",
+    };
+  }
+
+  const filas = apuestas.map((a) => ({
+    partido_id: a.partido_id,
+    goles_local: a.goles_local,
+    goles_visitante: a.goles_visitante,
+    cliente_id,
+    nombre,
+    telefono,
+    pagado,
+    metodo_pago: pagado ? metodo_pago : null,
+    no_pago: false,
+  }));
+
+  const { data, error } = await supabase.from("apuestas").insert(filas).select("id");
+
+  if (error) {
+    return { success: false, error: error.message };
+  }
+
+  revalidatePath("/admin");
+  revalidatePath("/resultados");
+  return { success: true, data: { count: data?.length ?? 0 } };
 }
 
 /** Lista todas las apuestas (admin). */

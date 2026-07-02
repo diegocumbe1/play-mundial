@@ -14,7 +14,7 @@ interface FormValues {
   password: string;
 }
 
-export function LoginForm() {
+export function LoginForm({ nextPath = "/admin" }: { nextPath?: string }) {
   const router = useRouter();
   const {
     register,
@@ -28,7 +28,7 @@ export function LoginForm() {
       toast.error(result.error);
       return;
     }
-    router.push("/admin");
+    router.push(nextPath);
     router.refresh();
   }
 

@@ -98,7 +98,7 @@ export async function notificarPartidosFinalizados(): Promise<void> {
         await enviarPushAdmins({
           title: "⚽ Partido finalizado con pagos pendientes",
           body,
-          url: "/admin",
+          url: "/admin?tab=pendientes&focus=apuestas#apuestas",
           tag: `final-${p.id}`,
         });
 
