@@ -55,6 +55,7 @@ type ApuestaRow = Omit<Apuesta, "cliente_id" | "telefono"> & {
   email?: string | null;
   metodo_pago?: MetodoPago | null;
   nota_pago?: string | null;
+  nota_premio?: string | null;
   no_pago?: boolean | null;
 };
 
@@ -65,6 +66,7 @@ function normalizarApuesta(row: ApuestaRow): Apuesta {
     telefono: row.telefono ?? row.email ?? null,
     metodo_pago: row.metodo_pago ?? null,
     nota_pago: row.nota_pago ?? null,
+    nota_premio: row.nota_premio ?? null,
     no_pago: row.no_pago ?? false,
     premio_pagado: row.premio_pagado ?? false,
   };
@@ -555,16 +557,30 @@ async function actualizarApuestaConFallback(
 export async function marcarPremioApuestaPagado(
   id: string,
   pagado: boolean,
+  nota: string | null = null,
 ): Promise<ActionResult> {
   if (!(await getUser())) {
     return { success: false, error: "No autorizado" };
   }
 
+  const notaLimpia = nota?.trim() ? nota.trim().slice(0, 500) : null;
+
   const supabase = await createClient();
-  const { error } = await supabase
-    .from("apuestas")
-    .update({ premio_pagado: pagado })
-    .eq("id", id);
+  const update = {
+    premio_pagado: pagado,
+    // Al volver a "pendiente" se descarta la nota; al pagar se guarda la que venga.
+    nota_premio: pagado ? notaLimpia : null,
+  };
+
+  let { error } = await supabase.from("apuestas").update(update).eq("id", id);
+
+  // Tolera la columna nota_premio aún no migrada: reintenta solo con el flag.
+  if (error && (error.code === "PGRST204" || error.code === "42703")) {
+    ({ error } = await supabase
+      .from("apuestas")
+      .update({ premio_pagado: pagado })
+      .eq("id", id));
+  }
 
   if (error) {
     return { success: false, error: error.message };

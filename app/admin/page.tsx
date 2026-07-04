@@ -25,6 +25,7 @@ import { BuscadorPersonas } from "@/components/admin/buscador-personas";
 import { DeleteAllApuestasButton } from "@/components/admin/delete-all-apuestas-button";
 import { DeleteApuestaButton } from "@/components/admin/delete-apuesta-button";
 import { LogoutButton } from "@/components/admin/logout-button";
+import { MarcarPremioPagadoButton } from "@/components/admin/marcar-premio-pagado-button";
 import { NotificacionesToggle } from "@/components/admin/notificaciones-toggle";
 import {
   NotasPagoModal,
@@ -48,6 +49,7 @@ import { formatFecha } from "@/lib/format";
 import { getMarcadorActual, getMarcadorReglamentario } from "@/lib/marcador-reglamentario";
 import { estadoEfectivo } from "@/lib/partido-vivo";
 import { calcularResultadoPartido, formatCOP, POLLA } from "@/lib/polla";
+import { cn } from "@/lib/utils";
 import type { Apuesta, EstadoPartido, Partido, ResultadoPartido } from "@/types";
 
 export const dynamic = "force-dynamic";
@@ -364,7 +366,15 @@ function PartidoApuestasCard({ partido: p, apuestas: lista, r, estado }: ItemPar
                       {marcador.apuestas.map((a) => (
                         <div
                           key={a.id}
-                          className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto_auto] sm:items-center"
+                          className={cn(
+                            "grid gap-2 rounded-lg px-2 py-1 transition-colors sm:grid-cols-[minmax(0,1fr)_auto_auto_auto] sm:items-center",
+                            ganadores.has(a.id) &&
+                              a.premio_pagado &&
+                              "opacity-45",
+                            ganadores.has(a.id) &&
+                              !a.premio_pagado &&
+                              "bg-polla-gold/[0.06] ring-1 ring-polla-gold/25",
+                          )}
                         >
                           <div className="min-w-0">
                             <div className="flex min-w-0 items-center gap-2 font-medium text-white">
@@ -395,12 +405,14 @@ function PartidoApuestasCard({ partido: p, apuestas: lista, r, estado }: ItemPar
                             <PremioPagoToggle
                               apuestaId={a.id}
                               pagado={a.premio_pagado}
+                              notaPremio={a.nota_premio}
                             />
                           )}
                           {ganadores.has(a.id) && a.telefono && (
                             <PremioWhatsappButton
                               telefono={a.telefono}
                               mensaje={mensajePremio(a)}
+                              premioPagado={a.premio_pagado}
                             />
                           )}
                           <DeleteApuestaButton id={a.id} nombre={a.nombre} />
@@ -416,7 +428,11 @@ function PartidoApuestasCard({ partido: p, apuestas: lista, r, estado }: ItemPar
           {apuestasOrdenadas.map((a) => (
             <div
               key={a.id}
-              className="grid gap-3 px-4 py-3 sm:grid-cols-[minmax(0,1fr)_auto_auto_auto_auto] sm:items-center"
+              className={cn(
+                "grid gap-3 px-4 py-3 transition-colors sm:grid-cols-[minmax(0,1fr)_auto_auto_auto_auto] sm:items-center",
+                ganadores.has(a.id) && a.premio_pagado && "opacity-45",
+                ganadores.has(a.id) && !a.premio_pagado && "bg-polla-gold/[0.06]",
+              )}
             >
               <span className="flex min-w-0 items-center gap-2 font-medium text-white">
                 {ganadores.has(a.id) && (
@@ -456,12 +472,14 @@ function PartidoApuestasCard({ partido: p, apuestas: lista, r, estado }: ItemPar
                   <PremioPagoToggle
                     apuestaId={a.id}
                     pagado={a.premio_pagado}
+                    notaPremio={a.nota_premio}
                   />
                 )}
                 {ganadores.has(a.id) && a.telefono && (
                   <PremioWhatsappButton
                     telefono={a.telefono}
                     mensaje={mensajePremio(a)}
+                    premioPagado={a.premio_pagado}
                   />
                 )}
                 <DeleteApuestaButton id={a.id} nombre={a.nombre} />
@@ -622,6 +640,7 @@ export default async function AdminPage({
             label: a.nombre,
             monto: item.r.premioPorGanador,
             sub: `${a.telefono ? `${a.telefono} · ` : ""}${nombre(item)} · ${a.goles_local}–${a.goles_visitante}`,
+            accion: <MarcarPremioPagadoButton apuestaId={a.id} />,
           }))
       : [],
   );

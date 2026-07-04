@@ -19,6 +19,8 @@ export type FilaDetalle = {
   sub?: string;
   /** Monto numérico para sumar el total filtrado. */
   monto: number;
+  /** Acción opcional por fila (ej. botón "marcar premio pagado"). */
+  accion?: React.ReactNode;
 };
 
 /**
@@ -108,9 +110,12 @@ export function StatDetalleModal({
                     <div className="text-polla-muted text-xs">{f.sub}</div>
                   )}
                 </div>
-                <span className="font-heading text-polla-gold shrink-0 tabular-nums">
-                  {formatCOP(f.monto)}
-                </span>
+                <div className="flex shrink-0 items-center gap-2">
+                  <span className="font-heading text-polla-gold tabular-nums">
+                    {formatCOP(f.monto)}
+                  </span>
+                  {f.accion}
+                </div>
               </li>
             ))
           )}
