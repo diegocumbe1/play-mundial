@@ -90,9 +90,24 @@ function ResultadoCard({
   const marcadorActual = getMarcadorActual(partido);
   const tieneMarcador =
     (enJuego || finalizado) && marcadorActual !== null;
+  const marcadorFinalApi =
+    finalizado &&
+    partido.goles_local !== null &&
+    partido.goles_visitante !== null
+      ? {
+          goles_local: partido.goles_local,
+          goles_visitante: partido.goles_visitante,
+        }
+      : null;
+  const finalApiDifiereDeReglamentario =
+    marcadorFinalApi !== null &&
+    marcadorActual !== null &&
+    (marcadorFinalApi.goles_local !== marcadorActual.goles_local ||
+      marcadorFinalApi.goles_visitante !== marcadorActual.goles_visitante);
   const ganadores = new Set(resumen?.ganadoresClienteIds ?? []);
   const tieneGanador = apuestas.some((a) => ganadores.has(a.id));
   const marcadores = resumen?.marcadores ?? [];
+  const tieneApuestasPropias = apuestas.length > 0;
 
   return (
     <div className="bg-polla-surface ring-polla-line rounded-2xl p-4 ring-1">
@@ -115,6 +130,17 @@ function ResultadoCard({
                 Este marcador se toma solo hasta 90&apos; + reposición; prórroga
                 y penales no cuentan.
               </p>
+              {finalApiDifiereDeReglamentario && (
+                <p className="text-polla-muted mt-1 text-xs leading-relaxed">
+                  Final oficial:{" "}
+                  <span className="font-heading text-white tabular-nums">
+                    {marcadorFinalApi.goles_local}–
+                    {marcadorFinalApi.goles_visitante}
+                  </span>
+                  . Ese resultado incluye tiempo fuera de la polla y no afecta
+                  los premios.
+                </p>
+              )}
             </>
           )}
         </div>
@@ -131,30 +157,32 @@ function ResultadoCard({
         </div>
       </div>
 
-      <div className="border-polla-line/50 mt-3 grid gap-2 border-t pt-3">
-        <p className="text-polla-muted text-xs tracking-wide uppercase">
-          Tus apuestas
-        </p>
-        {apuestas.map((a) => (
-          <div
-            key={a.id}
-            className="flex flex-wrap items-center justify-between gap-2 text-sm"
-          >
-            <span className="font-heading text-white tabular-nums">
-              {a.goles_local}–{a.goles_visitante}
-            </span>
-            <span className="flex items-center gap-2">
-              {ganadores.has(a.id) && (
-                <span className="text-polla-gold inline-flex items-center gap-1 font-bold">
-                  <Trophy className="size-4" />
-                  {formatCOP(resumen?.premioPorGanador ?? 0)}
-                </span>
-              )}
-              <EstadoPago pagado={a.pagado} />
-            </span>
-          </div>
-        ))}
-      </div>
+      {tieneApuestasPropias && (
+        <div className="border-polla-line/50 mt-3 grid gap-2 border-t pt-3">
+          <p className="text-polla-muted text-xs tracking-wide uppercase">
+            Tus apuestas
+          </p>
+          {apuestas.map((a) => (
+            <div
+              key={a.id}
+              className="flex flex-wrap items-center justify-between gap-2 text-sm"
+            >
+              <span className="font-heading text-white tabular-nums">
+                {a.goles_local}–{a.goles_visitante}
+              </span>
+              <span className="flex items-center gap-2">
+                {ganadores.has(a.id) && (
+                  <span className="text-polla-gold inline-flex items-center gap-1 font-bold">
+                    <Trophy className="size-4" />
+                    {formatCOP(resumen?.premioPorGanador ?? 0)}
+                  </span>
+                )}
+                <EstadoPago pagado={a.pagado} />
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
 
       {marcadores.length > 0 && (
         <details open className="group border-polla-line/50 mt-3 border-t pt-3">
@@ -238,7 +266,7 @@ function ResultadoCard({
         </details>
       )}
 
-      {finalizado && (
+      {finalizado && tieneApuestasPropias && (
         <p className="text-polla-muted border-polla-line/50 mt-3 border-t pt-3 text-sm">
           {!tieneMarcador ? (
             "El marcador reglamentario está pendiente de verificación. La apuesta se liquida cuando el admin confirme 90 minutos más reposición."
@@ -413,13 +441,6 @@ export function ResultadosPersonales({
     let active = true;
     const clienteId = getClienteId();
 
-    if (!clienteId) {
-      Promise.resolve().then(() => {
-        if (active) setLoading(false);
-      });
-      return;
-    }
-
     getResultadosPorCliente(clienteId).then((res) => {
       if (!active) return;
       setLoading(false);
@@ -435,7 +456,7 @@ export function ResultadosPersonales({
     };
   }, []);
 
-  const { conApuestas, porPartido, resumenPorPartido, detallePendiente } =
+  const { visibles, porPartido, resumenPorPartido, detallePendiente } =
     useMemo(() => {
     const porPartido = new Map<string, ApuestaCliente[]>();
     for (const apuesta of resultado.apuestas) {
@@ -448,8 +469,12 @@ export function ResultadosPersonales({
       resultado.resumenes.map((r) => [r.partido_id, r]),
     );
 
-    const conApuestas = partidos
-      .filter((p) => (porPartido.get(p.id)?.length ?? 0) > 0)
+    const visibles = partidos
+      .filter(
+        (p) =>
+          (porPartido.get(p.id)?.length ?? 0) > 0 ||
+          (resumenPorPartido.get(p.id)?.apuestasPagadas ?? 0) > 0,
+      )
       .sort(
         (a, b) =>
           (ORDEN[a.estado] ?? 9) - (ORDEN[b.estado] ?? 9) ||
@@ -471,7 +496,7 @@ export function ResultadosPersonales({
         return `${index + 1}. ${local} vs ${visitante}: ${a.goles_local}-${a.goles_visitante}`;
       });
 
-    return { conApuestas, porPartido, resumenPorPartido, detallePendiente };
+    return { visibles, porPartido, resumenPorPartido, detallePendiente };
   }, [idioma, partidos, resultado]);
 
   if (loading) {
@@ -491,14 +516,14 @@ export function ResultadosPersonales({
     );
   }
 
-  if (conApuestas.length === 0) {
+  if (visibles.length === 0) {
     return (
       <div className="grid gap-3">
         <ReglaResultadoAlert />
         <div className="bg-polla-surface ring-polla-line flex flex-col items-center gap-4 rounded-2xl px-6 py-16 text-center ring-1">
           <Ticket className="text-polla-muted size-10" />
           <p className="text-polla-muted">
-            En este dispositivo todavía no hay apuestas registradas.
+            Todavía no hay apuestas pagadas para mostrar en resultados.
           </p>
           <Link
             href="/jugar"
@@ -533,11 +558,11 @@ export function ResultadosPersonales({
           </Button>
         </div>
       )}
-      {conApuestas.map((p) => (
+      {visibles.map((p) => (
         <ResultadoCard
           key={p.id}
           partido={p}
-          apuestas={porPartido.get(p.id)!}
+          apuestas={porPartido.get(p.id) ?? []}
           resumen={resumenPorPartido.get(p.id)}
           idioma={idioma}
         />

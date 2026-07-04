@@ -327,34 +327,31 @@ export async function getResultadosPorCliente(
   clienteId: string | null,
 ): Promise<ActionResult<ResultadoCliente>> {
   const parsed = z.string().trim().min(8).safeParse(clienteId);
-  if (!parsed.success) {
-    return { success: true, data: { apuestas: [], resumenes: [] } };
-  }
 
   const supabase = createServiceRoleClient();
-  const { data: propiasRaw, error: propiasError } = await supabase
-    .from("apuestas")
-    .select("*")
-    .eq("cliente_id", parsed.data)
-    .order("created_at", { ascending: true });
+  let propias: Apuesta[] = [];
 
-  if (propiasError) {
-    if (propiasError.code === "42703" || propiasError.code === "PGRST204") {
-      return { success: true, data: { apuestas: [], resumenes: [] } };
+  if (parsed.success) {
+    const { data: propiasRaw, error: propiasError } = await supabase
+      .from("apuestas")
+      .select("*")
+      .eq("cliente_id", parsed.data)
+      .order("created_at", { ascending: true });
+
+    if (propiasError) {
+      if (propiasError.code === "42703" || propiasError.code === "PGRST204") {
+        propias = [];
+      } else {
+        return { success: false, error: propiasError.message };
+      }
+    } else {
+      propias = ((propiasRaw ?? []) as ApuestaRow[]).map(normalizarApuesta);
     }
-    return { success: false, error: propiasError.message };
-  }
-
-  const propias = ((propiasRaw ?? []) as ApuestaRow[]).map(normalizarApuesta);
-  const partidoIds = [...new Set(propias.map((a) => a.partido_id))];
-
-  if (partidoIds.length === 0) {
-    return { success: true, data: { apuestas: [], resumenes: [] } };
   }
 
   const [partidosRes, apuestasRes] = await Promise.all([
-    supabase.from("partidos").select("*").in("id", partidoIds),
-    supabase.from("apuestas").select("*").in("partido_id", partidoIds),
+    supabase.from("partidos").select("*"),
+    supabase.from("apuestas").select("*"),
   ]);
 
   if (partidosRes.error) {
@@ -374,7 +371,8 @@ export async function getResultadosPorCliente(
     apuestasPorPartido.set(apuesta.partido_id, lista);
   }
 
-  const resumenes = ((partidosRes.data ?? []) as Partido[]).map((partido) => {
+  const resumenes = ((partidosRes.data ?? []) as Partido[])
+    .map((partido) => {
     const apuestasPartido = apuestasPorPartido.get(partido.id) ?? [];
     const resultado = calcularResultadoPartido(
       partido,
@@ -422,25 +420,26 @@ export async function getResultadosPorCliente(
       }
     }
 
-    return {
-      partido_id: partido.id,
-      apuestasPagadas: resultado.apuestasPagadas,
-      pozo: resultado.pozo,
-      premioPool: resultado.premioPool,
-      premioPorGanador: resultado.premioPorGanador,
-      enCasa: resultado.enCasa,
-      ganadoresClienteIds: resultado.ganadores
-        .filter((g) => propiasIds.has(g.id))
-        .map((g) => g.id),
-      marcadores: [...marcadoresPorLlave.values()].sort(
-        (a, b) =>
-          Number(b.esMarcadorActual) - Number(a.esMarcadorActual) ||
-          b.cantidad - a.cantidad ||
-          a.goles_local - b.goles_local ||
-          a.goles_visitante - b.goles_visitante,
-      ),
-    };
-  });
+      return {
+        partido_id: partido.id,
+        apuestasPagadas: resultado.apuestasPagadas,
+        pozo: resultado.pozo,
+        premioPool: resultado.premioPool,
+        premioPorGanador: resultado.premioPorGanador,
+        enCasa: resultado.enCasa,
+        ganadoresClienteIds: resultado.ganadores
+          .filter((g) => propiasIds.has(g.id))
+          .map((g) => g.id),
+        marcadores: [...marcadoresPorLlave.values()].sort(
+          (a, b) =>
+            Number(b.esMarcadorActual) - Number(a.esMarcadorActual) ||
+            b.cantidad - a.cantidad ||
+            a.goles_local - b.goles_local ||
+            a.goles_visitante - b.goles_visitante,
+        ),
+      };
+    })
+    .filter((resumen) => resumen.apuestasPagadas > 0);
 
   return {
     success: true,
