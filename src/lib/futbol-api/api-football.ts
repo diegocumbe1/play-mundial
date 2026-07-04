@@ -31,6 +31,9 @@ interface ApiFixture {
     away: { name: string; logo: string | null };
   };
   goals: { home: number | null; away: number | null };
+  score?: {
+    fulltime?: { home: number | null; away: number | null };
+  };
 }
 
 interface ApiResponse<T> {
@@ -51,7 +54,27 @@ function mapEstado(short: string): EstadoPartido {
   return "programado"; // NS, TBD, PST, etc.
 }
 
+function marcadorReglamentario(f: ApiFixture) {
+  const marcador = f.score?.fulltime;
+  if (typeof marcador?.home === "number" && typeof marcador.away === "number") {
+    return marcador;
+  }
+
+  // En prorroga o penales, `goals` puede incluir goles posteriores a los 90'.
+  // Si la API no entrega fulltime, no liquidamos con un dato posiblemente malo.
+  const puedeIncluirProrroga = ["ET", "BT", "AET", "P", "PEN"].includes(
+    f.fixture.status.short,
+  );
+  if (puedeIncluirProrroga) {
+    return { home: null, away: null };
+  }
+
+  return f.goals;
+}
+
 function mapFixture(f: ApiFixture): PartidoExterno {
+  const marcador = marcadorReglamentario(f);
+
   return {
     external_id: `af:${f.fixture.id}`,
     liga: f.league.name,
@@ -63,6 +86,9 @@ function mapFixture(f: ApiFixture): PartidoExterno {
     fecha: f.fixture.date,
     goles_local: f.goals.home,
     goles_visitante: f.goals.away,
+    // Para la polla solo cuenta el tiempo reglamentario: 90' + reposicion.
+    goles_reglamentario_local: marcador.home,
+    goles_reglamentario_visitante: marcador.away,
     estado: mapEstado(f.fixture.status.short),
     // HT = medio tiempo, BT = descanso antes del tiempo extra.
     en_pausa: f.fixture.status.short === "HT" || f.fixture.status.short === "BT",

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import {
+  AlertTriangle,
   CheckCircle2,
   ChevronDown,
   Download,
@@ -29,6 +30,7 @@ import {
 } from "@/components/ui/dialog";
 import { getClienteId } from "@/lib/cliente-id";
 import { traducirEquipo, type Idioma } from "@/lib/idioma";
+import { getMarcadorActual } from "@/lib/marcador-reglamentario";
 import { formatCOP, POLLA } from "@/lib/polla";
 import { cn } from "@/lib/utils";
 import type { ApuestaCliente, Partido, ResultadoCliente } from "@/types";
@@ -39,6 +41,24 @@ const ORDEN: Record<string, number> = {
   finalizado: 2,
   cancelado: 3,
 };
+
+function ReglaResultadoAlert() {
+  return (
+    <div className="border-polla-gold/50 bg-polla-gold/10 ring-polla-gold/25 flex items-start gap-3 rounded-2xl border px-4 py-3 text-sm ring-1">
+      <AlertTriangle className="text-polla-gold mt-0.5 size-5 shrink-0" />
+      <div className="grid gap-1">
+        <p className="text-polla-gold font-bold">
+          Solo cuenta el tiempo reglamentario
+        </p>
+        <p className="text-polla-muted leading-relaxed">
+          El resultado válido para premios es el de 90 minutos más reposición.
+          Prórroga, tiempo extra y penales no entran en la apuesta ni cambian tus
+          resultados.
+        </p>
+      </div>
+    </div>
+  );
+}
 
 function EstadoPago({ pagado }: { pagado: boolean }) {
   return (
@@ -67,10 +87,9 @@ function ResultadoCard({
 }) {
   const finalizado = partido.estado === "finalizado";
   const enJuego = partido.estado === "en_juego";
+  const marcadorActual = getMarcadorActual(partido);
   const tieneMarcador =
-    (enJuego || finalizado) &&
-    partido.goles_local !== null &&
-    partido.goles_visitante !== null;
+    (enJuego || finalizado) && marcadorActual !== null;
   const ganadores = new Set(resumen?.ganadoresClienteIds ?? []);
   const tieneGanador = apuestas.some((a) => ganadores.has(a.id));
   const marcadores = resumen?.marcadores ?? [];
@@ -84,13 +103,19 @@ function ResultadoCard({
             <span className="text-polla-muted font-normal">vs</span>{" "}
             {traducirEquipo(partido.equipo_visitante, idioma)}
           </div>
-          {tieneMarcador && (
-            <div className="font-heading text-polla-gold mt-1 text-2xl tabular-nums">
-              {partido.goles_local} – {partido.goles_visitante}
-              <span className="text-polla-muted ml-2 align-middle font-sans text-xs font-semibold tracking-wide uppercase">
-                {finalizado ? "Final" : "Ahora"}
-              </span>
-            </div>
+          {marcadorActual && (
+            <>
+              <div className="font-heading text-polla-gold mt-1 text-2xl tabular-nums">
+                {marcadorActual.goles_local} – {marcadorActual.goles_visitante}
+                <span className="text-polla-muted ml-2 align-middle font-sans text-xs font-semibold tracking-wide uppercase">
+                  {finalizado ? "Reglamentario" : "Ahora"}
+                </span>
+              </div>
+              <p className="text-polla-muted mt-1 text-xs leading-relaxed">
+                Este marcador se toma solo hasta 90&apos; + reposición; prórroga
+                y penales no cuentan.
+              </p>
+            </>
           )}
         </div>
         <div className="text-right">
@@ -197,7 +222,7 @@ function ResultadoCard({
                     <div className="text-right">
                       <span className="text-polla-gold inline-flex shrink-0 items-center gap-1 text-xs font-bold">
                         <CheckCircle2 className="size-4" />
-                        {finalizado ? "Correcto" : "Por ahora"}
+                        {finalizado ? "Correcto reglamentario" : "Por ahora"}
                       </span>
                       {marcador.premioPorPersona > 0 && (
                         <div className="font-heading text-polla-gold text-xl leading-none tabular-nums">
@@ -215,16 +240,19 @@ function ResultadoCard({
 
       {finalizado && (
         <p className="text-polla-muted border-polla-line/50 mt-3 border-t pt-3 text-sm">
-          {tieneGanador ? (
+          {!tieneMarcador ? (
+            "El marcador reglamentario está pendiente de verificación. La apuesta se liquida cuando el admin confirme 90 minutos más reposición."
+          ) : tieneGanador ? (
             <>
-              Acertaste el marcador exacto. Premio por apuesta ganadora:{" "}
+              Acertaste el marcador exacto del tiempo reglamentario. Premio por
+              apuesta ganadora:{" "}
               <span className="text-polla-gold font-semibold">
                 {formatCOP(resumen?.premioPorGanador ?? 0)}
               </span>
               .
             </>
           ) : (
-            "No acertaste el marcador exacto en este partido."
+            "No acertaste el marcador exacto del tiempo reglamentario en este partido."
           )}
         </p>
       )}
@@ -465,23 +493,27 @@ export function ResultadosPersonales({
 
   if (conApuestas.length === 0) {
     return (
-      <div className="bg-polla-surface ring-polla-line flex flex-col items-center gap-4 rounded-2xl px-6 py-16 text-center ring-1">
-        <Ticket className="text-polla-muted size-10" />
-        <p className="text-polla-muted">
-          En este dispositivo todavía no hay apuestas registradas.
-        </p>
-        <Link
-          href="/jugar"
-          className="bg-polla-gold text-polla-dark hover:bg-polla-gold/90 rounded-xl px-4 py-2 text-sm font-bold"
-        >
-          Registrar apuesta
-        </Link>
+      <div className="grid gap-3">
+        <ReglaResultadoAlert />
+        <div className="bg-polla-surface ring-polla-line flex flex-col items-center gap-4 rounded-2xl px-6 py-16 text-center ring-1">
+          <Ticket className="text-polla-muted size-10" />
+          <p className="text-polla-muted">
+            En este dispositivo todavía no hay apuestas registradas.
+          </p>
+          <Link
+            href="/jugar"
+            className="bg-polla-gold text-polla-dark hover:bg-polla-gold/90 rounded-xl px-4 py-2 text-sm font-bold"
+          >
+            Registrar apuesta
+          </Link>
+        </div>
       </div>
     );
   }
 
   return (
     <div className="grid gap-3">
+      <ReglaResultadoAlert />
       {detallePendiente.length > 0 && (
         <div className="border-polla-gold/40 bg-polla-gold/10 text-polla-gold flex flex-col gap-3 rounded-2xl border px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
           <div>

@@ -37,9 +37,14 @@ export interface Partido {
   /** Goles reales, disponibles solo cuando el partido finaliza. */
   goles_local: number | null;
   goles_visitante: number | null;
+  /** Marcador válido para la polla: 90' + reposición, sin prórroga ni penales. */
+  goles_reglamentario_local: number | null;
+  goles_reglamentario_visitante: number | null;
   estado: EstadoPartido;
   /** Si el partido en juego está pausado (medio tiempo / descanso). */
   en_pausa: boolean;
+  /** Si el marcador reglamentario fue confirmado manualmente por el admin. */
+  resultado_manual: boolean;
   /** Si el premio del partido ya se le pagó al/los ganador(es). */
   premio_pagado: boolean;
   created_at: string;
@@ -68,6 +73,8 @@ export type PartidoExterno = Pick<
   | "fecha"
   | "goles_local"
   | "goles_visitante"
+  | "goles_reglamentario_local"
+  | "goles_reglamentario_visitante"
   | "estado"
   | "en_pausa"
 >;

@@ -95,7 +95,12 @@ export async function registrarResultado(
 
   const { data, error } = await supabase
     .from("partidos")
-    .update({ goles_local, goles_visitante, estado: "finalizado" })
+    .update({
+      goles_reglamentario_local: goles_local,
+      goles_reglamentario_visitante: goles_visitante,
+      estado: "finalizado",
+      resultado_manual: true,
+    })
     .eq("id", partido_id)
     .select()
     .single();
@@ -149,7 +154,42 @@ export async function upsertPartidos(
 
   const supabase = createServiceRoleClient();
 
-  const filas = partidos.map((p) => ({ ...p, fuente: "api" as const }));
+  const entrantes = new Set(
+    partidos.map((p) => p.external_id).filter((id): id is string => !!id),
+  );
+
+  const { data: existentes } = await supabase
+    .from("partidos")
+    .select(
+      "external_id,goles_reglamentario_local,goles_reglamentario_visitante,estado,en_pausa,resultado_manual",
+    )
+    .eq("fuente", "api");
+
+  const existentesPorId = new Map(
+    (existentes ?? [])
+      .filter((p) => p.external_id)
+      .map((p) => [p.external_id as string, p]),
+  );
+
+  const filas = partidos.map((p) => {
+    const existente = p.external_id ? existentesPorId.get(p.external_id) : null;
+
+    if (existente?.resultado_manual) {
+      return {
+        ...p,
+        goles_reglamentario_local:
+          existente.goles_reglamentario_local as number | null,
+        goles_reglamentario_visitante:
+          existente.goles_reglamentario_visitante as number | null,
+        estado: existente.estado as PartidoExterno["estado"],
+        en_pausa: Boolean(existente.en_pausa),
+        resultado_manual: true,
+        fuente: "api" as const,
+      };
+    }
+
+    return { ...p, resultado_manual: false, fuente: "api" as const };
+  });
 
   const { data, error } = await supabase
     .from("partidos")
@@ -163,15 +203,6 @@ export async function upsertPartidos(
   // Reconciliar: borrar los partidos de la API que ya no están en este fixture
   // (p. ej. al cambiar de proveedor o de competición). Los partidos creados
   // manualmente (fuente='manual') NO se tocan. La FK borra sus pronósticos.
-  const entrantes = new Set(
-    partidos.map((p) => p.external_id).filter((id): id is string => !!id),
-  );
-
-  const { data: existentes } = await supabase
-    .from("partidos")
-    .select("external_id")
-    .eq("fuente", "api");
-
   const obsoletos = (existentes ?? [])
     .map((r) => r.external_id as string | null)
     .filter((id): id is string => !!id && !entrantes.has(id));

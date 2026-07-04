@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import { getUser } from "@/lib/auth";
+import { getMarcadorActual } from "@/lib/marcador-reglamentario";
 import { enviarPushAdmins } from "@/lib/push";
 import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
 import { calcularResultadoPartido } from "@/lib/polla";
@@ -379,10 +380,7 @@ export async function getResultadosPorCliente(
       partido,
       apuestasPartido,
     );
-    const tieneMarcadorActual =
-      (partido.estado === "en_juego" || partido.estado === "finalizado") &&
-      partido.goles_local !== null &&
-      partido.goles_visitante !== null;
+    const marcadorActual = getMarcadorActual(partido);
     const marcadoresPorLlave = new Map<
       string,
       {
@@ -405,9 +403,9 @@ export async function getResultadosPorCliente(
         pagadas: 0,
         propias: 0,
         esMarcadorActual:
-          tieneMarcadorActual &&
-          apuesta.goles_local === partido.goles_local &&
-          apuesta.goles_visitante === partido.goles_visitante,
+          marcadorActual !== null &&
+          apuesta.goles_local === marcadorActual.goles_local &&
+          apuesta.goles_visitante === marcadorActual.goles_visitante,
         premioPorPersona: 0,
       };
       actual.cantidad += 1;

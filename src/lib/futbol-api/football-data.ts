@@ -73,6 +73,8 @@ function mapMatch(m: FdMatch): PartidoExterno {
     fecha: m.utcDate,
     goles_local: m.score?.fullTime?.home ?? null,
     goles_visitante: m.score?.fullTime?.away ?? null,
+    goles_reglamentario_local: m.score?.fullTime?.home ?? null,
+    goles_reglamentario_visitante: m.score?.fullTime?.away ?? null,
     estado: mapEstado(m.status),
     // PAUSED = medio tiempo / descanso. El partido sigue siendo 'en_juego'.
     en_pausa: m.status === "PAUSED",

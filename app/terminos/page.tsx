@@ -55,8 +55,8 @@ export default async function TerminosPage() {
         <Seccion titulo="2. Cómo se gana">
           <p>
             Gana quien acierte el <strong>marcador exacto</strong> (goles de cada
-            equipo) del partido. No hay premio por “aproximado” ni por acertar
-            solo al ganador.
+            equipo) del <strong>tiempo reglamentario</strong>. No hay premio por
+            “aproximado” ni por acertar solo al ganador.
           </p>
           <p>
             El <strong>pozo</strong> de un partido es la suma de las apuestas
@@ -88,9 +88,9 @@ export default async function TerminosPage() {
         <Seccion titulo="4. Resultados">
           <p>
             El marcador válido es el del <strong>tiempo reglamentario</strong>{" "}
-            del partido según la fuente oficial de datos usada por la plataforma.
-            Tiempos extra y penales no modifican el marcador para efectos de la
-            polla, salvo que se indique lo contrario.
+            del partido: 90 minutos más reposición, según la fuente oficial de
+            datos usada por la plataforma. Tiempos extra y penales no modifican
+            el marcador para efectos de la polla.
           </p>
         </Seccion>
 

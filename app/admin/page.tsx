@@ -8,6 +8,7 @@ import {
   Coins,
   CreditCard,
   Gamepad2,
+  Info,
   PiggyBank,
   Trophy,
   Wallet,
@@ -42,6 +43,7 @@ import { AsistenteApuestasModal } from "@/components/admin/asistente-apuestas-mo
 import { EstadoBadge } from "@/components/estado-badge";
 import { getUser } from "@/lib/auth";
 import { formatFecha } from "@/lib/format";
+import { getMarcadorActual, getMarcadorReglamentario } from "@/lib/marcador-reglamentario";
 import { estadoEfectivo } from "@/lib/partido-vivo";
 import { calcularResultadoPartido, formatCOP, POLLA } from "@/lib/polla";
 import type { Apuesta, EstadoPartido, Partido, ResultadoPartido } from "@/types";
@@ -84,10 +86,7 @@ function agruparPorMarcador({
   r,
   estado,
 }: ItemPartido): MarcadorAdmin[] {
-  const tieneMarcadorActual =
-    (estado === "en_juego" || estado === "finalizado") &&
-    partido.goles_local !== null &&
-    partido.goles_visitante !== null;
+  const marcadorActual = getMarcadorActual(partido);
 
   const porMarcador = new Map<string, MarcadorAdmin>();
 
@@ -99,9 +98,9 @@ function agruparPorMarcador({
       apuestas: [],
       pagadas: 0,
       esMarcadorActual:
-        tieneMarcadorActual &&
-        apuesta.goles_local === partido.goles_local &&
-        apuesta.goles_visitante === partido.goles_visitante,
+        marcadorActual !== null &&
+        apuesta.goles_local === marcadorActual.goles_local &&
+        apuesta.goles_visitante === marcadorActual.goles_visitante,
       premioPorPersona: 0,
     };
 
@@ -134,7 +133,8 @@ function PartidoApuestasCard({ partido: p, apuestas: lista, r, estado }: ItemPar
   const ganadores = new Set(r.ganadores.map((g) => g.id));
   const finalizado = estado === "finalizado";
   const enJuego = estado === "en_juego";
-  const hayMarcador = p.goles_local !== null && p.goles_visitante !== null;
+  const marcadorReglamentario = getMarcadorReglamentario(p);
+  const hayMarcador = marcadorReglamentario !== null;
   const noPagaron = lista.filter((a) => a.no_pago).length;
   const pendientes =
     estado === "programado"
@@ -205,33 +205,41 @@ function PartidoApuestasCard({ partido: p, apuestas: lista, r, estado }: ItemPar
         {finalizado && (
           <div className="bg-polla-elevated/40 flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 text-xs">
             <span className="text-polla-muted">
-              {hayMarcador ? (
+              {marcadorReglamentario ? (
                 <>
-                  Marcador{" "}
+                  Marcador reglamentario{" "}
                   <span className="font-heading text-white tabular-nums">
-                    {p.goles_local}–{p.goles_visitante}
+                    {marcadorReglamentario.goles_local}–
+                    {marcadorReglamentario.goles_visitante}
                   </span>
                 </>
               ) : (
-                "Sin marcador registrado"
+                "Marcador reglamentario pendiente"
               )}
-              {r.ganadores.length > 0 ? (
-                <>
+              {hayMarcador &&
+                (r.ganadores.length > 0 ? (
+                  <>
+                    {" "}
+                    · {r.ganadores.length} ganador(es) ·{" "}
+                    <span className="text-polla-gold font-semibold">
+                      {formatCOP(r.premioPorGanador)} c/u
+                    </span>{" "}
+                    · Casa {formatCOP(r.enCasa)}
+                  </>
+                ) : (
+                  <>
+                    {" "}
+                    · Nadie acertó ·{" "}
+                    <span className="text-polla-gold font-semibold">
+                      {formatCOP(r.enCasa)} queda en casa
+                    </span>
+                  </>
+                ))}
+              {hayMarcador && p.resultado_manual && (
+                <span className="text-polla-gold">
                   {" "}
-                  · {r.ganadores.length} ganador(es) ·{" "}
-                  <span className="text-polla-gold font-semibold">
-                    {formatCOP(r.premioPorGanador)} c/u
-                  </span>{" "}
-                  · Casa {formatCOP(r.enCasa)}
-                </>
-              ) : (
-                <>
-                  {" "}
-                  · Nadie acertó ·{" "}
-                  <span className="text-polla-gold font-semibold">
-                    {formatCOP(r.enCasa)} queda en casa
-                  </span>
-                </>
+                  · verificado manualmente
+                </span>
               )}
             </span>
             {notasPago.length > 0 && (
@@ -243,6 +251,21 @@ function PartidoApuestasCard({ partido: p, apuestas: lista, r, estado }: ItemPar
           </div>
         )}
         <div className="divide-polla-line/40 divide-y">
+          {finalizado && (
+            <div className="bg-polla-dark/20 flex flex-col gap-3 px-4 py-2.5 lg:flex-row lg:items-center lg:justify-between">
+              <p className="text-polla-muted inline-flex items-start gap-2 text-xs leading-relaxed">
+                <Info className="text-polla-gold mt-0.5 size-3.5 shrink-0" />
+                <span>
+                  Solo cuenta el tiempo reglamentario: 90&apos; + reposición. Si
+                  la API trae prórroga o penales, corrige aquí el marcador que
+                  quedó en los 90&apos;.
+                </span>
+              </p>
+              <div className="shrink-0">
+                <ResultadoForm partido={p} compacto />
+              </div>
+            </div>
+          )}
           <details className="group/marcadores bg-polla-dark/20 px-4 py-3" open={enJuego || finalizado}>
             <summary className="text-polla-muted hover:text-white flex cursor-pointer list-none items-center justify-between gap-3 text-sm transition [&::-webkit-details-marker]:hidden">
               <span className="inline-flex min-w-0 items-center gap-2">

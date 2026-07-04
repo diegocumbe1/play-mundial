@@ -72,6 +72,8 @@ export async function notificarPartidosFinalizados(): Promise<void> {
     .select("*")
     .eq("estado", "finalizado")
     .eq("aviso_final_enviado", false)
+    .not("goles_reglamentario_local", "is", null)
+    .not("goles_reglamentario_visitante", "is", null)
     .order("fecha", { ascending: false });
 
   if (!partidos || partidos.length === 0) return;
@@ -88,7 +90,7 @@ export async function notificarPartidosFinalizados(): Promise<void> {
       const pendientes = apuestas.filter((a) => !a.pagado);
 
       if (pendientes.length > 0) {
-        const marcador = `${p.goles_local}–${p.goles_visitante}`;
+        const marcador = `${p.goles_reglamentario_local}–${p.goles_reglamentario_visitante}`;
         const nombres = pendientes
           .map((a) => a.nombre)
           .slice(0, 3)

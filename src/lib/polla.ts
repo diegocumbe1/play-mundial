@@ -1,4 +1,5 @@
 import type { Apuesta, Partido, ResultadoPartido } from "@/types";
+import { getMarcadorReglamentario } from "@/lib/marcador-reglamentario";
 
 /**
  * Configuración de la polla (costos por partido y datos de pago).
@@ -56,21 +57,20 @@ export function calcularResultadoPartido(
   const casaBase = Math.round(pozo * POLLA.porcentajeCasa);
   const premioPool = pozo - casaBase;
 
+  const marcadorReglamentario = getMarcadorReglamentario(partido);
   const finalizado =
-    partido.estado === "finalizado" &&
-    partido.goles_local !== null &&
-    partido.goles_visitante !== null;
+    partido.estado === "finalizado" && marcadorReglamentario !== null;
 
   const ganadores = finalizado
     ? pagadas.filter(
         (a) =>
-          a.goles_local === partido.goles_local &&
-          a.goles_visitante === partido.goles_visitante,
+          a.goles_local === marcadorReglamentario.goles_local &&
+          a.goles_visitante === marcadorReglamentario.goles_visitante,
       )
     : [];
 
   let premioPorGanador = 0;
-  let enCasa = casaBase;
+  let enCasa = 0;
 
   if (finalizado) {
     if (ganadores.length > 0) {
