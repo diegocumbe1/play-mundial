@@ -32,6 +32,8 @@ import {
 } from "@/components/admin/notas-pago-modal";
 import { PagoToggle } from "@/components/admin/pago-toggle";
 import { PremioPagoToggle } from "@/components/admin/premio-pago-toggle";
+import { PremioWhatsappButton } from "@/components/admin/premio-whatsapp-button";
+import { TelefonoCopiable } from "@/components/admin/telefono-copiable";
 import { ResultadoForm } from "@/components/admin/resultado-form";
 import { PageRefreshButton } from "@/components/page-refresh-button";
 import {
@@ -150,6 +152,25 @@ function PartidoApuestasCard({ partido: p, apuestas: lista, r, estado }: ItemPar
     r,
     estado,
   });
+  // Cuántas personas se reparten el premio: solo quienes acertaron el marcador
+  // reglamentario y pagaron. Es el mismo divisor con el que se calcula el premio.
+  const cantidadGanadores = r.ganadores.length;
+  // Mensaje pre-generado para avisarle a un ganador que se le paga el premio.
+  const mensajePremio = (a: Apuesta) =>
+    [
+      "Hola, buen día ",
+      "",
+      `Pago Polla ${p.equipo_local} vs ${p.equipo_visitante}`,
+      marcadorReglamentario
+        ? `Marcador: ${marcadorReglamentario.goles_local}–${marcadorReglamentario.goles_visitante}`
+        : null,
+      `Ganadores: ${cantidadGanadores}`,
+      `Tu premio: ${formatCOP(r.premioPorGanador)}`,
+      "",
+      `¡Felicidades ${a.nombre}!`,
+    ]
+      .filter((linea) => linea !== null)
+      .join("\n");
   const notasPago: NotaPagoPartido[] = lista
     .filter((a) => a.nota_pago?.trim())
     .map((a) => ({
@@ -353,7 +374,12 @@ function PartidoApuestasCard({ partido: p, apuestas: lista, r, estado }: ItemPar
                               <span className="truncate">{a.nombre}</span>
                             </div>
                             <div className="text-polla-muted truncate text-xs">
-                              {a.telefono ? `${a.telefono} · ` : ""}
+                              {a.telefono && (
+                                <>
+                                  <TelefonoCopiable telefono={a.telefono} />
+                                  {" · "}
+                                </>
+                              )}
                               Creada {formatFecha(a.created_at)}
                             </div>
                           </div>
@@ -369,6 +395,12 @@ function PartidoApuestasCard({ partido: p, apuestas: lista, r, estado }: ItemPar
                             <PremioPagoToggle
                               apuestaId={a.id}
                               pagado={a.premio_pagado}
+                            />
+                          )}
+                          {ganadores.has(a.id) && a.telefono && (
+                            <PremioWhatsappButton
+                              telefono={a.telefono}
+                              mensaje={mensajePremio(a)}
                             />
                           )}
                           <DeleteApuestaButton id={a.id} nombre={a.nombre} />
@@ -394,7 +426,7 @@ function PartidoApuestasCard({ partido: p, apuestas: lista, r, estado }: ItemPar
                   <span className="block truncate">{a.nombre}</span>
                   {a.telefono && (
                     <span className="text-polla-muted block truncate text-xs font-normal">
-                      {a.telefono}
+                      <TelefonoCopiable telefono={a.telefono} />
                     </span>
                   )}
                   <span className="text-polla-muted block truncate text-xs font-normal">
@@ -424,6 +456,12 @@ function PartidoApuestasCard({ partido: p, apuestas: lista, r, estado }: ItemPar
                   <PremioPagoToggle
                     apuestaId={a.id}
                     pagado={a.premio_pagado}
+                  />
+                )}
+                {ganadores.has(a.id) && a.telefono && (
+                  <PremioWhatsappButton
+                    telefono={a.telefono}
+                    mensaje={mensajePremio(a)}
                   />
                 )}
                 <DeleteApuestaButton id={a.id} nombre={a.nombre} />
