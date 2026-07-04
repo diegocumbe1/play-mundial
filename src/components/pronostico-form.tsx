@@ -185,15 +185,13 @@ export function PronosticoForm({
           .includes(query),
       );
 
-  const {
-    register,
-    getValues,
-    setValue,
-    formState: { isValid },
-  } = useForm<DatosValues>({
+  const { register, getValues, setValue, setFocus } = useForm<DatosValues>({
     mode: "onChange",
     defaultValues: { nombre: "", telefono: "" },
   });
+
+  // Resalta el campo Nombre cuando se intenta continuar sin llenarlo.
+  const [nombreInvalido, setNombreInvalido] = useState(false);
 
   // Datos guardados de una apuesta anterior (solo se rellenan si el usuario lo
   // pide). Se leen del navegador con useSyncExternalStore para no desajustar la
@@ -325,8 +323,10 @@ export function PronosticoForm({
   async function onContinuar() {
     if (enviando || guardandoRef.current) return;
 
-    if (!isValid || getValues("nombre").trim() === "") {
-      toast.error("Escribe tu nombre para registrar la apuesta.");
+    if (getValues("nombre").trim() === "") {
+      setNombreInvalido(true);
+      toast.error("Por favor ingresa tu nombre para registrar la apuesta.");
+      setFocus("nombre");
       return;
     }
 
@@ -464,7 +464,7 @@ export function PronosticoForm({
           event.preventDefault();
           void onContinuar();
         }}
-        className="grid gap-6 pb-28"
+        className="grid gap-6 pb-40 sm:pb-28"
       >
         {recordado && !datosUsados && (
           <button
@@ -490,8 +490,13 @@ export function PronosticoForm({
             <Input
               id="nombre"
               placeholder="Tu nombre"
-              className="h-11 focus-visible:border-polla-gold focus-visible:ring-polla-gold/30"
+              aria-invalid={nombreInvalido}
+              className={cn(
+                "h-11 focus-visible:border-polla-gold focus-visible:ring-polla-gold/30",
+                nombreInvalido && "border-polla-red ring-polla-red/40 ring-2",
+              )}
               {...register("nombre", { required: true, minLength: 1 })}
+              onInput={() => nombreInvalido && setNombreInvalido(false)}
             />
           </div>
           <div className="grid gap-2">
@@ -620,8 +625,9 @@ export function PronosticoForm({
           </div>
         )}
 
-        {/* Barra de total fija */}
-        <div className="border-polla-line/70 bg-polla-dark/85 fixed inset-x-0 bottom-0 z-40 border-t backdrop-blur-md">
+        {/* Barra de total fija. En mobile se apoya por encima del menú inferior
+            (BottomNav); en desktop queda pegada al borde inferior. */}
+        <div className="border-polla-line/70 bg-polla-dark/85 fixed inset-x-0 bottom-[calc(4rem+env(safe-area-inset-bottom))] z-40 border-t backdrop-blur-md sm:bottom-0">
           <div className="mx-auto flex max-w-3xl items-center justify-between gap-4 px-4 py-3">
             <div>
               <div className="text-polla-muted text-xs tracking-wide uppercase">
@@ -633,7 +639,7 @@ export function PronosticoForm({
             </div>
             <Button
               type="submit"
-              disabled={!isValid || cart.length === 0 || enviando}
+              disabled={cart.length === 0 || enviando}
               className="bg-polla-gold text-polla-dark hover:bg-polla-gold/90 h-12 gap-2 rounded-xl px-6 text-base font-bold"
             >
               <Ticket className="size-5" />

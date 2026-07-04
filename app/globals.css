@@ -65,6 +65,7 @@
   --animate-live: live-pulse 1.6s ease-in-out infinite;
   --animate-rise: rise 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
   --animate-float: float 6s ease-in-out infinite;
+  --animate-glow: glow 2s ease-in-out infinite;
 }
 
 /*
@@ -117,6 +118,9 @@
   }
   html {
     @apply font-sans;
+    /* Desactiva el pull-to-refresh nativo: lo maneja <PullToRefresh/> con un
+     * refresco suave (sin recarga completa de la página). */
+    overscroll-behavior-y: contain;
   }
   /* Marcadores y números tabulares siempre legibles */
   .tabular-nums {
@@ -219,5 +223,18 @@
   }
   50% {
     transform: translateY(-10px);
+  }
+}
+
+/* Latido dorado para llamar la atención (ej. premios pendientes por pagar) */
+@keyframes glow {
+  0%,
+  100% {
+    box-shadow: 0 0 0 1px rgba(245, 197, 24, 0.35);
+  }
+  50% {
+    box-shadow:
+      0 0 0 1px rgba(245, 197, 24, 0.7),
+      0 0 24px -2px rgba(245, 197, 24, 0.5);
   }
 }

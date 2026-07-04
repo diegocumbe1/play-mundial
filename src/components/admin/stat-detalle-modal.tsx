@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { formatCOP } from "@/lib/format";
+import { cn } from "@/lib/utils";
 
 export type FilaDetalle = {
   /** Texto buscable: "Local vs Visitante". */
@@ -36,6 +37,7 @@ export function StatDetalleModal({
   filas,
   filtroPlaceholder = "Filtrar por país o equipo…",
   itemLabel = "partido(s)",
+  resaltar = false,
 }: {
   icon: React.ReactNode;
   valor: React.ReactNode;
@@ -44,6 +46,8 @@ export function StatDetalleModal({
   filas: FilaDetalle[];
   filtroPlaceholder?: string;
   itemLabel?: string;
+  /** Resalta la tarjeta con un latido dorado (ej. cuando hay pendientes). */
+  resaltar?: boolean;
 }) {
   const [q, setQ] = useState("");
 
@@ -59,7 +63,12 @@ export function StatDetalleModal({
 
   return (
     <Dialog>
-      <DialogTrigger className="bg-polla-surface ring-polla-line hover:ring-polla-gold/50 block w-full rounded-2xl p-5 text-left ring-1 transition-colors">
+      <DialogTrigger
+        className={cn(
+          "bg-polla-surface ring-polla-line hover:ring-polla-gold/50 block w-full rounded-2xl p-5 text-left ring-1 transition-colors",
+          resaltar && "animate-glow ring-polla-gold/60",
+        )}
+      >
         <div className="flex items-center gap-4">
           <div className="bg-polla-elevated text-polla-gold flex size-11 shrink-0 items-center justify-center rounded-xl">
             {icon}

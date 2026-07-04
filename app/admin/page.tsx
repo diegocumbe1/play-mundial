@@ -9,6 +9,7 @@ import {
   CreditCard,
   Gamepad2,
   Info,
+  ListChecks,
   PiggyBank,
   Trophy,
   Wallet,
@@ -696,8 +697,15 @@ export default async function AdminPage({
           </Link>
           <div className="flex flex-wrap items-center gap-2">
             <Link
+              href="/resultados"
+              className="border-polla-line bg-polla-surface hover:bg-polla-elevated hidden h-7 items-center gap-1 rounded-lg border px-2.5 text-[0.8rem] font-medium whitespace-nowrap text-white transition-colors sm:inline-flex"
+            >
+              <ListChecks className="size-3.5" />
+              Resultados
+            </Link>
+            <Link
               href="/jugar"
-              className="border-polla-line bg-polla-surface hover:bg-polla-elevated inline-flex h-7 items-center gap-1 rounded-lg border px-2.5 text-[0.8rem] font-medium whitespace-nowrap text-white transition-colors"
+              className="border-polla-line bg-polla-surface hover:bg-polla-elevated hidden h-7 items-center gap-1 rounded-lg border px-2.5 text-[0.8rem] font-medium whitespace-nowrap text-white transition-colors sm:inline-flex"
             >
               <Gamepad2 className="size-3.5" />
               Jugar
@@ -749,6 +757,7 @@ export default async function AdminPage({
             filas={premiosPendientes}
             filtroPlaceholder="Filtrar por persona, teléfono o partido…"
             itemLabel="premio(s) pendiente(s)"
+            resaltar={premiosPendientes.length > 0}
           />
           <StatDetalleModal
             icon={<Banknote className="size-5" />}
