@@ -75,19 +75,15 @@ function ProximoRow({ partido, idioma }: { partido: Partido; idioma: Idioma }) {
   );
 }
 
-/** Hero del home: compacto, con el/los próximos partidos a la derecha. */
-export function Hero({ proximos = [], idioma = "es" }: HeroProps) {
+/**
+ * Contenido del Hero (sin el marco/fondo del banner). Lo envuelve {@link Hero},
+ * que aporta el fondo `bg-hero` y el marco redondeado.
+ */
+export function HeroSlide({ proximos = [], idioma = "es" }: HeroProps) {
   const destacados = proximos.slice(0, 2);
 
   return (
-    <section className="bg-hero ring-polla-line relative overflow-hidden rounded-3xl ring-1">
-      <div className="bg-stadium absolute inset-0" aria-hidden />
-      <div
-        className="bg-polla-gold/10 animate-float absolute -top-16 -right-10 size-40 rounded-full blur-3xl"
-        aria-hidden
-      />
-
-      <div className="relative grid gap-6 px-6 py-7 sm:px-10 sm:py-9 lg:grid-cols-[1.05fr_0.95fr] lg:items-center">
+    <div className="grid gap-6 px-6 py-7 sm:px-10 sm:py-9 lg:grid-cols-[1.05fr_0.95fr] lg:items-center">
         <div>
           <span className="text-polla-gold/90 inline-flex items-center gap-2 rounded-full bg-white/5 px-3 py-1 text-xs font-semibold tracking-widest uppercase ring-1 ring-white/10">
             <Trophy className="size-3.5" /> FIFA World Cup 2026
@@ -138,6 +134,21 @@ export function Hero({ proximos = [], idioma = "es" }: HeroProps) {
             </p>
           )}
         </div>
+    </div>
+  );
+}
+
+/** Hero del home: el marco/fondo del banner envolviendo a {@link HeroSlide}. */
+export function Hero(props: HeroProps) {
+  return (
+    <section className="bg-hero ring-polla-line relative overflow-hidden rounded-3xl ring-1">
+      <div className="bg-stadium absolute inset-0" aria-hidden />
+      <div
+        className="bg-polla-gold/10 animate-float absolute -top-16 -right-10 size-40 rounded-full blur-3xl"
+        aria-hidden
+      />
+      <div className="relative">
+        <HeroSlide {...props} />
       </div>
     </section>
   );

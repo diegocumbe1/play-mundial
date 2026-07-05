@@ -31,6 +31,7 @@ import {
 import { getClienteId } from "@/lib/cliente-id";
 import { traducirEquipo, type Idioma } from "@/lib/idioma";
 import { getMarcadorActual } from "@/lib/marcador-reglamentario";
+import { estadoEfectivo } from "@/lib/partido-vivo";
 import { formatCOP, POLLA } from "@/lib/polla";
 import { cn } from "@/lib/utils";
 import type { ApuestaCliente, Partido, ResultadoCliente } from "@/types";
@@ -144,17 +145,19 @@ function ResultadoCard({
             </>
           )}
         </div>
-        <div className="text-right">
-          <div className="text-polla-muted text-xs tracking-wide uppercase">
-            Premio
+        {(resumen?.apuestasPagadas ?? 0) > 0 && (
+          <div className="text-right">
+            <div className="text-polla-muted text-xs tracking-wide uppercase">
+              Premio
+            </div>
+            <div className="font-heading text-polla-gold text-2xl tabular-nums">
+              {formatCOP(resumen?.premioPool ?? 0)}
+            </div>
+            <div className="text-polla-muted text-xs">
+              {resumen?.apuestasPagadas ?? 0} pagada(s)
+            </div>
           </div>
-          <div className="font-heading text-polla-gold text-2xl tabular-nums">
-            {formatCOP(resumen?.premioPool ?? 0)}
-          </div>
-          <div className="text-polla-muted text-xs">
-            {resumen?.apuestasPagadas ?? 0} pagada(s)
-          </div>
-        </div>
+        )}
       </div>
 
       {tieneApuestasPropias && (
@@ -469,17 +472,37 @@ export function ResultadosPersonales({
       resultado.resumenes.map((r) => [r.partido_id, r]),
     );
 
+    // El estado del proveedor gratuito es inestable; derivamos el estado real
+    // de la hora (igual que en el home) para agrupar y ordenar bien.
+    // eslint-disable-next-line react-hooks/purity -- hora actual (client), no afecta datos
+    const ahora = Date.now();
+    const estadoDe = (p: Partido) => estadoEfectivo(p, ahora);
+
     const visibles = partidos
-      .filter(
-        (p) =>
+      .filter((p) => {
+        const est = estadoDe(p);
+        return (
+          // Historial público: todo lo que ya pasó o está en juego se muestra,
+          // aunque el jugador no haya apostado.
+          est === "finalizado" ||
+          est === "en_juego" ||
+          // Más los partidos futuros donde el jugador sí tiene apuestas.
           (porPartido.get(p.id)?.length ?? 0) > 0 ||
-          (resumenPorPartido.get(p.id)?.apuestasPagadas ?? 0) > 0,
-      )
-      .sort(
-        (a, b) =>
-          (ORDEN[a.estado] ?? 9) - (ORDEN[b.estado] ?? 9) ||
-          b.fecha.localeCompare(a.fecha),
-      );
+          (resumenPorPartido.get(p.id)?.apuestasPagadas ?? 0) > 0
+        );
+      })
+      .sort((a, b) => {
+        const ea = estadoDe(a);
+        const eb = estadoDe(b);
+        const orden = (ORDEN[ea] ?? 9) - (ORDEN[eb] ?? 9);
+        if (orden !== 0) return orden;
+        // Finalizados/cancelados: del más reciente al más antiguo.
+        if (ea === "finalizado" || ea === "cancelado") {
+          return b.fecha.localeCompare(a.fecha);
+        }
+        // En juego / próximos: el más cercano primero.
+        return a.fecha.localeCompare(b.fecha);
+      });
 
     const partidosPorId = new Map(partidos.map((p) => [p.id, p]));
     const detallePendiente = resultado.apuestas

@@ -171,6 +171,44 @@ export interface ResultadoCliente {
   }[];
 }
 
+/**
+ * Un marcador elegido por la comunidad, para pantallas públicas.
+ * Solo expone conteos: nunca dinero, pagos, nombres ni datos personales.
+ */
+export interface MarcadorComunidad {
+  goles_local: number;
+  goles_visitante: number;
+  /** Personas que eligieron este marcador (todas las apuestas, sin importar pago). */
+  cantidad: number;
+  /** Coincide con el marcador oficial/reglamentario vigente del partido. */
+  esMarcadorActual: boolean;
+  /** El dispositivo actual eligió este marcador (para el chip "Tu marcador"). */
+  esPropio: boolean;
+}
+
+/**
+ * Un partido con sus marcadores comunitarios, para la vista pública y el
+ * carrusel del home. Es un "corte" seguro de {@link Partido}: no incluye
+ * dinero, pagos, ni ninguna apuesta identificable.
+ */
+export interface PartidoComunidad {
+  partido_id: string;
+  equipo_local: string;
+  equipo_visitante: string;
+  equipo_local_logo: string | null;
+  equipo_visitante_logo: string | null;
+  estado: EstadoPartido;
+  fecha: string;
+  /** Marcador oficial vigente (reglamentario si finalizó, en vivo si está en juego). */
+  marcadorOficial: { goles_local: number; goles_visitante: number } | null;
+  /** Si el marcador oficial ya es el reglamentario definitivo (→ etiqueta "Reglamentario"). */
+  esReglamentario: boolean;
+  /** Total de personas participando en el partido. */
+  totalPersonas: number;
+  /** Marcadores agrupados, ordenados por popularidad. */
+  marcadores: MarcadorComunidad[];
+}
+
 /** Resultado estándar devuelto por las Server Actions. */
 export type ActionResult<T = void> =
   | { success: true; data: T }

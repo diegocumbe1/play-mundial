@@ -14,6 +14,7 @@ import type {
   ApuestaCliente,
   MetodoPago,
   Partido,
+  PartidoComunidad,
   ResultadoCliente,
 } from "@/types";
 
@@ -447,6 +448,117 @@ export async function getResultadosPorCliente(
     success: true,
     data: { apuestas: propias.map(sanitizarApuestaCliente), resumenes },
   };
+}
+
+/**
+ * Marcadores elegidos por la comunidad, para pantallas públicas (vista
+ * compartible y carrusel del home).
+ *
+ * A diferencia de {@link getResultadosPorCliente}, aquí NO se calcula ni se
+ * expone nada sensible: ni dinero, ni pozos, ni estado de pago, ni nombres,
+ * ni teléfonos, ni ids de terceros. El payload solo lleva conteos por marcador.
+ *
+ * `clienteId` es opcional: solo sirve para marcar `esPropio` en los marcadores
+ * del propio dispositivo (chip "Tu marcador"), sin exponer ningún monto.
+ */
+export async function getMarcadoresComunidad(
+  clienteId?: string | null,
+): Promise<ActionResult<PartidoComunidad[]>> {
+  const supabase = createServiceRoleClient();
+
+  type ApuestaPublica = {
+    id: string;
+    partido_id: string;
+    goles_local: number;
+    goles_visitante: number;
+    cliente_id: string | null;
+  };
+
+  // Trae TODAS las apuestas paginando: Supabase limita cada respuesta a ~1000
+  // filas, y sin esto se perderían partidos cuando hay muchas apuestas.
+  const PAGINA = 1000;
+  const apuestas: ApuestaPublica[] = [];
+  for (let desde = 0; ; desde += PAGINA) {
+    const { data, error } = await supabase
+      .from("apuestas")
+      .select("id, partido_id, goles_local, goles_visitante, cliente_id")
+      .order("id", { ascending: true })
+      .range(desde, desde + PAGINA - 1);
+
+    if (error) {
+      return { success: false, error: error.message };
+    }
+    const lote = (data ?? []) as ApuestaPublica[];
+    apuestas.push(...lote);
+    if (lote.length < PAGINA) break;
+  }
+
+  const partidosRes = await supabase.from("partidos").select("*");
+  if (partidosRes.error) {
+    return { success: false, error: partidosRes.error.message };
+  }
+
+  const parsed = z.string().trim().min(8).safeParse(clienteId);
+  const clienteActual = parsed.success ? parsed.data : null;
+
+  const apuestasPorPartido = new Map<string, ApuestaPublica[]>();
+  for (const apuesta of apuestas) {
+    const lista = apuestasPorPartido.get(apuesta.partido_id) ?? [];
+    lista.push(apuesta);
+    apuestasPorPartido.set(apuesta.partido_id, lista);
+  }
+
+  const comunidad = ((partidosRes.data ?? []) as Partido[])
+    .map((partido): PartidoComunidad => {
+      const apuestasPartido = apuestasPorPartido.get(partido.id) ?? [];
+      const marcadorActual = getMarcadorActual(partido);
+
+      const porLlave = new Map<string, PartidoComunidad["marcadores"][number]>();
+      for (const apuesta of apuestasPartido) {
+        const llave = `${apuesta.goles_local}-${apuesta.goles_visitante}`;
+        const actual = porLlave.get(llave) ?? {
+          goles_local: apuesta.goles_local,
+          goles_visitante: apuesta.goles_visitante,
+          cantidad: 0,
+          esMarcadorActual:
+            marcadorActual !== null &&
+            apuesta.goles_local === marcadorActual.goles_local &&
+            apuesta.goles_visitante === marcadorActual.goles_visitante,
+          esPropio: false,
+        };
+        actual.cantidad += 1;
+        if (clienteActual && apuesta.cliente_id === clienteActual) {
+          actual.esPropio = true;
+        }
+        porLlave.set(llave, actual);
+      }
+
+      const marcadores = [...porLlave.values()].sort(
+        (a, b) =>
+          Number(b.esMarcadorActual) - Number(a.esMarcadorActual) ||
+          b.cantidad - a.cantidad ||
+          a.goles_local - b.goles_local ||
+          a.goles_visitante - b.goles_visitante,
+      );
+
+      return {
+        partido_id: partido.id,
+        equipo_local: partido.equipo_local,
+        equipo_visitante: partido.equipo_visitante,
+        equipo_local_logo: partido.equipo_local_logo,
+        equipo_visitante_logo: partido.equipo_visitante_logo,
+        estado: partido.estado,
+        fecha: partido.fecha,
+        marcadorOficial: marcadorActual,
+        esReglamentario:
+          partido.estado === "finalizado" && marcadorActual !== null,
+        totalPersonas: apuestasPartido.length,
+        marcadores,
+      };
+    })
+    .filter((p) => p.totalPersonas > 0);
+
+  return { success: true, data: comunidad };
 }
 
 /** Marca una apuesta como pagada o pendiente. Solo admin. */
