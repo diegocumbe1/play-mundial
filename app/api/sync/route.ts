@@ -1,7 +1,8 @@
 import { upsertPartidos } from "@/actions/partidos";
 import { fetchFixtures } from "@/lib/futbol-api";
+import { autocompletarReglamentario } from "@/lib/futbol-api/auto-reglamentario";
+import { hayPartidoActivo } from "@/lib/futbol-api/ventana-activa";
 import { notificarPartidosFinalizados } from "@/lib/push";
-import { createServiceRoleClient } from "@/lib/supabase/server";
 
 /**
  * Sincroniza los partidos del Mundial desde el proveedor hacia Supabase.
@@ -18,33 +19,6 @@ export const dynamic = "force-dynamic";
 // El fetch al proveedor puede reintentar varias veces; damos margen para que
 // la función no muera antes de terminar (Vercel Hobby permite hasta 60s).
 export const maxDuration = 30;
-
-// Ventana en la que un partido se considera "activo" (potencialmente en vivo):
-// desde 10 min antes del saque hasta ~2.5h después (duración real con descanso).
-const MIN_ANTES_SAQUE = 10;
-const MIN_DESPUES_SAQUE = 150;
-
-/**
- * Consulta barata a la BD (sin tocar la API externa): ¿hay algún partido que
- * podría estar en vivo ahora mismo? Sirve para decidir si vale la pena gastar
- * una llamada al proveedor en el modo de polling rápido.
- */
-async function hayPartidoActivo(): Promise<boolean> {
-  const supabase = createServiceRoleClient();
-  const ahora = Date.now();
-  const desde = new Date(ahora - MIN_DESPUES_SAQUE * 60_000).toISOString();
-  const hasta = new Date(ahora + MIN_ANTES_SAQUE * 60_000).toISOString();
-
-  const { count } = await supabase
-    .from("partidos")
-    .select("id", { count: "exact", head: true })
-    .neq("estado", "finalizado")
-    .neq("estado", "cancelado")
-    .gte("fecha", desde)
-    .lte("fecha", hasta);
-
-  return (count ?? 0) > 0;
-}
 
 export async function GET(request: Request) {
   const secret = process.env.CRON_SECRET;
@@ -69,6 +43,10 @@ export async function GET(request: Request) {
       return Response.json({ error: result.error }, { status: 502 });
     }
 
+    // Auto-completar el marcador reglamentario (90') de los finalizados con
+    // flashscore. No gasta cuota si no hay finalizados pendientes de confirmar.
+    const reglamentario = await autocompletarReglamentario().catch(() => null);
+
     // Avisar al admin de partidos recién finalizados con apuestas (idempotente).
     await notificarPartidosFinalizados().catch(() => {});
 
@@ -76,6 +54,7 @@ export async function GET(request: Request) {
       ok: true,
       sincronizados: result.data.count,
       recibidos: partidos.length,
+      reglamentario: reglamentario ?? undefined,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Error desconocido";

@@ -47,8 +47,49 @@ export interface Partido {
   resultado_manual: boolean;
   /** Si el premio del partido ya se le pagó al/los ganador(es). */
   premio_pagado: boolean;
+  /**
+   * Detalle informativo del resultado más allá del 90' (prórroga, penales y
+   * goleadores), reconstruido desde flashscore. NO liquida la polla; solo se
+   * muestra en la UI. `null` si no hay datos de flashscore para el partido.
+   */
+  detalle_flash: DetalleFlash | null;
   created_at: string;
   updated_at: string;
+}
+
+/** Un marcador local/visitante (prórroga o tanda de penales). */
+export interface MarcadorLV {
+  local: number;
+  visitante: number;
+}
+
+/** Un gol con su autor y minuto tal cual lo reporta flashscore. */
+export interface GoleadorFlash {
+  minuto: string; // "45+2", "80", ...
+  team: "home" | "away";
+  jugador: string;
+  /** Gol en contra (autogol). */
+  en_contra: boolean;
+  /** Penal convertido en juego (no de la tanda). */
+  penal: boolean;
+}
+
+/** Detalle del resultado guardado en `partidos.detalle_flash`. */
+export interface DetalleFlash {
+  /**
+   * Marcador final REAL según flashscore (reglamentario + alargue, sin tanda).
+   * Es la fuente de verdad del "final oficial"; puede diferir del que trae el
+   * proveedor gratuito, que a veces guarda un marcador equivocado.
+   */
+  final: MarcadorLV;
+  /** Marcador SOLO del alargue; null si no hubo goles en alargue. */
+  alargue: MarcadorLV | null;
+  /** Marcador de la tanda de penales; null si no hubo tanda. */
+  penales: MarcadorLV | null;
+  /** Goleadores en juego (reglamentario + alargue), en orden cronológico. */
+  goleadores: GoleadorFlash[];
+  /** `match_id` de flashscore del que salió el detalle. */
+  match_id: string;
 }
 
 /** Datos para crear un partido manualmente. */
@@ -203,6 +244,16 @@ export interface PartidoComunidad {
   marcadorOficial: { goles_local: number; goles_visitante: number } | null;
   /** Si el marcador oficial ya es el reglamentario definitivo (→ etiqueta "Reglamentario"). */
   esReglamentario: boolean;
+  /**
+   * Marcador final oficial cuando difiere del reglamentario (hubo prórroga o
+   * penales). `null` si el partido se definió en los 90'. Informativo: no
+   * cuenta para la polla. Solo datos deportivos públicos (sin dinero).
+   */
+  finalOficial: {
+    goles_local: number;
+    goles_visitante: number;
+    penales: MarcadorLV | null;
+  } | null;
   /** Total de personas participando en el partido. */
   totalPersonas: number;
   /** Marcadores agrupados, ordenados por popularidad. */

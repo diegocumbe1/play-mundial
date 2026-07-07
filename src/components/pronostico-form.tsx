@@ -627,7 +627,7 @@ export function PronosticoForm({
 
         {/* Barra de total fija. En mobile se apoya por encima del menú inferior
             (BottomNav); en desktop queda pegada al borde inferior. */}
-        <div className="border-polla-line/70 bg-polla-dark/85 fixed inset-x-0 bottom-[calc(4rem+env(safe-area-inset-bottom))] z-40 border-t backdrop-blur-md sm:bottom-0">
+        <div className="border-polla-line/70 bg-polla-dark/80 fixed inset-x-0 bottom-[calc(var(--bottom-nav-height)+env(safe-area-inset-bottom))] z-40 border-t backdrop-blur-md sm:bottom-0">
           <div className="mx-auto flex max-w-3xl items-center justify-between gap-4 px-4 py-3">
             <div>
               <div className="text-polla-muted text-xs tracking-wide uppercase">

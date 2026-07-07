@@ -75,6 +75,8 @@
  */
 :root,
 .dark {
+  --app-header-height: 3.5rem;
+  --bottom-nav-height: 4rem;
   --background: #0a0a0f;
   --foreground: #ffffff;
   --card: #12121a;

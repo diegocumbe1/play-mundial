@@ -2,11 +2,14 @@ import Image from "next/image";
 import Link from "next/link";
 
 import { Actualizado } from "@/components/actualizado";
+import { DesglosePartido } from "@/components/desglose-partido";
 import { EstadoBadge } from "@/components/estado-badge";
+import { MinutoEnVivo } from "@/components/minuto-en-vivo";
 import { cn } from "@/lib/utils";
 import { formatFechaCorta } from "@/lib/format";
 import { traducirEquipo, traducirLiga, type Idioma } from "@/lib/idioma";
 import { estadoEfectivo } from "@/lib/partido-vivo";
+import { resumenPartido } from "@/lib/resumen-partido";
 import type { Partido } from "@/types";
 
 function Equipo({
@@ -53,7 +56,9 @@ export function PartidoCard({
   const estado = estadoEfectivo(partido);
   const finalizado = estado === "finalizado";
   const enJuego = estado === "en_juego";
-  const hayMarcador = partido.goles_local !== null && partido.goles_visitante !== null;
+  // Final REAL (prefiere flashscore): evita mostrar el marcador equivocado que
+  // a veces trae el proveedor sumando los penales.
+  const marcadorFinal = resumenPartido(partido).final;
   const local = traducirEquipo(partido.equipo_local, idioma);
   const visitante = traducirEquipo(partido.equipo_visitante, idioma);
 
@@ -78,14 +83,14 @@ export function PartidoCard({
         <Equipo nombre={local} logo={partido.equipo_local_logo} align="start" />
 
         <div className="flex shrink-0 flex-col items-center px-1">
-          {hayMarcador ? (
+          {marcadorFinal ? (
             <div className="flex items-baseline gap-2">
               <span className="font-heading text-4xl leading-none text-white tabular-nums sm:text-5xl">
-                {partido.goles_local}
+                {marcadorFinal.local}
               </span>
               <span className="text-polla-muted text-2xl leading-none">–</span>
               <span className="font-heading text-4xl leading-none text-white tabular-nums sm:text-5xl">
-                {partido.goles_visitante}
+                {marcadorFinal.visitante}
               </span>
             </div>
           ) : (
@@ -103,10 +108,19 @@ export function PartidoCard({
         <Equipo nombre={visitante} logo={partido.equipo_visitante_logo} align="end" />
       </div>
 
+      {/* Aclaración reglamentario vs final (solo si hubo prórroga/penales). */}
+      {finalizado && (
+        <DesglosePartido partido={partido} idioma={idioma} className="mt-4" />
+      )}
+
       <div className="border-polla-line/70 mt-4 border-t pt-3 text-center">
         <span className="text-polla-muted text-xs font-medium">
           {enJuego ? (
-            <Actualizado iso={partido.updated_at} />
+            <MinutoEnVivo
+              local={partido.equipo_local}
+              visitante={partido.equipo_visitante}
+              fallback={<Actualizado iso={partido.updated_at} />}
+            />
           ) : (
             formatFechaCorta(partido.fecha)
           )}

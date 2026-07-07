@@ -56,9 +56,9 @@ export function BottomNav({ idioma = "es" }: { idioma?: Idioma }) {
   return (
     <nav
       aria-label="Navegación principal"
-      className="border-polla-line/60 bg-polla-dark/70 fixed inset-x-0 bottom-0 z-50 border-t backdrop-blur-xl [padding-bottom:env(safe-area-inset-bottom)] sm:hidden"
+      className="border-polla-line/60 bg-polla-dark/80 fixed inset-x-0 bottom-0 z-50 h-[calc(var(--bottom-nav-height)+env(safe-area-inset-bottom))] border-t pb-[env(safe-area-inset-bottom)] backdrop-blur-xl sm:hidden"
     >
-      <ul className="mx-auto flex max-w-md items-stretch">
+      <ul className="mx-auto flex h-[var(--bottom-nav-height)] max-w-md items-stretch">
         {items.map((it) => {
           const activo = esActivo(it.href);
           const Icon = it.icon;

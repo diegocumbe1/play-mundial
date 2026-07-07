@@ -95,6 +95,28 @@ function CommunityCard({
         )}
       </div>
 
+      {/* Final oficial (prórroga/penales): informativo, no cuenta para la polla. */}
+      {partido.finalOficial && (
+        <p className="text-polla-muted border-polla-line/50 mt-3 border-t pt-3 text-xs">
+          Final oficial{" "}
+          <span className="font-semibold text-white/80 tabular-nums">
+            {partido.finalOficial.goles_local}-
+            {partido.finalOficial.goles_visitante}
+          </span>
+          {partido.finalOficial.penales && (
+            <>
+              {" "}
+              · Penales{" "}
+              <span className="font-semibold text-white/80 tabular-nums">
+                {partido.finalOficial.penales.local}-
+                {partido.finalOficial.penales.visitante}
+              </span>
+            </>
+          )}{" "}
+          · no cuenta para la polla
+        </p>
+      )}
+
       {/* Lista de marcadores de la comunidad */}
       <div className="border-polla-line/50 mt-4 border-t pt-4">
         <div className="text-polla-muted mb-3 flex items-center justify-between text-[0.7rem] font-semibold tracking-widest uppercase">

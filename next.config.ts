@@ -7,6 +7,8 @@ const nextConfig: NextConfig = {
       { protocol: "https", hostname: "media.api-sports.io" },
       // Escudos de football-data.org (muchos en formato SVG).
       { protocol: "https", hostname: "crests.football-data.org" },
+      // Escudos/banderas de flashscore (vivo, bracket).
+      { protocol: "https", hostname: "static.flashscore.com" },
     ],
     // football-data.org sirve escudos como SVG; next/image los rechaza por
     // defecto. Las URLs son de un dominio confiable y de solo lectura.

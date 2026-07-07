@@ -37,6 +37,7 @@ import { PremioPagoToggle } from "@/components/admin/premio-pago-toggle";
 import { PremioWhatsappButton } from "@/components/admin/premio-whatsapp-button";
 import { TelefonoCopiable } from "@/components/admin/telefono-copiable";
 import { ResultadoForm } from "@/components/admin/resultado-form";
+import { DesglosePartido } from "@/components/desglose-partido";
 import { PageRefreshButton } from "@/components/page-refresh-button";
 import {
   StatDetalleModal,
@@ -273,6 +274,10 @@ function PartidoApuestasCard({ partido: p, apuestas: lista, r, estado }: ItemPar
               />
             )}
           </div>
+        )}
+        {/* Contexto: si hubo prórroga/penales, el final oficial difiere del 90'. */}
+        {finalizado && (
+          <DesglosePartido partido={p} className="mx-4 my-2.5" />
         )}
         <div className="divide-polla-line/40 divide-y">
           {finalizado && (
@@ -681,7 +686,7 @@ export default async function AdminPage({
 
   return (
     <div className="flex min-h-full flex-1 flex-col">
-      <header className="bg-polla-dark/60 border-polla-line/70 sticky top-0 z-40 border-b backdrop-blur-md">
+      <header className="bg-polla-dark/80 border-polla-line/70 sticky top-0 z-40 border-b pt-[env(safe-area-inset-top)] backdrop-blur-md sm:pt-0">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-3">
           <Link
             href="/"

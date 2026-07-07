@@ -17,7 +17,10 @@ export function TelefonoCopiable({
   className?: string;
 }) {
   const [copiado, setCopiado] = useState(false);
-  const numero = telefono.replace(/\D/g, "");
+  const digitos = telefono.replace(/\D/g, "");
+  const numero = digitos.startsWith("57") && digitos.length > 10
+    ? digitos.slice(2)
+    : digitos;
 
   async function copiar() {
     try {

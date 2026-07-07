@@ -50,66 +50,72 @@ export function SiteHeader({
   const links = LINKS[idioma];
 
   return (
-    <header className="bg-polla-dark/60 border-polla-line/70 sticky top-0 z-50 border-b backdrop-blur-md">
-      <div className="mx-auto flex max-w-5xl items-center justify-between gap-4 px-4 py-3">
-        <Link href="/" className="flex min-w-0 items-center gap-2">
-          <Trophy className="text-polla-gold size-6 shrink-0" />
-          <span className="font-heading text-polla-gold truncate text-xl leading-none tracking-wide sm:text-2xl">
-            Polla Mundial 2026
-          </span>
-        </Link>
-
-        <div className="flex items-center gap-3">
-          {live && (
-            <span className="bg-polla-red/15 text-polla-red ring-polla-red/40 animate-live hidden items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-bold tracking-wide uppercase ring-1 sm:inline-flex">
-              <span className="bg-polla-red size-1.5 animate-pulse rounded-full" />
-              {idioma === "en" ? "Live" : "En vivo"}
+    <>
+      <header className="bg-polla-dark/80 border-polla-line/70 fixed inset-x-0 top-0 z-50 border-b pt-[env(safe-area-inset-top)] backdrop-blur-md sm:sticky sm:pt-0">
+        <div className="mx-auto flex h-[var(--app-header-height)] max-w-5xl items-center justify-between gap-4 px-4 sm:h-auto sm:py-3">
+          <Link href="/" className="flex min-w-0 items-center gap-2">
+            <Trophy className="text-polla-gold size-6 shrink-0" />
+            <span className="font-heading text-polla-gold truncate text-xl leading-none tracking-wide sm:text-2xl">
+              Polla Mundial 2026
             </span>
-          )}
+          </Link>
 
-          <nav className="hidden items-center gap-1 text-sm sm:flex">
-            {links.map((l) => {
-              const active = pathname === l.href;
-              return (
-                <Link
-                  key={l.href}
-                  href={l.href}
+          <div className="flex items-center gap-3">
+            {live && (
+              <span className="bg-polla-red/15 text-polla-red ring-polla-red/40 animate-live hidden items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-bold tracking-wide uppercase ring-1 sm:inline-flex">
+                <span className="bg-polla-red size-1.5 animate-pulse rounded-full" />
+                {idioma === "en" ? "Live" : "En vivo"}
+              </span>
+            )}
+
+            <nav className="hidden items-center gap-1 text-sm sm:flex">
+              {links.map((l) => {
+                const active = pathname === l.href;
+                return (
+                  <Link
+                    key={l.href}
+                    href={l.href}
+                    className={cn(
+                      "rounded-lg px-3 py-1.5 font-medium transition-colors",
+                      active
+                        ? "text-polla-gold bg-white/5"
+                        : "text-polla-muted hover:text-white",
+                    )}
+                  >
+                    {l.label}
+                  </Link>
+                );
+              })}
+            </nav>
+
+            <div className="border-polla-line flex items-center rounded-lg border p-0.5">
+              {(["es", "en"] as const).map((lang) => (
+                <button
+                  key={lang}
+                  type="button"
+                  onClick={() => cambiarIdioma(lang)}
+                  disabled={pending}
+                  aria-pressed={idioma === lang}
                   className={cn(
-                    "rounded-lg px-3 py-1.5 font-medium transition-colors",
-                    active
-                      ? "text-polla-gold bg-white/5"
+                    "rounded-md px-2 py-1 text-xs font-bold transition-colors",
+                    idioma === lang
+                      ? "bg-polla-gold text-polla-dark"
                       : "text-polla-muted hover:text-white",
                   )}
                 >
-                  {l.label}
-                </Link>
-              );
-            })}
-          </nav>
+                  {lang.toUpperCase()}
+                </button>
+              ))}
+            </div>
 
-          <div className="border-polla-line flex items-center rounded-lg border p-0.5">
-            {(["es", "en"] as const).map((lang) => (
-              <button
-                key={lang}
-                type="button"
-                onClick={() => cambiarIdioma(lang)}
-                disabled={pending}
-                aria-pressed={idioma === lang}
-                className={cn(
-                  "rounded-md px-2 py-1 text-xs font-bold transition-colors",
-                  idioma === lang
-                    ? "bg-polla-gold text-polla-dark"
-                    : "text-polla-muted hover:text-white",
-                )}
-              >
-                {lang.toUpperCase()}
-              </button>
-            ))}
+            <PageRefreshButton />
           </div>
-
-          <PageRefreshButton />
         </div>
-      </div>
-    </header>
+      </header>
+      <div
+        aria-hidden="true"
+        className="h-[calc(var(--app-header-height)+env(safe-area-inset-top))] sm:hidden"
+      />
+    </>
   );
 }

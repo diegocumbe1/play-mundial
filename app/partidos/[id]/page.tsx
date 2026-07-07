@@ -6,7 +6,9 @@ import { ArrowLeft, ArrowRight, Ticket } from "lucide-react";
 import { getApuestas } from "@/actions/apuestas";
 import { getPartidos } from "@/actions/partidos";
 import { Actualizado } from "@/components/actualizado";
+import { DesglosePartido } from "@/components/desglose-partido";
 import { EstadoBadge } from "@/components/estado-badge";
+import { MinutoEnVivo } from "@/components/minuto-en-vivo";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import { formatFecha } from "@/lib/format";
@@ -14,6 +16,7 @@ import { traducirEquipo, traducirLiga } from "@/lib/idioma";
 import { getIdioma } from "@/lib/idioma-server";
 import { estadoEfectivo } from "@/lib/partido-vivo";
 import { calcularResultadoPartido, formatCOP } from "@/lib/polla";
+import { resumenPartido } from "@/lib/resumen-partido";
 import { cn } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -63,8 +66,9 @@ export default async function PartidoDetallePage({
     (a) => a.partido_id === id,
   );
   const r = calcularResultadoPartido(partido, apuestas);
-  const hayMarcador =
-    partido.goles_local !== null && partido.goles_visitante !== null;
+  // Final REAL (prefiere flashscore): corrige el marcador equivocado que a veces
+  // trae el proveedor sumando los penales al resultado.
+  const marcadorFinal = resumenPartido(partido).final;
   // Estado derivado de la hora (el del proveedor gratuito es inestable).
   const estado = estadoEfectivo(partido);
   const enJuego = estado === "en_juego";
@@ -96,9 +100,9 @@ export default async function PartidoDetallePage({
               logo={partido.equipo_local_logo}
             />
             <div className="flex shrink-0 flex-col items-center">
-              {hayMarcador ? (
+              {marcadorFinal ? (
                 <span className="font-heading text-5xl text-white tabular-nums sm:text-6xl">
-                  {partido.goles_local}–{partido.goles_visitante}
+                  {marcadorFinal.local}–{marcadorFinal.visitante}
                 </span>
               ) : (
                 <span className="font-heading text-polla-gold text-4xl">VS</span>
@@ -112,7 +116,11 @@ export default async function PartidoDetallePage({
 
           <p className="text-polla-muted mt-6 text-center text-sm">
             {enJuego ? (
-              <Actualizado iso={partido.updated_at} />
+              <MinutoEnVivo
+                local={partido.equipo_local}
+                visitante={partido.equipo_visitante}
+                fallback={<Actualizado iso={partido.updated_at} />}
+              />
             ) : (
               formatFecha(partido.fecha)
             )}
@@ -154,6 +162,16 @@ export default async function PartidoDetallePage({
             </div>
           )}
         </div>
+
+        {/* Desglose del resultado: 90' / prórroga / penales + goleadores. */}
+        {finalizado && (
+          <DesglosePartido
+            partido={partido}
+            idioma={idioma}
+            variante="completo"
+            className="mt-6"
+          />
+        )}
 
         {/* Fichas por equipo */}
         <h2 className="font-heading mt-10 mb-4 text-2xl tracking-wide text-white">

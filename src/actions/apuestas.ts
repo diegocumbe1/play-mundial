@@ -5,6 +5,7 @@ import { z } from "zod";
 
 import { getUser } from "@/lib/auth";
 import { getMarcadorActual } from "@/lib/marcador-reglamentario";
+import { resumenPartido } from "@/lib/resumen-partido";
 import { enviarPushAdmins } from "@/lib/push";
 import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
 import { calcularResultadoPartido } from "@/lib/polla";
@@ -512,6 +513,7 @@ export async function getMarcadoresComunidad(
     .map((partido): PartidoComunidad => {
       const apuestasPartido = apuestasPorPartido.get(partido.id) ?? [];
       const marcadorActual = getMarcadorActual(partido);
+      const resumen = resumenPartido(partido);
 
       const porLlave = new Map<string, PartidoComunidad["marcadores"][number]>();
       for (const apuesta of apuestasPartido) {
@@ -552,6 +554,14 @@ export async function getMarcadoresComunidad(
         marcadorOficial: marcadorActual,
         esReglamentario:
           partido.estado === "finalizado" && marcadorActual !== null,
+        finalOficial:
+          partido.estado === "finalizado" && resumen.finalDifiere && resumen.final
+            ? {
+                goles_local: resumen.final.local,
+                goles_visitante: resumen.final.visitante,
+                penales: resumen.penales,
+              }
+            : null,
         totalPersonas: apuestasPartido.length,
         marcadores,
       };
@@ -594,9 +604,53 @@ export async function marcarPago(
     return { success: false, error: error.message };
   }
 
+  // Aviso a TODOS los admins de que un pago fue aprobado. Útil cuando dos
+  // personas usan el perfil admin: evita que el otro lo apruebe de nuevo.
+  if (pagado) {
+    await notificarPagoAprobado(supabase, id, metodoPago).catch(() => {});
+  }
+
   revalidatePath("/admin");
   revalidatePath("/resultados");
   return { success: true, data: undefined };
+}
+
+/** Notifica a los admins que se aprobó el pago de una apuesta. No bloqueante. */
+async function notificarPagoAprobado(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  apuestaId: string,
+  metodoPago: MetodoPago | null,
+): Promise<void> {
+  const { data: apuesta } = await supabase
+    .from("apuestas")
+    .select("nombre, partido_id")
+    .eq("id", apuestaId)
+    .single();
+  if (!apuesta) return;
+
+  const { data: partido } = await supabase
+    .from("partidos")
+    .select("equipo_local, equipo_visitante")
+    .eq("id", apuesta.partido_id)
+    .single();
+
+  const versus = partido
+    ? `${partido.equipo_local} vs ${partido.equipo_visitante}`
+    : "un partido";
+  const medio =
+    metodoPago === "efectivo"
+      ? "efectivo"
+      : metodoPago === "transferencia"
+        ? "transferencia"
+        : null;
+
+  await enviarPushAdmins({
+    title: "Pago aprobado ✅",
+    body: `${apuesta.nombre} · ${versus}${medio ? ` · ${medio}` : ""}`,
+    url: "/admin",
+    // Mismo tag por apuesta: si se re-aprueba, reemplaza en vez de acumular.
+    tag: `pago-${apuestaId}`,
+  });
 }
 
 /**
