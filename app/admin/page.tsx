@@ -175,17 +175,37 @@ function PartidoApuestasCard({ partido: p, apuestas: lista, r, estado }: ItemPar
     ]
       .filter((linea) => linea !== null)
       .join("\n");
-  const notasPago: NotaPagoPartido[] = lista
-    .filter((a) => a.nota_pago?.trim())
-    .map((a) => ({
-      id: a.id,
+  // Observaciones: comentarios dejados al recibir el pago (nota_pago) y al
+  // pagar el premio al ganador (nota_premio). Visibles en cualquier estado.
+  const notasPago: NotaPagoPartido[] = lista.flatMap((a) => {
+    const base = {
       nombre: a.nombre,
       telefono: a.telefono,
       marcador: `${a.goles_local}–${a.goles_visitante}`,
-      metodoPago: a.metodo_pago,
-      pagado: a.pagado,
-      nota: a.nota_pago!.trim(),
-    }));
+    };
+    const items: NotaPagoPartido[] = [];
+    if (a.nota_pago?.trim()) {
+      items.push({
+        ...base,
+        id: `${a.id}-pago`,
+        tipo: "pago",
+        metodoPago: a.metodo_pago,
+        pagado: a.pagado,
+        nota: a.nota_pago.trim(),
+      });
+    }
+    if (a.nota_premio?.trim()) {
+      items.push({
+        ...base,
+        id: `${a.id}-premio`,
+        tipo: "premio",
+        metodoPago: a.metodo_pago,
+        pagado: a.pagado,
+        nota: a.nota_premio.trim(),
+      });
+    }
+    return items;
+  });
 
   return (
     <details className="group bg-polla-surface ring-polla-line overflow-hidden rounded-2xl ring-1">
@@ -227,6 +247,18 @@ function PartidoApuestasCard({ partido: p, apuestas: lista, r, estado }: ItemPar
 
       {/* Detalle */}
       <div className="border-polla-line/60 border-t">
+        {/* Observaciones de pago/premio: visibles en cualquier estado, arriba. */}
+        {notasPago.length > 0 && (
+          <div className="border-polla-line/60 flex items-center justify-between gap-2 border-b px-4 py-2.5">
+            <span className="text-polla-muted text-xs">
+              Observaciones ({notasPago.length})
+            </span>
+            <NotasPagoModal
+              partido={`${p.equipo_local} vs ${p.equipo_visitante}`}
+              notas={notasPago}
+            />
+          </div>
+        )}
         {finalizado && (
           <div className="bg-polla-elevated/40 flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 text-xs">
             <span className="text-polla-muted">
@@ -267,12 +299,6 @@ function PartidoApuestasCard({ partido: p, apuestas: lista, r, estado }: ItemPar
                 </span>
               )}
             </span>
-            {notasPago.length > 0 && (
-              <NotasPagoModal
-                partido={`${p.equipo_local} vs ${p.equipo_visitante}`}
-                notas={notasPago}
-              />
-            )}
           </div>
         )}
         {/* Contexto: si hubo prórroga/penales, el final oficial difiere del 90'. */}
