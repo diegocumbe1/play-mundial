@@ -38,13 +38,28 @@ if [ -z "$REF" ]; then
   exit 1
 fi
 
-# --- Parámetros de conexión (con overrides por env) ---------------------------
+# --- Lee un valor de .env.local (sin exportarlo al entorno global) -----------
+env_val() {
+  grep -E "^$1=" .env.local 2>/dev/null | head -1 | cut -d= -f2- | tr -d '"' | tr -d "'"
+}
+
+# --- Parámetros de conexión ---------------------------------------------------
+# Prioridad: variable ya exportada en la shell  >  valor en .env.local  >  default.
+# En .env.local puedes definir (recomendado, así corres solo `npm run migrate`):
+#   SUPABASE_DB_HOST=aws-0-<region>.pooler.supabase.com
+#   SUPABASE_DB_PORT=5432
+#   SUPABASE_DB_USER=postgres.<ref>
+#   SUPABASE_DB_PASSWORD=...
+PGHOST="${PGHOST:-$(env_val SUPABASE_DB_HOST)}"
 export PGHOST="${PGHOST:-db.$REF.supabase.co}"
+PGPORT="${PGPORT:-$(env_val SUPABASE_DB_PORT)}"
 export PGPORT="${PGPORT:-5432}"
+PGUSER="${PGUSER:-$(env_val SUPABASE_DB_USER)}"
 export PGUSER="${PGUSER:-postgres}"
 export PGDATABASE="${PGDATABASE:-postgres}"
 
 # --- Contraseña ---------------------------------------------------------------
+PGPASSWORD="${PGPASSWORD:-$(env_val SUPABASE_DB_PASSWORD)}"
 if [ -z "${PGPASSWORD:-}" ]; then
   printf "Contraseña de la base de datos (Supabase → Settings → Database): "
   read -rs PGPASSWORD
@@ -52,7 +67,7 @@ if [ -z "${PGPASSWORD:-}" ]; then
 fi
 export PGPASSWORD
 
-echo "▶ Conectando a $PGHOST:$PGPORT como $PGUSER…"
+echo "Conectando a ${PGHOST}:${PGPORT} como ${PGUSER} ..."
 
 # --- Aplicar migraciones en orden --------------------------------------------
 shopt -s nullglob

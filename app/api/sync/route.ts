@@ -29,6 +29,12 @@ export async function GET(request: Request) {
     }
   }
 
+  // Polla archivada: el sync no consulta al proveedor (ni football-data ni
+  // flashscore). Deja el cron como no-op para no gastar cuota ni egress.
+  if (process.env.POLLA_ACTIVA !== "true") {
+    return Response.json({ ok: true, omitido: "polla inactiva" });
+  }
+
   // En modo "vivo" (cron rápido) saltamos el fetch si no hay nada en juego.
   const modo = new URL(request.url).searchParams.get("modo");
   if (modo === "live" && !(await hayPartidoActivo())) {

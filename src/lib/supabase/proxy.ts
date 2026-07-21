@@ -38,12 +38,26 @@ export async function updateSession(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  // Protege /admin: sin sesión -> redirige al login.
   const { pathname } = request.nextUrl;
-  const esRutaAdmin =
-    pathname.startsWith("/admin") && pathname !== "/admin/login";
 
-  if (esRutaAdmin && !user) {
+  // El Mundial (polla) ya terminó. Con POLLA_ACTIVA != "true" se ocultan sus
+  // rutas de juego y se redirige a la portada (la vertical de rifas). No borra datos.
+  const pollaActiva = process.env.POLLA_ACTIVA === "true";
+  const rutasPolla = ["/jugar", "/resultados", "/comunidad"];
+  if (!pollaActiva && rutasPolla.some((r) => pathname.startsWith(r))) {
+    const url = request.nextUrl.clone();
+    url.pathname = "/";
+    url.search = "";
+    return NextResponse.redirect(url);
+  }
+
+  // Protege /admin y /superadmin: sin sesión -> redirige al login. El rol de
+  // superadmin se valida en la propia página (el proxy es solo la 1ra barrera).
+  const esRutaProtegida =
+    (pathname.startsWith("/admin") && pathname !== "/admin/login") ||
+    pathname.startsWith("/superadmin");
+
+  if (esRutaProtegida && !user) {
     const url = request.nextUrl.clone();
     const next = `${request.nextUrl.pathname}${request.nextUrl.search}`;
     url.pathname = "/admin/login";

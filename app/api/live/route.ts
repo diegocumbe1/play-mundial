@@ -42,6 +42,14 @@ const getVivoCacheado = unstable_cache(
 );
 
 export async function GET() {
+  // Polla archivada: no se consulta a flashscore ni se sirve vivo (0 cuota).
+  if (process.env.POLLA_ACTIVA !== "true") {
+    return Response.json({
+      activo: false,
+      actualizado: Date.now(),
+      partidos: [],
+    } satisfies RespuestaVivo);
+  }
   try {
     return Response.json(await getVivoCacheado());
   } catch {

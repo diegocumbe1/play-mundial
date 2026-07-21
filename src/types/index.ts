@@ -264,3 +264,208 @@ export interface PartidoComunidad {
 export type ActionResult<T = void> =
   | { success: true; data: T }
   | { success: false; error: string };
+
+// ===========================================================================
+// Vertical "Rifas" — plataforma multi-tenant. Ver docs/plan-rifas.md
+// ===========================================================================
+
+/** Rol de una membresía dentro de un tenant. */
+export type RolMembership = "superadmin" | "owner";
+/** Plan de cobro de un tenant / de una rifa concreta. */
+export type PlanTenant = "gratis" | "pago_rifa" | "suscripcion";
+/** Tipo de rifa: sorteo propio o atada a una lotería. */
+export type TipoRifa = "interna" | "loteria";
+/** Ciclo de vida de una rifa. */
+export type EstadoRifa =
+  | "borrador"
+  | "activa"
+  | "cerrada"
+  | "sorteada"
+  | "pagada"
+  | "cancelada";
+/** Con qué cifras de la lotería se gana. */
+export type ModoCifras = "primeras_dos" | "ultimas_dos" | "ambas";
+/** Estado de una boleta (número). */
+export type EstadoBoleta = "libre" | "reservado" | "pagado";
+/** Criterio de un premio de lotería. */
+export type CriterioPremio = "primeras_2" | "ultimas_2";
+/** Estado de un cobro en el ledger. */
+export type EstadoCobro = "pendiente" | "pagado" | "anulado";
+
+/** Organizador (dueño de sus rifas). */
+export interface Tenant {
+  id: string;
+  nombre: string;
+  slug: string;
+  estado: "activo" | "archivado";
+  plan_actual: PlanTenant;
+  suscripcion_vence_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Vínculo auth.user ↔ tenant con rol. */
+export interface Membership {
+  id: string;
+  user_id: string;
+  tenant_id: string;
+  rol: RolMembership;
+  created_at: string;
+}
+
+/** Datos de cobro que configura cada tenant (reemplaza POLLA.banco). */
+export interface TenantPagoConfig {
+  tenant_id: string;
+  /** Número/cuenta Nequi. */
+  nequi_llave: string | null;
+  /** Llave Bre-B / alias (otra forma de transferencia). */
+  llave: string | null;
+  titular: string | null;
+  qr_url: string | null;
+  whatsapp: string | null;
+  mensaje_qr: string | null;
+  updated_at: string;
+}
+
+/** Precios y reglas de la capa gratuita, editables por el superadmin. */
+export interface PlataformaConfig {
+  moneda: string;
+  precio_rifa_100: number;
+  precio_rifa_500: number;
+  precio_suscripcion_mes: number;
+  free_rifas_por_mes: number;
+  free_rifas_total: number;
+  free_max_numeros: number;
+  updated_at: string;
+}
+
+/** Una rifa configurable. */
+export interface Rifa {
+  id: string;
+  tenant_id: string;
+  nombre: string;
+  descripcion: string | null;
+  tipo: TipoRifa;
+  estado: EstadoRifa;
+  precio_boleta: number;
+  cantidad_numeros: number;
+  formato_cifras: 2 | 3;
+  solo_pagadas_juegan: boolean;
+  slug_publico: string;
+  /** Preset de tema visual (ver src/lib/temas-rifa). */
+  tema: string;
+  loteria: string | null;
+  fecha_loteria: string | null;
+  modo_cifras: ModoCifras | null;
+  resultado_loteria: string | null;
+  fecha_apertura: string | null;
+  fecha_cierre: string | null;
+  fecha_sorteo: string | null;
+  cobro_tipo: PlanTenant | null;
+  activada_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Un premio de la rifa (por valor o producto). */
+export interface Premio {
+  id: string;
+  rifa_id: string;
+  tipo: "valor" | "producto";
+  descripcion: string;
+  valor: number | null;
+  cantidad_ganadores: number;
+  criterio: CriterioPremio | null;
+  orden: number;
+  created_at: string;
+}
+
+/** Una boleta (número) — corazón del módulo financiero. */
+export interface Boleta {
+  id: string;
+  rifa_id: string;
+  tenant_id: string;
+  numero: number;
+  estado: EstadoBoleta;
+  comprador_nombre: string | null;
+  comprador_telefono: string | null;
+  cliente_id: string | null;
+  metodo_pago: MetodoPago | null;
+  nota: string | null;
+  consentimiento_datos: boolean;
+  pagado_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Un ganador resuelto de la rifa. */
+export interface Ganador {
+  id: string;
+  rifa_id: string;
+  premio_id: string;
+  boleta_id: string | null;
+  numero: number;
+  mensaje_felicitacion: string | null;
+  publicado: boolean;
+  created_at: string;
+}
+
+/**
+ * Boleta en vistas PÚBLICAS. Nunca expone comprador/teléfono NI el estado real:
+ * al público un número tomado se ve solo como `ocupado` (no revela quién no pagó).
+ */
+export interface BoletaPublica {
+  numero: number;
+  ocupado: boolean;
+}
+
+/** Ganador en vistas públicas: número + nombre enmascarado, sin datos sensibles. */
+export interface GanadorPublico {
+  numero: number;
+  nombre_enmascarado: string;
+  premio: string;
+  mensaje_felicitacion: string | null;
+}
+
+/** Métricas financieras del dashboard de una rifa. */
+export interface DashboardRifa {
+  total: number;
+  vendidas: number;
+  pagadas: number;
+  pendientes: number;
+  libres: number;
+  recaudado: number;
+  esperadoTotal: number;
+  pctCumplimiento: number;
+  pctVendido: number;
+}
+
+/** Un cobro del ledger (prepago manual). */
+export interface Cobro {
+  id: string;
+  tenant_id: string;
+  rifa_id: string | null;
+  tipo: PlanTenant;
+  monto: number;
+  estado: EstadoCobro;
+  periodo: string | null;
+  comprobante: string | null;
+  created_at: string;
+  pagado_at: string | null;
+}
+
+/** Datos para crear/editar una rifa desde el backoffice. */
+export interface RifaInput {
+  nombre: string;
+  descripcion?: string | null;
+  tipo: TipoRifa;
+  precio_boleta: number;
+  cantidad_numeros: number;
+  formato_cifras: 2 | 3;
+  solo_pagadas_juegan: boolean;
+  tema?: string;
+  loteria?: string | null;
+  fecha_loteria?: string | null;
+  modo_cifras?: ModoCifras | null;
+  fecha_sorteo?: string | null;
+}

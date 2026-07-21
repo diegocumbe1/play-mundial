@@ -33,7 +33,7 @@ export default async function AdminLoginPage({
             <Trophy className="text-polla-gold size-7" />
           </div>
           <h1 className="font-heading text-polla-gold text-3xl tracking-wide">
-            Polla Mundial 2026
+            Ingreso al panel
           </h1>
           <p className="text-polla-muted text-sm">Panel de administración</p>
         </div>
