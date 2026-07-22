@@ -92,7 +92,7 @@ function Modulo({
   return (
     <Link
       href={href}
-      className="border-border hover:border-primary/60 hover:bg-muted/40 group flex flex-col gap-2 rounded-2xl border p-5 transition-colors"
+      className="tap-card border-border hover:border-primary/60 hover:bg-muted/40 group flex flex-col gap-2 rounded-2xl border p-5 transition-colors"
     >
       <div className="bg-primary/10 text-primary inline-flex size-10 items-center justify-center rounded-xl">
         {icon}

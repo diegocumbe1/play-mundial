@@ -33,7 +33,7 @@ export function GrillaAdmin({
           const b = porNumero.get(n);
           const estado = b?.estado ?? "libre";
           const base =
-            "flex aspect-square w-full items-center justify-center rounded-md text-[10px] font-bold tabular-nums transition-colors sm:text-xs";
+            "tap-scale flex aspect-square w-full items-center justify-center rounded-md text-[10px] font-bold tabular-nums transition-colors sm:text-xs";
           const cls =
             estado === "pagado"
               ? "bg-emerald-500/20 text-emerald-700 line-through decoration-emerald-600/60 dark:text-emerald-300"

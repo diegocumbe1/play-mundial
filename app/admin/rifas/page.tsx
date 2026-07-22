@@ -52,7 +52,7 @@ export default async function RifasPage() {
             <li key={r.id}>
               <Link
                 href={`/admin/rifas/${r.id}`}
-                className="border-border hover:bg-muted/50 flex items-center justify-between gap-3 rounded-xl border p-4 transition-colors"
+                className="tap-card border-border hover:bg-muted/50 flex items-center justify-between gap-3 rounded-xl border p-4 transition-colors"
               >
                 <div className="min-w-0">
                   <p className="truncate font-semibold">{r.nombre}</p>

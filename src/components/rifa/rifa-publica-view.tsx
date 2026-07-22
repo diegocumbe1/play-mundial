@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
-import { Check, Copy, MessageCircle, PartyPopper, Ticket, Trophy } from "lucide-react";
+import { Check, Copy, Loader2, MessageCircle, PartyPopper, Ticket, Trophy } from "lucide-react";
 import { toast } from "sonner";
 
 import { getRifaPublica, reservarNumeros, type RifaPublica } from "@/actions/rifas";
@@ -258,7 +258,7 @@ export function RifaPublicaView({
         <div className="mb-2 grid grid-cols-10 gap-1">
           {grilla.map((c) => {
             const sel = seleccion.has(c.numero);
-            const base = "flex aspect-square w-full items-center justify-center rounded-md text-[10px] font-bold tabular-nums transition-colors sm:text-xs";
+            const base = "tap-scale flex aspect-square w-full items-center justify-center rounded-md text-[10px] font-bold tabular-nums transition-colors sm:text-xs";
             const cls = c.ocupado
               ? "line-through cursor-not-allowed bg-[var(--rifa-ocupado)] text-[var(--rifa-ocupado-ink)]"
               : sel
@@ -364,8 +364,11 @@ export function RifaPublicaView({
             <Button
               disabled={pending || !nombre.trim() || !telefono.trim() || !acepto}
               onClick={reservar}
+              aria-busy={pending}
+              className="w-full"
             >
-              Confirmar reserva
+              {pending && <Loader2 className="size-4 animate-spin" />}
+              {pending ? "Reservando…" : "Confirmar reserva"}
             </Button>
           </DialogFooter>
         </DialogContent>

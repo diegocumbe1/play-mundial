@@ -196,7 +196,7 @@ export function ParticipantesLista({
                     onClick={() => setBoletaSel(b)}
                     title="Ver / cambiar estado"
                     className={
-                      "inline-flex items-center rounded-md px-2 py-0.5 text-xs font-bold tabular-nums transition-opacity hover:opacity-80 " +
+                      "tap-scale inline-flex items-center rounded-md px-2 py-0.5 text-xs font-bold tabular-nums transition-opacity hover:opacity-80 " +
                       (b.estado === "pagado"
                         ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
                         : "bg-amber-500/15 text-amber-700 dark:text-amber-300")

@@ -240,3 +240,59 @@
       0 0 24px -2px rgba(245, 197, 24, 0.5);
   }
 }
+
+/* ===========================================================================
+   Feedback táctil (mobile-first)
+   El usuario debe SENTIR que el tap registró; si no, vuelve a tocar y se
+   generan acciones dobles. Se elimina el flash azul del navegador y el delay
+   de 300ms, y se responde con un hundido inmediato.
+   =========================================================================== */
+a,
+button,
+[role="button"],
+label,
+select,
+summary {
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+/* Respuesta inmediata al presionar (solo en dispositivos táctiles / al activar) */
+@media (hover: none) {
+  a:active,
+  button:not(:disabled):active,
+  [role="button"]:not([aria-disabled="true"]):active {
+    opacity: 0.72;
+    transition: opacity 60ms ease-out;
+  }
+}
+
+/* Elementos "tocables" grandes (celdas de la grilla, tarjetas): hundido sutil */
+.tap-scale {
+  transition: transform 90ms ease-out;
+}
+.tap-scale:active {
+  transform: scale(0.95);
+}
+.tap-card {
+  transition: transform 90ms ease-out;
+}
+.tap-card:active {
+  transform: scale(0.985);
+}
+
+/* Mientras una acción está en curso, el cursor y la opacidad lo comunican */
+[aria-busy="true"] {
+  cursor: progress;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tap-scale,
+  .tap-card {
+    transition: none;
+  }
+  .tap-scale:active,
+  .tap-card:active {
+    transform: none;
+  }
+}
