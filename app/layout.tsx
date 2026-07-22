@@ -31,14 +31,17 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Polla Mundial 2026",
+  title: {
+    default: "Rifas — organiza y vende tu rifa",
+    template: "%s · Rifas",
+  },
   description:
-    "Pronostica. Compite. Gana. El que más acierte el marcador exacto se lleva el premio del Mundial 2026.",
+    "Crea tu rifa en minutos, comparte un enlace que se actualiza solo y lleva el control de quién pagó. Con sorteo propio o por lotería.",
 };
 
 export const viewport: Viewport = {
   colorScheme: "dark",
-  themeColor: "#0a0a0f",
+  themeColor: "#0F1115",
   viewportFit: "cover",
 };
 
