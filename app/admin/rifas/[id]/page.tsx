@@ -3,18 +3,20 @@ import { notFound } from "next/navigation";
 import { ArrowLeft, Pencil } from "lucide-react";
 
 import { getRifa } from "@/actions/rifas";
-import { getMembership } from "@/lib/auth";
-import { getMiPagoConfig } from "@/actions/tenants";
+import { esSuperadmin, getMembership } from "@/lib/auth";
+import { getMiPagoConfig, getTenants } from "@/actions/tenants";
 import { calcularDashboard, formatCOP } from "@/lib/rifa";
 import { formatFechaCO } from "@/lib/fecha-co";
 import { buttonVariants } from "@/components/ui/button";
 import { EstadoRifaBadge } from "@/components/rifa/estado-rifa-badge";
 import { GrillaAdmin } from "@/components/rifa/grilla-admin";
+import { PanelFinanciero } from "@/components/rifa/panel-financiero";
 import { SorteoPanel } from "@/components/rifa/sorteo-panel";
 import { ActivarRifaButton } from "@/components/rifa/activar-rifa-button";
 import { ShareRifa } from "@/components/rifa/share-rifa";
 import { PagoConfigForm } from "@/components/rifa/pago-config-form";
-import { CerrarRifaButton } from "@/components/rifa/cerrar-rifa-button";
+import { EstadoRifaControl } from "@/components/rifa/estado-rifa-control";
+import { ReasignarRifa } from "@/components/rifa/reasignar-rifa";
 
 export const dynamic = "force-dynamic";
 
@@ -37,6 +39,14 @@ export default async function RifaDetallePage({
   const pagoRes = await getMiPagoConfig();
   const pago = pagoRes.success ? pagoRes.data : null;
   const pagoIncompleto = !pago?.nequi_llave && !pago?.qr_url;
+
+  // Solo el superadmin puede transferir la rifa a otro organizador.
+  const superadmin = await esSuperadmin();
+  const tenantsRes = superadmin ? await getTenants() : null;
+  const tenants = tenantsRes?.success
+    ? tenantsRes.data.map((t) => ({ id: t.id, nombre: t.nombre }))
+    : [];
+  const tenantActual = tenants.find((t) => t.id === rifa.tenant_id);
 
   const puedeSortear = rifa.estado === "activa" || rifa.estado === "cerrada";
   const puedeEditar = !["sorteada", "pagada", "cancelada"].includes(rifa.estado);
@@ -71,7 +81,7 @@ export default async function RifaDetallePage({
             </Link>
           )}
           {rifa.estado === "borrador" && <ActivarRifaButton rifaId={rifa.id} />}
-          {rifa.estado === "activa" && <CerrarRifaButton rifaId={rifa.id} />}
+          <EstadoRifaControl rifaId={rifa.id} estado={rifa.estado} />
         </div>
       </header>
 
@@ -91,16 +101,11 @@ export default async function RifaDetallePage({
           {/* Enlace público */}
           <section className="border-border mb-6 rounded-2xl border p-4">
             <p className="mb-2 text-sm font-semibold">Enlace público</p>
-            <ShareRifa slug={rifa.slug_publico} />
+            <ShareRifa slug={rifa.slug_publico} nombre={rifa.nombre} />
           </section>
 
-          {/* Dashboard financiero */}
-          <section className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <Stat label="Vendidas" value={`${dash.vendidas}/${dash.total}`} sub={`${dash.pctVendido}%`} />
-            <Stat label="Pagadas" value={String(dash.pagadas)} sub={`Faltan ${dash.pendientes} por cobrar`} />
-            <Stat label="Recaudado" value={formatCOP(dash.recaudado)} sub={`de ${formatCOP(dash.esperadoTotal)}`} />
-            <Stat label="Cumplimiento" value={`${dash.pctCumplimiento}%`} sub={`${dash.libres} libres`} />
-          </section>
+          {/* Dashboard financiero + participantes (indicadores accionables) */}
+          <PanelFinanciero rifa={rifa} boletas={boletas} dash={dash} />
         </>
       )}
 
@@ -110,11 +115,25 @@ export default async function RifaDetallePage({
         <GrillaAdmin rifaId={rifa.id} cantidad={rifa.cantidad_numeros} boletas={boletas} />
       </section>
 
+
       {/* Sorteo */}
       {(puedeSortear || rifa.estado === "sorteada" || ganadores.length > 0) && (
         <section className="border-border mb-6 rounded-2xl border p-4">
           <p className="mb-3 text-sm font-semibold">Sorteo</p>
           <SorteoPanel rifa={rifa} premios={premios} boletas={boletas} ganadores={ganadores} />
+        </section>
+      )}
+
+      {/* Responsable de la rifa (solo superadmin) */}
+      {superadmin && tenants.length > 0 && (
+        <section className="border-border mb-6 rounded-2xl border p-4">
+          <p className="mb-3 text-sm font-semibold">Responsable de la rifa</p>
+          <ReasignarRifa
+            rifaId={rifa.id}
+            tenantActualId={rifa.tenant_id}
+            tenantActualNombre={tenantActual?.nombre ?? "—"}
+            tenants={tenants}
+          />
         </section>
       )}
 
@@ -126,16 +145,6 @@ export default async function RifaDetallePage({
         </p>
         <PagoConfigForm inicial={pago} />
       </section>
-    </div>
-  );
-}
-
-function Stat({ label, value, sub }: { label: string; value: string; sub?: string }) {
-  return (
-    <div className="border-border rounded-xl border p-3">
-      <p className="text-muted-foreground text-xs">{label}</p>
-      <p className="text-lg font-bold tabular-nums">{value}</p>
-      {sub && <p className="text-muted-foreground text-[11px]">{sub}</p>}
     </div>
   );
 }

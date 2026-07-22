@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
-import { Check, Copy, PartyPopper, Ticket, Trophy } from "lucide-react";
+import { Check, Copy, MessageCircle, PartyPopper, Ticket, Trophy } from "lucide-react";
 import { toast } from "sonner";
 
 import { getRifaPublica, reservarNumeros, type RifaPublica } from "@/actions/rifas";
@@ -18,7 +18,9 @@ import {
 } from "@/components/ui/dialog";
 import { formatCOP } from "@/lib/rifa";
 import { formatFechaCO } from "@/lib/fecha-co";
-import { getTema } from "@/lib/temas-rifa";
+import { getDecoracion, getTema } from "@/lib/temas-rifa";
+import { waLink } from "@/lib/whatsapp";
+import { Decoracion } from "@/components/rifa/decoracion-rifa";
 import { getOrCreateClienteId } from "@/lib/cliente-id";
 
 const MODO_CIFRAS_LABEL: Record<string, string> = {
@@ -43,6 +45,8 @@ export function RifaPublicaView({
   const [acepto, setAcepto] = useState(false);
   const [pending, startTransition] = useTransition();
   const [reservadoOk, setReservadoOk] = useState<number[] | null>(null);
+  // Se conserva para el mensaje de WhatsApp después de limpiar el formulario.
+  const [nombreReservado, setNombreReservado] = useState("");
 
   const { rifa, premios, grilla, pago, ganadores } = data;
   const t = getTema(rifa.tema).web;
@@ -57,6 +61,8 @@ export function RifaPublicaView({
 
   const temaVars = {
     minHeight: "100vh",
+    position: "relative" as const,
+    overflow: "hidden",
     backgroundColor: t.bg,
     color: t.text,
     "--rifa-accent": t.accent,
@@ -94,10 +100,11 @@ export function RifaPublicaView({
   }
 
   const total = seleccion.size * rifa.precio_boleta;
-  const premioPrincipal = useMemo(
-    () => [...premios].sort((a, b) => a.orden - b.orden)[0],
+  const premiosOrdenados = useMemo(
+    () => [...premios].sort((a, b) => a.orden - b.orden),
     [premios],
   );
+  const premioPrincipal = premiosOrdenados[0];
 
   function reservar() {
     startTransition(async () => {
@@ -117,6 +124,7 @@ export function RifaPublicaView({
       if (r.data.ocupados.length > 0) {
         toast.message(`Algunos ya estaban tomados: ${r.data.ocupados.join(", ")}`);
       }
+      setNombreReservado(nombre.trim());
       setReservadoOk(r.data.reservados);
       setSeleccion(new Set());
       setModal(false);
@@ -129,7 +137,13 @@ export function RifaPublicaView({
 
   return (
     <div style={temaVars}>
-      <div className="mx-auto max-w-md px-4 py-6">
+      <Decoracion
+        tipo={getDecoracion(rifa.decoracion)}
+        accent={t.accent}
+        suave={t.ocupadoBg}
+        claro={t.surface}
+      />
+      <div className="relative mx-auto max-w-md px-4 py-6">
         {/* Hero: premio + promesa */}
         <div className="mb-4 text-center">
           <p className="text-xs font-semibold uppercase tracking-wide text-[var(--rifa-accent)]">
@@ -169,11 +183,56 @@ export function RifaPublicaView({
           </div>
         </div>
 
+        {/* Premios (1°, 2°, 3°…) — solo si hay más de uno */}
+        {premiosOrdenados.length > 1 && (
+          <div
+            className="mb-4 rounded-xl border p-3"
+            style={{ borderColor: t.line, background: t.surface }}
+          >
+            <p className="mb-2 flex items-center gap-1.5 text-sm font-semibold">
+              <Trophy className="size-4 text-[var(--rifa-accent)]" /> Premios
+            </p>
+            <ul className="flex flex-col gap-1.5">
+              {premiosOrdenados.map((p, i) => (
+                <li key={i} className="flex items-baseline gap-2 text-sm">
+                  <span
+                    className="inline-flex size-6 shrink-0 items-center justify-center rounded-full text-[11px] font-bold"
+                    style={{ background: t.accent, color: t.accentInk }}
+                  >
+                    {i + 1}°
+                  </span>
+                  <span className="font-medium">
+                    {p.tipo === "valor" && p.valor ? formatCOP(p.valor) : p.descripcion}
+                  </span>
+                  {p.criterio && (
+                    <span className="text-[11px] text-[var(--rifa-muted)]">
+                      ({p.criterio === "primeras_2" ? "primeras cifras" : "últimas cifras"})
+                    </span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
         {/* Info lotería */}
         {rifa.tipo === "loteria" && rifa.modo_cifras && (
           <p className="mb-4 rounded-lg border p-2 text-center text-xs text-[var(--rifa-muted)]" style={{ borderColor: t.line }}>
             🎯 Gana con las <b style={{ color: t.text }}>{MODO_CIFRAS_LABEL[rifa.modo_cifras]}</b>
             {rifa.loteria ? ` de la ${rifa.loteria}` : ""}.
+            {rifa.loteria_url && (
+              <>
+                {" "}
+                <a
+                  href={rifa.loteria_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="font-medium underline text-[var(--rifa-accent)]"
+                >
+                  Ver resultados
+                </a>
+              </>
+            )}
           </p>
         )}
 
@@ -195,10 +254,11 @@ export function RifaPublicaView({
         )}
 
         {/* Grilla pública (ocupado/libre) */}
-        <div className="mb-2 flex flex-wrap justify-center gap-1.5">
+        {/* 10 columnas fijas: las 100 boletas caben en una sola vista. */}
+        <div className="mb-2 grid grid-cols-10 gap-1">
           {grilla.map((c) => {
             const sel = seleccion.has(c.numero);
-            const base = "flex h-9 w-9 items-center justify-center rounded-md text-xs font-bold tabular-nums transition-colors";
+            const base = "flex aspect-square w-full items-center justify-center rounded-md text-[10px] font-bold tabular-nums transition-colors sm:text-xs";
             const cls = c.ocupado
               ? "line-through cursor-not-allowed bg-[var(--rifa-ocupado)] text-[var(--rifa-ocupado-ink)]"
               : sel
@@ -323,18 +383,24 @@ export function RifaPublicaView({
               Ahora realiza el pago para confirmar.
             </DialogDescription>
           </DialogHeader>
-          {pago?.nequi_llave && <PagoLinea label="Nequi" value={pago.nequi_llave} sub={pago.titular ?? undefined} />}
+          <div className="flex flex-col gap-2">
+            {pago?.nequi_llave && <PagoLinea label="Nequi" value={pago.nequi_llave} sub={pago.titular ?? undefined} />}
+            {pago?.llave && <PagoLinea label="Llave / Bre-B" value={pago.llave} sub={pago.titular ?? undefined} />}
+          </div>
           <DialogFooter>
             {pago?.whatsapp ? (
               <a
-                href={`https://wa.me/${pago.whatsapp.replace(/\D/g, "")}?text=${encodeURIComponent(
-                  `Hola, reservé los números ${reservadoOk?.join(", ")} de la rifa "${rifa.nombre}". Adjunto mi pago.`,
-                )}`}
+                href={waLink(
+                  pago.whatsapp,
+                  `¡Hola! Quiero tomar el/los número(s) ${reservadoOk
+                    ?.map((n) => String(n).padStart(ancho, "0"))
+                    .join(", ")} de la rifa "${rifa.nombre}". Ya los aparté a nombre de ${nombreReservado || "mí"}. ¿Cómo hago el pago?`,
+                )}
                 target="_blank"
                 rel="noreferrer"
-                className="bg-primary text-primary-foreground inline-flex h-9 items-center gap-1.5 rounded-lg px-3 text-sm font-medium"
+                className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 text-sm font-semibold text-white sm:w-auto"
               >
-                Enviar pago por WhatsApp
+                <MessageCircle className="size-4" /> Avisar por WhatsApp
               </a>
             ) : (
               <Button onClick={() => setReservadoOk(null)}>Listo</Button>

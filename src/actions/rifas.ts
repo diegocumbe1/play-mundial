@@ -55,7 +55,9 @@ const rifaSchema = z.object({
   formato_cifras: z.union([z.literal(2), z.literal(3)]),
   solo_pagadas_juegan: z.boolean().default(true),
   tema: z.enum(["rosa", "clasico", "esmeralda", "oceano", "durazno"]).default("rosa"),
+  decoracion: z.enum(["ninguna", "floral", "hojas", "geometrico", "confeti"]).default("floral"),
   loteria: z.string().trim().nullable().optional(),
+  loteria_url: z.string().trim().nullable().optional(),
   fecha_loteria: z.string().trim().nullable().optional(),
   modo_cifras: z.enum(["primeras_dos", "ultimas_dos", "ambas"]).nullable().optional(),
   fecha_sorteo: z.string().trim().nullable().optional(),
@@ -170,8 +172,10 @@ export async function crearRifa(
       formato_cifras: d.formato_cifras,
       solo_pagadas_juegan: d.solo_pagadas_juegan,
       tema: d.tema,
+      decoracion: d.decoracion,
       slug_publico: slugify(d.nombre),
       loteria: d.tipo === "loteria" ? (d.loteria ?? null) : null,
+      loteria_url: d.tipo === "loteria" ? (d.loteria_url || null) : null,
       fecha_loteria: d.tipo === "loteria" ? (d.fecha_loteria ?? null) : null,
       modo_cifras: d.tipo === "loteria" ? (d.modo_cifras ?? null) : null,
       fecha_sorteo: d.fecha_sorteo ?? null,
@@ -224,7 +228,9 @@ export async function actualizarRifa(
       formato_cifras: d.formato_cifras,
       solo_pagadas_juegan: d.solo_pagadas_juegan,
       tema: d.tema,
+      decoracion: d.decoracion,
       loteria: d.tipo === "loteria" ? (d.loteria ?? null) : null,
+      loteria_url: d.tipo === "loteria" ? (d.loteria_url || null) : null,
       fecha_loteria: d.tipo === "loteria" ? (d.fecha_loteria ?? null) : null,
       modo_cifras: d.tipo === "loteria" ? (d.modo_cifras ?? null) : null,
       fecha_sorteo: d.fecha_sorteo ?? null,
@@ -374,6 +380,35 @@ export async function activarRifa(
   return { success: true, data: { activada: false, pendiente: true, monto } };
 }
 
+/**
+ * Reasigna una rifa YA creada a otro organizador. Solo superadmin.
+ *
+ * Mueve también las boletas: llevan su propio `tenant_id` y es el que usa la
+ * RLS, así que si no se actualizan el nuevo owner no vería sus ventas.
+ */
+export async function reasignarRifa(
+  rifaId: string,
+  tenantId: string,
+): Promise<ActionResult> {
+  if (!(await esSuperadmin())) {
+    return { success: false, error: "Solo el superadmin puede reasignar rifas" };
+  }
+
+  const svc = createServiceRoleClient();
+  const { error } = await svc.from("rifas").update({ tenant_id: tenantId }).eq("id", rifaId);
+  if (error) return { success: false, error: error.message };
+
+  const { error: errBoletas } = await svc
+    .from("boletas")
+    .update({ tenant_id: tenantId })
+    .eq("rifa_id", rifaId);
+  if (errBoletas) return { success: false, error: errBoletas.message };
+
+  revalidatePath(`/admin/rifas/${rifaId}`);
+  revalidatePath("/admin/rifas");
+  return { success: true, data: undefined };
+}
+
 /** Cambia el estado de una rifa (cerrar ventas, reabrir, marcar pagada). */
 export async function cambiarEstadoRifa(
   id: string,
@@ -438,6 +473,45 @@ export async function registrarBoletaAdmin(
     return { success: false, error: msg };
   }
   revalidatePath(`/admin/rifas/${d.rifa_id}`);
+  return { success: true, data: undefined };
+}
+
+const editarBoletaSchema = z.object({
+  comprador_nombre: z.string().trim().min(1, "El nombre es obligatorio"),
+  comprador_telefono: z
+    .string()
+    .trim()
+    .regex(/^[+()\d\s.-]{7,20}$/, "Teléfono inválido")
+    .nullable()
+    .optional(),
+});
+
+/** Corrige los datos del comprador de una boleta (nombre mal escrito, teléfono). */
+export async function actualizarBoleta(
+  boletaId: string,
+  input: z.infer<typeof editarBoletaSchema>,
+): Promise<ActionResult> {
+  const membership = await requireMembership();
+  if (!membership) return { success: false, error: "Sin sesión" };
+
+  const parsed = editarBoletaSchema.safeParse(input);
+  if (!parsed.success) {
+    return { success: false, error: parsed.error.issues[0].message };
+  }
+
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("boletas")
+    .update({
+      comprador_nombre: parsed.data.comprador_nombre,
+      comprador_telefono: parsed.data.comprador_telefono || null,
+    })
+    .eq("id", boletaId)
+    .select("rifa_id")
+    .maybeSingle();
+
+  if (error) return { success: false, error: error.message };
+  if (data) revalidatePath(`/admin/rifas/${(data as { rifa_id: string }).rifa_id}`);
   return { success: true, data: undefined };
 }
 
@@ -604,7 +678,9 @@ export interface RifaPublica {
     | "cantidad_numeros"
     | "slug_publico"
     | "tema"
+    | "decoracion"
     | "loteria"
+    | "loteria_url"
     | "fecha_loteria"
     | "modo_cifras"
     | "fecha_sorteo"
@@ -688,7 +764,9 @@ export async function getRifaPublica(
         cantidad_numeros: r.cantidad_numeros,
         slug_publico: r.slug_publico,
         tema: r.tema,
+        decoracion: r.decoracion,
         loteria: r.loteria,
+        loteria_url: r.loteria_url,
         fecha_loteria: r.fecha_loteria,
         modo_cifras: r.modo_cifras,
         fecha_sorteo: r.fecha_sorteo,

@@ -58,7 +58,10 @@ export default async function RootLayout({
       <body className="bg-polla-dark flex min-h-full flex-col pb-[calc(var(--bottom-nav-height)+env(safe-area-inset-bottom))] sm:pb-0">
         <PullToRefresh />
         {children}
-        <BottomNav idioma={idioma} />
+        <BottomNav
+          idioma={idioma}
+          modo={process.env.POLLA_ACTIVA === "true" ? "polla" : "rifas"}
+        />
         <Toaster richColors position="top-center" theme="dark" />
       </body>
     </html>

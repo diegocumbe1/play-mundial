@@ -3,7 +3,73 @@ import { ImageResponse } from "next/og";
 import { getRifaPublica } from "@/actions/rifas";
 import { formatCOP } from "@/lib/polla";
 import { formatFechaCO } from "@/lib/fecha-co";
-import { getTema } from "@/lib/temas-rifa";
+import { getDecoracion, getTema, type DecoracionRifa, type TemaFlyer } from "@/lib/temas-rifa";
+
+/**
+ * Adornos decorativos del flyer. Satori solo soporta flexbox y formas simples,
+ * así que se dibujan con divs absolutos + border-radius (nada de SVG complejo).
+ */
+function adornosFlyer(tipo: DecoracionRifa, f: TemaFlyer) {
+  if (tipo === "ninguna") return null;
+
+  const piezas: { x: number; y: number; w: number; h: number; r: number; c: string; o: number }[] = [];
+  const esquinas = [
+    { x: -60, y: -60 },
+    { x: 900, y: 1620 },
+  ];
+
+  for (const e of esquinas) {
+    if (tipo === "floral") {
+      for (let i = 0; i < 8; i++) {
+        const a = (i / 8) * Math.PI * 2;
+        piezas.push({
+          x: e.x + 110 + Math.cos(a) * 82,
+          y: e.y + 110 + Math.sin(a) * 82,
+          w: 96, h: 62, r: 48, c: f.numBg, o: 0.75,
+        });
+      }
+      piezas.push({ x: e.x + 78, y: e.y + 78, w: 64, h: 64, r: 32, c: f.accent, o: 0.9 });
+      piezas.push({ x: e.x + 190, y: e.y + 30, w: 70, h: 46, r: 35, c: f.band, o: 0.6 });
+    } else if (tipo === "hojas") {
+      for (let i = 0; i < 5; i++) {
+        piezas.push({
+          x: e.x + 40 + i * 46, y: e.y + 60 + (i % 2) * 70,
+          w: 54, h: 128, r: 27, c: f.numBg, o: 0.55,
+        });
+      }
+    } else if (tipo === "geometrico") {
+      piezas.push({ x: e.x + 40, y: e.y + 40, w: 140, h: 140, r: 70, c: f.numBg, o: 0.6 });
+      piezas.push({ x: e.x + 170, y: e.y + 20, w: 90, h: 90, r: 18, c: f.band, o: 0.5 });
+      piezas.push({ x: e.x + 70, y: e.y + 180, w: 70, h: 70, r: 35, c: f.accent, o: 0.5 });
+    } else {
+      // confeti
+      for (let i = 0; i < 10; i++) {
+        piezas.push({
+          x: e.x + 30 + ((i * 53) % 240),
+          y: e.y + 20 + ((i * 71) % 220),
+          w: i % 2 ? 18 : 26, h: i % 2 ? 34 : 18, r: 8,
+          c: i % 3 === 0 ? f.accent : i % 3 === 1 ? f.numBg : f.band,
+          o: 0.7,
+        });
+      }
+    }
+  }
+
+  return (
+    <div style={{ display: "flex", position: "absolute", inset: 0 }}>
+      {piezas.map((p, i) => (
+        <div
+          key={i}
+          style={{
+            position: "absolute", left: p.x, top: p.y,
+            width: p.w, height: p.h, borderRadius: p.r,
+            background: p.c, opacity: p.o,
+          }}
+        />
+      ))}
+    </div>
+  );
+}
 
 export const dynamic = "force-dynamic";
 
@@ -42,13 +108,16 @@ export async function GET(
   const vendidas = rifa.cantidad_numeros - disponibles;
   const pct = rifa.cantidad_numeros > 0 ? Math.round((vendidas / rifa.cantidad_numeros) * 100) : 0;
   const ancho = String(rifa.cantidad_numeros - 1).length;
-  const premioPrincipal = [...premios].sort((a, b) => a.orden - b.orden)[0];
+  // Hasta 3 premios (1°, 2°, 3°) para que el flyer siga legible.
+  const premiosTop = [...premios].sort((a, b) => a.orden - b.orden).slice(0, 3);
   const fechaJuego =
     rifa.tipo === "loteria" ? (rifa.fecha_loteria ?? rifa.fecha_sorteo) : rifa.fecha_sorteo;
   const fechaJuegoTxt = formatFechaCO(fechaJuego, { conAnio: false });
   const mostrarGrilla = rifa.cantidad_numeros <= 200;
   const cell = rifa.cantidad_numeros <= 100 ? 84 : 60;
   const pago = res.data.pago;
+  // Solo se embebe el QR si es una URL http(s) válida (satori la descarga).
+  const qrOk = Boolean(pago?.qr_url && /^https?:\/\//i.test(pago.qr_url));
   const pagoLinea = pago?.nequi_llave
     ? `Paga a Nequi ${pago.nequi_llave}`
     : pago?.llave
@@ -67,10 +136,13 @@ export async function GET(
       <div
         style={{
           width: "100%", height: "100%", display: "flex", flexDirection: "column",
+          position: "relative", overflow: "hidden",
           background: `linear-gradient(180deg, ${f.bgTop} 0%, ${f.bgBottom} 100%)`,
           padding: 56, fontFamily: "sans-serif",
         }}
       >
+        {adornosFlyer(getDecoracion(rifa.decoracion), f)}
+
         {/* Título */}
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
           <div style={{ fontSize: 82, fontWeight: 800, color: f.titulo, textAlign: "center", lineHeight: 1 }}>
@@ -141,30 +213,65 @@ export async function GET(
           </div>
         )}
 
-        {/* Premio */}
-        {premioPrincipal && (
-          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", marginTop: 40 }}>
-            <div style={{ display: "flex", color: f.titulo, fontSize: 34, fontWeight: 700 }}>PREMIO</div>
-            <div style={{ display: "flex", color: f.card, fontSize: 66, fontWeight: 800, textAlign: "center" }}>
-              {premioPrincipal.tipo === "valor" && premioPrincipal.valor
-                ? formatCOP(premioPrincipal.valor)
-                : premioPrincipal.descripcion}
+        {/* Premios (hasta 3) */}
+        {premiosTop.length > 0 && (
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", marginTop: 36 }}>
+            <div style={{ display: "flex", color: f.titulo, fontSize: 32, fontWeight: 700 }}>
+              {premiosTop.length > 1 ? "PREMIOS" : "PREMIO"}
             </div>
+            {premiosTop.map((p, i) => (
+              <div
+                key={i}
+                style={{
+                  display: "flex", alignItems: "center", gap: 14, marginTop: 8,
+                  color: f.card,
+                  fontSize: premiosTop.length > 1 ? (i === 0 ? 52 : 40) : 66,
+                  fontWeight: 800, textAlign: "center",
+                }}
+              >
+                {premiosTop.length > 1 && (
+                  <span
+                    style={{
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      width: 46, height: 46, borderRadius: 23,
+                      background: f.accent, color: f.card, fontSize: 24,
+                    }}
+                  >
+                    {i + 1}°
+                  </span>
+                )}
+                <span>
+                  {p.tipo === "valor" && p.valor ? formatCOP(p.valor) : p.descripcion}
+                </span>
+              </div>
+            ))}
           </div>
         )}
 
         {/* Pie: pago + link */}
         <div style={{ display: "flex", flexDirection: "column", marginTop: "auto", alignItems: "center" }}>
-          {pagoLinea && (
-            <div
-              style={{
-                display: "flex", justifyContent: "center", background: f.card, color: f.ink,
-                borderRadius: 16, padding: "18px 28px", fontSize: 38, fontWeight: 700,
-              }}
-            >
-              {pagoLinea}
-            </div>
-          )}
+          <div style={{ display: "flex", alignItems: "center", gap: 24 }}>
+            {qrOk && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={pago!.qr_url!}
+                alt=""
+                width={190}
+                height={190}
+                style={{ borderRadius: 16, background: "#fff", objectFit: "contain" }}
+              />
+            )}
+            {pagoLinea && (
+              <div
+                style={{
+                  display: "flex", justifyContent: "center", background: f.card, color: f.ink,
+                  borderRadius: 16, padding: "18px 28px", fontSize: qrOk ? 32 : 38, fontWeight: 700,
+                }}
+              >
+                {pagoLinea}
+              </div>
+            )}
+          </div>
           {/* <div style={{ display: "flex", color: "rgba(255,255,255,0.85)", fontSize: 30, marginTop: 20 }}>
             Reserva en vivo · /r/{rifa.slug_publico}
           </div> */}

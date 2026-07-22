@@ -70,6 +70,7 @@ export function calcularDashboard(
   const libres = Math.max(0, total - vendidas);
 
   const recaudado = pagadas * rifa.precio_boleta;
+  const porCobrar = pendientes * rifa.precio_boleta;
   const esperadoTotal = total * rifa.precio_boleta;
   const pctCumplimiento =
     esperadoTotal > 0 ? Math.round((recaudado / esperadoTotal) * 100) : 0;
@@ -82,6 +83,7 @@ export function calcularDashboard(
     pendientes,
     libres,
     recaudado,
+    porCobrar,
     esperadoTotal,
     pctCumplimiento,
     pctVendido,

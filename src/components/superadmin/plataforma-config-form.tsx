@@ -8,6 +8,7 @@ import { guardarPlataformaConfig } from "@/actions/cobros";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { InputMoneda } from "@/components/rifa/input-moneda";
 import type { PlataformaConfig } from "@/types";
 
 /** Editor de precios y reglas del free (solo superadmin). */
@@ -53,9 +54,9 @@ export function PlataformaConfigForm({ inicial }: { inicial: PlataformaConfig })
       <div>
         <p className="mb-2 text-sm font-semibold">Precios (COP)</p>
         <div className="grid gap-3 sm:grid-cols-3">
-          <Campo label="Rifa hasta 100 números" value={f.precio_rifa_100} onChange={(v) => set("precio_rifa_100", v)} />
-          <Campo label="Rifa 101–500 números" value={f.precio_rifa_500} onChange={(v) => set("precio_rifa_500", v)} />
-          <Campo label="Suscripción / mes" value={f.precio_suscripcion_mes} onChange={(v) => set("precio_suscripcion_mes", v)} />
+          <CampoMoneda label="Rifa hasta 100 números" value={f.precio_rifa_100} onChange={(v) => set("precio_rifa_100", v)} />
+          <CampoMoneda label="Rifa 101–500 números" value={f.precio_rifa_500} onChange={(v) => set("precio_rifa_500", v)} />
+          <CampoMoneda label="Suscripción / mes" value={f.precio_suscripcion_mes} onChange={(v) => set("precio_suscripcion_mes", v)} />
         </div>
       </div>
       <div>
@@ -77,7 +78,17 @@ function Campo({ label, value, onChange }: { label: string; value: string; onCha
   return (
     <div>
       <Label className="text-muted-foreground mb-1.5 block text-xs">{label}</Label>
-      <Input inputMode="numeric" value={value} onChange={(e) => onChange(e.target.value)} />
+      <Input inputMode="numeric" value={value} onChange={(e) => onChange(e.target.value.replace(/\D/g, ""))} />
+    </div>
+  );
+}
+
+/** Igual que Campo pero con separadores de miles (para precios). */
+function CampoMoneda({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+  return (
+    <div>
+      <Label className="text-muted-foreground mb-1.5 block text-xs">{label}</Label>
+      <InputMoneda value={value} onChange={onChange} placeholder="0" />
     </div>
   );
 }

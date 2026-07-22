@@ -118,3 +118,34 @@ export const TEMA_DEFAULT: TemaRifa = "rosa";
 export function getTema(t?: string | null): Tema {
   return TEMAS[(t as TemaRifa) ?? TEMA_DEFAULT] ?? TEMAS[TEMA_DEFAULT];
 }
+
+/* -------------------------------------------------------------------------- */
+/* Decoración: motivo de adornos que acompaña a la paleta                      */
+/* -------------------------------------------------------------------------- */
+
+export type DecoracionRifa =
+  | "ninguna"
+  | "floral"
+  | "hojas"
+  | "geometrico"
+  | "confeti";
+
+export const DECORACIONES: {
+  id: DecoracionRifa;
+  nombre: string;
+  /** Pista de para qué temática suele usarse. */
+  pista: string;
+}[] = [
+  { id: "floral", nombre: "Floral", pista: "Flores — clásico femenino" },
+  { id: "hojas", nombre: "Botánico", pista: "Hojas — natural y neutro" },
+  { id: "geometrico", nombre: "Geométrico", pista: "Formas — moderno / masculino" },
+  { id: "confeti", nombre: "Confeti", pista: "Fiesta y celebración" },
+  { id: "ninguna", nombre: "Sin adornos", pista: "Limpio y sobrio" },
+];
+
+export const DECORACION_DEFAULT: DecoracionRifa = "floral";
+
+export function getDecoracion(d?: string | null): DecoracionRifa {
+  const ids = DECORACIONES.map((x) => x.id);
+  return ids.includes(d as DecoracionRifa) ? (d as DecoracionRifa) : DECORACION_DEFAULT;
+}

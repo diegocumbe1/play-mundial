@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Send, Sparkles, Trophy } from "lucide-react";
+import { Copy, Eye, ExternalLink, PartyPopper, Send, Sparkles, Trophy } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -86,6 +86,33 @@ export function SorteoPanel({
             Se cruzan las cifras del resultado con las boletas
             {rifa.solo_pagadas_juegan ? " pagadas" : " vendidas"}.
           </p>
+
+          {rifa.loteria_url && (
+            <div className="flex flex-wrap items-center gap-2">
+              <a
+                href={rifa.loteria_url}
+                target="_blank"
+                rel="noreferrer"
+                className="text-primary inline-flex items-center gap-1 text-xs font-medium hover:underline"
+              >
+                <ExternalLink className="size-3.5" /> Ver resultados oficiales
+              </a>
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText(rifa.loteria_url!);
+                    toast.success("Enlace copiado");
+                  } catch {
+                    toast.error("No se pudo copiar");
+                  }
+                }}
+                className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1 text-xs"
+              >
+                <Copy className="size-3.5" /> Copiar enlace
+              </button>
+            </div>
+          )}
         </div>
       ) : (
         <div className="flex flex-col gap-2">
@@ -161,12 +188,43 @@ export function SorteoPanel({
                 <Send className="size-4" /> Publicar en la página pública
               </Button>
             </div>
-            <p className="text-muted-foreground text-xs">
-              Al público se muestran enmascarados, ej.{" "}
-              {porNumero.size > 0
-                ? enmascararNombre(boletas[0].comprador_nombre ?? "Nombre Apellido")
-                : "Di**** Cu***"}
-              .
+          </div>
+
+          {/* Vista previa: exactamente lo que verá el público (enmascarado) */}
+          <div className="border-primary/30 bg-primary/5 mt-3 rounded-xl border p-3">
+            <p className="text-muted-foreground mb-2 inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide">
+              <Eye className="size-3.5" /> Vista previa pública
+            </p>
+            <p className="mb-1.5 flex items-center gap-1.5 text-sm font-semibold">
+              <PartyPopper className="text-primary size-4" /> ¡Ya hay ganadores!
+            </p>
+            <ul className="flex flex-col gap-1.5 text-sm">
+              {ganadores.map((g, i) => {
+                const b = porNumero.get(g.numero);
+                const premio = premios.find((p) => p.id === g.premio_id);
+                return (
+                  <li key={g.id} className="flex items-baseline gap-2">
+                    {ganadores.length > 1 && (
+                      <span className="bg-primary text-primary-foreground inline-flex size-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold">
+                        {i + 1}°
+                      </span>
+                    )}
+                    <span>
+                      <b className="tabular-nums">
+                        #{String(g.numero).padStart(String(rifa.cantidad_numeros - 1).length, "0")}
+                      </b>{" "}
+                      — {b?.comprador_nombre ? enmascararNombre(b.comprador_nombre) : "—"}{" "}
+                      <span className="text-muted-foreground">({premio?.descripcion})</span>
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+            {mensaje.trim() && (
+              <p className="text-muted-foreground mt-2 text-sm italic">“{mensaje.trim()}”</p>
+            )}
+            <p className="text-muted-foreground mt-2 text-[11px]">
+              Los nombres van enmascarados y nunca se muestra el teléfono ni el estado de pago.
             </p>
           </div>
         </div>

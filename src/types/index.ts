@@ -354,7 +354,11 @@ export interface Rifa {
   slug_publico: string;
   /** Preset de tema visual (ver src/lib/temas-rifa). */
   tema: string;
+  /** Motivo decorativo (floral, hojas, geométrico, confeti, ninguna). */
+  decoracion: string;
   loteria: string | null;
+  /** URL oficial de la lotería (resultados). */
+  loteria_url: string | null;
   fecha_loteria: string | null;
   modo_cifras: ModoCifras | null;
   resultado_loteria: string | null;
@@ -435,6 +439,8 @@ export interface DashboardRifa {
   pendientes: number;
   libres: number;
   recaudado: number;
+  /** Dinero de boletas apartadas sin pagar (lo que falta por cobrar). */
+  porCobrar: number;
   esperadoTotal: number;
   pctCumplimiento: number;
   pctVendido: number;
@@ -464,7 +470,9 @@ export interface RifaInput {
   formato_cifras: 2 | 3;
   solo_pagadas_juegan: boolean;
   tema?: string;
+  decoracion?: string;
   loteria?: string | null;
+  loteria_url?: string | null;
   fecha_loteria?: string | null;
   modo_cifras?: ModoCifras | null;
   fecha_sorteo?: string | null;

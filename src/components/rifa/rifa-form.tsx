@@ -9,7 +9,13 @@ import { actualizarRifa, crearRifa, guardarPremios } from "@/actions/rifas";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { TEMAS, type TemaRifa } from "@/lib/temas-rifa";
+import { InputMoneda } from "@/components/rifa/input-moneda";
+import {
+  DECORACIONES,
+  TEMAS,
+  type DecoracionRifa,
+  type TemaRifa,
+} from "@/lib/temas-rifa";
 import type { CriterioPremio, Premio, Rifa, TipoRifa } from "@/types";
 
 interface PremioDraft {
@@ -49,13 +55,22 @@ export function RifaForm({
   const [formato, setFormato] = useState<2 | 3>(rifa?.formato_cifras ?? 2);
   const [soloPagadas, setSoloPagadas] = useState(rifa?.solo_pagadas_juegan ?? true);
   const [loteria, setLoteria] = useState(rifa?.loteria ?? "");
+  const [loteriaUrl, setLoteriaUrl] = useState(rifa?.loteria_url ?? "");
   const [fechaLoteria, setFechaLoteria] = useState(rifa?.fecha_loteria ?? "");
   const [modoCifras, setModoCifras] = useState(rifa?.modo_cifras ?? "ultimas_dos");
   const [fechaSorteo, setFechaSorteo] = useState(
     rifa?.fecha_sorteo ? rifa.fecha_sorteo.slice(0, 10) : "",
   );
   const [tema, setTema] = useState<TemaRifa>((rifa?.tema as TemaRifa) ?? "rosa");
+  const [decoracion, setDecoracion] = useState<DecoracionRifa>(
+    (rifa?.decoracion as DecoracionRifa) ?? "floral",
+  );
   const [tenantId, setTenantId] = useState<string>("");
+
+  // Con un solo premio no se vuelve a preguntar por las cifras: se hereda del
+  // "Se gana con…" de la rifa.
+  const criterioPorDefecto: CriterioPremio =
+    modoCifras === "primeras_dos" ? "primeras_2" : "ultimas_2";
 
   const [premios, setPremios] = useState<PremioDraft[]>(
     premiosIniciales && premiosIniciales.length > 0
@@ -83,7 +98,9 @@ export function RifaForm({
       formato_cifras: formato,
       solo_pagadas_juegan: soloPagadas,
       tema,
+      decoracion,
       loteria: tipo === "loteria" ? loteria.trim() || null : null,
+      loteria_url: tipo === "loteria" ? loteriaUrl.trim() || null : null,
       fecha_loteria: tipo === "loteria" ? fechaLoteria || null : null,
       modo_cifras: tipo === "loteria" ? modoCifras : null,
       fecha_sorteo: fechaSorteo || null,
@@ -97,7 +114,10 @@ export function RifaForm({
         descripcion: p.descripcion.trim(),
         valor: p.tipo === "valor" ? Number(p.valor) || 0 : null,
         cantidad_ganadores: Number(p.cantidad_ganadores) || 1,
-        criterio: p.criterio || null,
+        criterio:
+          tipo === "loteria"
+            ? ((premios.length > 1 ? p.criterio : "") || criterioPorDefecto)
+            : null,
         orden: i + 1,
       }));
 
@@ -171,7 +191,7 @@ export function RifaForm({
           />
         </Field>
         <Field label="Precio por número (COP)">
-          <Input inputMode="numeric" value={precio} onChange={(e) => setPrecio(e.target.value)} placeholder="20000" />
+          <InputMoneda value={precio} onChange={setPrecio} placeholder="20.000" />
         </Field>
         <Field label="Cantidad de números">
           <Input inputMode="numeric" value={cantidad} onChange={(e) => setCantidad(e.target.value)} placeholder="100" />
@@ -197,6 +217,17 @@ export function RifaForm({
           </Field>
           <Field label="Fecha de la lotería">
             <Input type="date" value={fechaLoteria ?? ""} onChange={(e) => setFechaLoteria(e.target.value)} />
+          </Field>
+          <Field label="Sitio oficial de resultados (opcional)" className="sm:col-span-2">
+            <Input
+              value={loteriaUrl}
+              onChange={(e) => setLoteriaUrl(e.target.value)}
+              placeholder="https://loteriademanizales.com/"
+              inputMode="url"
+            />
+            <p className="text-muted-foreground mt-1 text-xs">
+              Se muestra en tu panel y en la página pública para consultar y compartir el resultado.
+            </p>
           </Field>
           <Field label="Se gana con…" className="sm:col-span-2">
             <Segmented
@@ -253,6 +284,28 @@ export function RifaForm({
             </button>
           ))}
         </div>
+
+        <Label className="text-muted-foreground mt-3 text-xs font-medium">
+          Decoración (temática)
+        </Label>
+        <div className="flex flex-wrap gap-2">
+          {DECORACIONES.map((d) => (
+            <button
+              key={d.id}
+              type="button"
+              onClick={() => setDecoracion(d.id)}
+              aria-pressed={decoracion === d.id}
+              title={d.pista}
+              className={
+                "flex flex-col items-start rounded-lg border px-3 py-2 text-left transition-colors " +
+                (decoracion === d.id ? "border-primary ring-primary/30 ring-2" : "border-border hover:bg-muted")
+              }
+            >
+              <span className="text-xs font-medium">{d.nombre}</span>
+              <span className="text-muted-foreground text-[10px]">{d.pista}</span>
+            </button>
+          ))}
+        </div>
       </section>
 
       {/* Premios */}
@@ -285,17 +338,19 @@ export function RifaForm({
               </Field>
               {p.tipo === "valor" ? (
                 <Field label="Valor (COP)">
-                  <Input inputMode="numeric" value={p.valor} onChange={(e) => setPremio(i, { valor: e.target.value })} placeholder="1000000" />
+                  <InputMoneda value={p.valor} onChange={(v) => setPremio(i, { valor: v })} placeholder="1.000.000" />
                 </Field>
               ) : (
                 <Field label="Cantidad de ganadores">
                   <Input inputMode="numeric" value={p.cantidad_ganadores} onChange={(e) => setPremio(i, { cantidad_ganadores: e.target.value })} />
                 </Field>
               )}
-              {tipo === "loteria" && (
+              {/* Con un solo premio se hereda "Se gana con…" de la rifa (no se repite).
+                  Al haber varios, sí se elige por premio. */}
+              {tipo === "loteria" && premios.length > 1 && (
                 <Field label="Gana con" className="sm:col-span-2">
                   <Segmented
-                    value={p.criterio || "ultimas_2"}
+                    value={p.criterio || criterioPorDefecto}
                     onChange={(v) => setPremio(i, { criterio: v as CriterioPremio })}
                     options={[
                       { value: "ultimas_2", label: "Últimas 2 cifras" },
