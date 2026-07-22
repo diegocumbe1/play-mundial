@@ -16,8 +16,20 @@ import {
 /**
  * Compartir una rifa: copiar enlace, abrir la pública y un modal con el flyer
  * (vista previa + descargar + compartir por WhatsApp/apps del sistema).
+ *
+ * `detalle` es el resumen que viaja en el mensaje (cómo se gana, precio,
+ * disponibles): WhatsApp de escritorio no acepta adjuntos por enlace, así que
+ * el texto tiene que vender solo.
  */
-export function ShareRifa({ slug, nombre }: { slug: string; nombre?: string }) {
+export function ShareRifa({
+  slug,
+  nombre,
+  detalle,
+}: {
+  slug: string;
+  nombre?: string;
+  detalle?: string;
+}) {
   const [copiado, setCopiado] = useState(false);
   const [verFlyer, setVerFlyer] = useState(false);
   const [trabajando, setTrabajando] = useState(false);
@@ -28,6 +40,7 @@ export function ShareRifa({ slug, nombre }: { slug: string; nombre?: string }) {
     typeof window !== "undefined" ? `${window.location.origin}/r/${slug}` : `/r/${slug}`;
   const urlFlyer = `/r/${slug}/flyer?v=${version}`;
   const titulo = nombre ? `Rifa: ${nombre}` : "Mira esta rifa";
+  const mensaje = [titulo, detalle, urlPublica].filter(Boolean).join("\n");
 
   async function copiar() {
     try {
@@ -45,17 +58,23 @@ export function ShareRifa({ slug, nombre }: { slug: string; nombre?: string }) {
     setVerFlyer(true);
   }
 
+  /** Baja el flyer al disco. Devuelve el blob para reutilizarlo. */
+  async function bajarFlyer(): Promise<Blob> {
+    const res = await fetch(urlFlyer);
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `rifa-${slug}.png`;
+    a.click();
+    URL.revokeObjectURL(url);
+    return blob;
+  }
+
   async function descargar() {
     setTrabajando(true);
     try {
-      const res = await fetch(urlFlyer);
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `rifa-${slug}.png`;
-      a.click();
-      URL.revokeObjectURL(url);
+      await bajarFlyer();
       toast.success("Flyer descargado");
     } catch {
       toast.error("No se pudo descargar");
@@ -71,18 +90,21 @@ export function ShareRifa({ slug, nombre }: { slug: string; nombre?: string }) {
       const res = await fetch(urlFlyer);
       const blob = await res.blob();
       const file = new File([blob], `rifa-${slug}.png`, { type: "image/png" });
-      const texto = `${titulo}\n${urlPublica}`;
 
       if (navigator.canShare?.({ files: [file] })) {
-        await navigator.share({ files: [file], title: titulo, text: texto });
-      } else {
-        // Sin Web Share: se comparte el enlace por WhatsApp (la imagen se descarga).
-        window.open(
-          `https://wa.me/?text=${encodeURIComponent(texto)}`,
-          "_blank",
-          "noopener",
-        );
+        await navigator.share({ files: [file], title: titulo, text: mensaje });
+        return;
       }
+
+      // Sin Web Share (escritorio): WhatsApp Web no acepta adjuntos por URL, así
+      // que se descarga el flyer para arrastrarlo al chat y se abre el mensaje.
+      await bajarFlyer();
+      toast.info("Flyer descargado: adjúntalo en el chat");
+      window.open(
+        `https://wa.me/?text=${encodeURIComponent(mensaje)}`,
+        "_blank",
+        "noopener",
+      );
     } catch (e) {
       // El usuario canceló el diálogo del sistema: no es un error.
       if ((e as Error)?.name !== "AbortError") toast.error("No se pudo compartir");
@@ -93,7 +115,7 @@ export function ShareRifa({ slug, nombre }: { slug: string; nombre?: string }) {
 
   function whatsapp() {
     window.open(
-      `https://wa.me/?text=${encodeURIComponent(`${titulo}\n${urlPublica}`)}`,
+      `https://wa.me/?text=${encodeURIComponent(mensaje)}`,
       "_blank",
       "noopener",
     );
@@ -154,7 +176,8 @@ export function ShareRifa({ slug, nombre }: { slug: string; nombre?: string }) {
             </div>
             <p className="text-muted-foreground text-center text-[11px]">
               &quot;Compartir imagen&quot; envía el flyer directo a WhatsApp/Instagram desde el
-              celular. En computador se comparte el enlace.
+              celular. En computador lo descarga para adjuntarlo. El botón de WhatsApp manda solo
+              el enlace, que ya muestra su propia vista previa con imagen.
             </p>
           </div>
         </DialogContent>

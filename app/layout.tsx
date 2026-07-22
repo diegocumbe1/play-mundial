@@ -6,6 +6,7 @@ import { BottomNav } from "@/components/bottom-nav";
 import { PullToRefresh } from "@/components/pull-to-refresh";
 import { Toaster } from "@/components/ui/sonner";
 import { getIdioma } from "@/lib/idioma-server";
+import { SITE_URL } from "@/lib/site-url";
 
 // Cuerpo y UI: limpia, legible (fuente variable).
 const inter = Inter({
@@ -31,6 +32,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
+  // Sin esto Next resuelve las imágenes OG contra localhost y WhatsApp/Facebook
+  // no pueden descargarlas: la vista previa sale sin imagen.
+  metadataBase: new URL(SITE_URL),
   title: {
     default: "Rifas — organiza y vende tu rifa",
     template: "%s · Rifas",

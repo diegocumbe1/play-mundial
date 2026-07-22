@@ -683,6 +683,7 @@ export interface RifaPublica {
     | "loteria_url"
     | "fecha_loteria"
     | "modo_cifras"
+    | "formato_cifras"
     | "fecha_sorteo"
   >;
   premios: Pick<Premio, "tipo" | "descripcion" | "valor" | "criterio" | "orden">[];
@@ -769,6 +770,7 @@ export async function getRifaPublica(
         loteria_url: r.loteria_url,
         fecha_loteria: r.fecha_loteria,
         modo_cifras: r.modo_cifras,
+        formato_cifras: r.formato_cifras,
         fecha_sorteo: r.fecha_sorteo,
       },
       premios: ((premios as Premio[]) ?? []).map((p) => ({

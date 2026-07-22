@@ -5,7 +5,7 @@ import { ArrowLeft, Pencil } from "lucide-react";
 import { getRifa } from "@/actions/rifas";
 import { esSuperadmin, getMembership } from "@/lib/auth";
 import { getMiPagoConfig, getTenants } from "@/actions/tenants";
-import { calcularDashboard, formatCOP } from "@/lib/rifa";
+import { calcularDashboard, formatCOP, labelModoCifras } from "@/lib/rifa";
 import { formatFechaCO } from "@/lib/fecha-co";
 import { buttonVariants } from "@/components/ui/button";
 import { EstadoRifaBadge } from "@/components/rifa/estado-rifa-badge";
@@ -47,6 +47,24 @@ export default async function RifaDetallePage({
     ? tenantsRes.data.map((t) => ({ id: t.id, nombre: t.nombre }))
     : [];
   const tenantActual = tenants.find((t) => t.id === rifa.tenant_id);
+
+  // Resumen que acompaña al enlace al compartir: mismo contenido que la vista
+  // previa del enlace, por si el destinatario la tiene desactivada.
+  const fechaJuegoRifa =
+    rifa.tipo === "loteria" ? (rifa.fecha_loteria ?? rifa.fecha_sorteo) : rifa.fecha_sorteo;
+  const fechaJuegoRifaTxt = formatFechaCO(fechaJuegoRifa, { conAnio: false });
+  const resumenParaCompartir = [
+    rifa.tipo === "loteria" && rifa.modo_cifras
+      ? `Juega con las ${labelModoCifras(rifa.modo_cifras, rifa.formato_cifras)}${
+          rifa.loteria ? ` de la ${rifa.loteria}` : ""
+        }`
+      : null,
+    fechaJuegoRifaTxt ? `Juega el ${fechaJuegoRifaTxt}` : null,
+    `${formatCOP(rifa.precio_boleta)} por número`,
+    `Quedan ${dash.libres} de ${rifa.cantidad_numeros}`,
+  ]
+    .filter(Boolean)
+    .join(" · ");
 
   const puedeSortear = rifa.estado === "activa" || rifa.estado === "cerrada";
   const puedeEditar = !["sorteada", "pagada", "cancelada"].includes(rifa.estado);
@@ -101,7 +119,11 @@ export default async function RifaDetallePage({
           {/* Enlace público */}
           <section className="border-border mb-6 rounded-2xl border p-4">
             <p className="mb-2 text-sm font-semibold">Enlace público</p>
-            <ShareRifa slug={rifa.slug_publico} nombre={rifa.nombre} />
+            <ShareRifa
+              slug={rifa.slug_publico}
+              nombre={rifa.nombre}
+              detalle={resumenParaCompartir}
+            />
           </section>
 
           {/* Dashboard financiero + participantes (indicadores accionables) */}

@@ -16,18 +16,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { formatCOP } from "@/lib/rifa";
+import { formatCOP, labelCriterioPremio, labelModoCifras } from "@/lib/rifa";
 import { formatFechaCO } from "@/lib/fecha-co";
 import { getDecoracion, getTema } from "@/lib/temas-rifa";
 import { waLink } from "@/lib/whatsapp";
 import { Decoracion } from "@/components/rifa/decoracion-rifa";
 import { getOrCreateClienteId } from "@/lib/cliente-id";
-
-const MODO_CIFRAS_LABEL: Record<string, string> = {
-  primeras_dos: "primeras cifras",
-  ultimas_dos: "últimas cifras",
-  ambas: "primeras o últimas cifras",
-};
 
 /** Vista pública de una rifa: embudo de reserva + grilla en vivo (ocupado/libre). */
 export function RifaPublicaView({
@@ -206,7 +200,7 @@ export function RifaPublicaView({
                   </span>
                   {p.criterio && (
                     <span className="text-[11px] text-[var(--rifa-muted)]">
-                      ({p.criterio === "primeras_2" ? "primeras cifras" : "últimas cifras"})
+                      ({labelCriterioPremio(p.criterio, rifa.formato_cifras)})
                     </span>
                   )}
                 </li>
@@ -218,7 +212,10 @@ export function RifaPublicaView({
         {/* Info lotería */}
         {rifa.tipo === "loteria" && rifa.modo_cifras && (
           <p className="mb-4 rounded-lg border p-2 text-center text-xs text-[var(--rifa-muted)]" style={{ borderColor: t.line }}>
-            🎯 Gana con las <b style={{ color: t.text }}>{MODO_CIFRAS_LABEL[rifa.modo_cifras]}</b>
+            🎯 Gana con las{" "}
+            <b style={{ color: t.text }}>
+              {labelModoCifras(rifa.modo_cifras, rifa.formato_cifras)}
+            </b>
             {rifa.loteria ? ` de la ${rifa.loteria}` : ""}.
             {rifa.loteria_url && (
               <>

@@ -3,6 +3,7 @@ import type {
   BoletaPublica,
   CriterioPremio,
   DashboardRifa,
+  ModoCifras,
   Premio,
   Rifa,
 } from "@/types";
@@ -88,6 +89,30 @@ export function calcularDashboard(
     pctCumplimiento,
     pctVendido,
   };
+}
+
+/**
+ * Cómo juega la rifa, en palabras: "últimas 2 cifras". Siempre nombra CUÁNTAS
+ * cifras son (`formato_cifras`), que es el dato que el jugador necesita para
+ * cruzar su número con el resultado de la lotería.
+ */
+export function labelModoCifras(
+  modo: ModoCifras,
+  formatoCifras: number,
+): string {
+  if (modo === "primeras_dos") return `primeras ${formatoCifras} cifras`;
+  if (modo === "ambas") return `primeras o últimas ${formatoCifras} cifras`;
+  return `últimas ${formatoCifras} cifras`;
+}
+
+/** Igual que `labelModoCifras`, pero para el criterio de un premio puntual. */
+export function labelCriterioPremio(
+  criterio: CriterioPremio,
+  formatoCifras: number,
+): string {
+  return criterio === "primeras_2"
+    ? `primeras ${formatoCifras} cifras`
+    : `últimas ${formatoCifras} cifras`;
 }
 
 /** Cifras relevantes de un resultado de lotería, según el formato de la rifa. */

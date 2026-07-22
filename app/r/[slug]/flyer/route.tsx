@@ -1,7 +1,7 @@
 import { ImageResponse } from "next/og";
 
 import { getRifaPublica } from "@/actions/rifas";
-import { formatCOP } from "@/lib/polla";
+import { formatCOP, labelModoCifras } from "@/lib/rifa";
 import { formatFechaCO } from "@/lib/fecha-co";
 import { getDecoracion, getTema, type DecoracionRifa, type TemaFlyer } from "@/lib/temas-rifa";
 
@@ -124,12 +124,7 @@ export async function GET(
       ? `Paga a la llave ${pago.llave}`
       : null;
 
-  const modoLabel =
-    rifa.modo_cifras === "primeras_dos"
-      ? "primeras cifras"
-      : rifa.modo_cifras === "ambas"
-        ? "primeras o últimas cifras"
-        : "últimas cifras";
+  const modoLabel = labelModoCifras(rifa.modo_cifras ?? "ultimas_dos", rifa.formato_cifras);
 
   return new ImageResponse(
     (
