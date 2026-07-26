@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Check, Clock, Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
@@ -48,22 +48,11 @@ export function BoletaModal({
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
-  const [nombre, setNombre] = useState("");
-  const [telefono, setTelefono] = useState("");
+  const [nombre, setNombre] = useState(boleta?.comprador_nombre ?? "");
+  const [telefono, setTelefono] = useState(boleta?.comprador_telefono ?? "");
+  const [responsable, setResponsable] = useState(boleta?.responsable_venta ?? "");
   const [confirmandoLiberar, setConfirmandoLiberar] = useState(false);
   const [editando, setEditando] = useState(false);
-
-  // Al abrir/cambiar de número, limpia el formulario y las confirmaciones.
-  useEffect(() => {
-    if (open) {
-      setNombre(boleta?.comprador_nombre ?? "");
-      setTelefono(boleta?.comprador_telefono ?? "");
-      setConfirmandoLiberar(false);
-      setEditando(false);
-    }
-    // `boleta` cambia de identidad al refrescar; basta con el número.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, numero]);
 
   function correr(
     accion: () => Promise<{ success: boolean; error?: string }>,
@@ -92,7 +81,9 @@ export function BoletaModal({
             {boleta
               ? `${boleta.comprador_nombre ?? "Sin nombre"}${
                   boleta.comprador_telefono ? ` · ${boleta.comprador_telefono}` : ""
-                } — ${boleta.estado === "pagado" ? "pagado" : "apartado (sin pagar)"}`
+                }${boleta.responsable_venta ? ` · responsable: ${boleta.responsable_venta}` : ""} — ${
+                  boleta.estado === "pagado" ? "pagado" : "apartado (sin pagar)"
+                }`
               : "Registra a quién le vendiste este número."}
           </DialogDescription>
         </DialogHeader>
@@ -116,6 +107,16 @@ export function BoletaModal({
                 onChange={(e) => setTelefono(e.target.value)}
                 placeholder="300 000 0000"
                 inputMode="tel"
+              />
+            </div>
+            <div>
+              <Label className="text-muted-foreground mb-1.5 block text-xs">
+                Responsable de venta (opcional)
+              </Label>
+              <Input
+                value={responsable}
+                onChange={(e) => setResponsable(e.target.value)}
+                placeholder="Diego Cumbe"
               />
             </div>
           </div>
@@ -143,6 +144,7 @@ export function BoletaModal({
                         numero: numero!,
                         comprador_nombre: nombre.trim(),
                         comprador_telefono: telefono.trim() || null,
+                        responsable_venta: responsable.trim() || null,
                         pagado: false,
                       }),
                     "Número apartado",
@@ -161,6 +163,7 @@ export function BoletaModal({
                         numero: numero!,
                         comprador_nombre: nombre.trim(),
                         comprador_telefono: telefono.trim() || null,
+                        responsable_venta: responsable.trim() || null,
                         pagado: true,
                         metodo_pago: "efectivo",
                       }),
@@ -184,6 +187,7 @@ export function BoletaModal({
                       actualizarBoleta(boleta.id, {
                         comprador_nombre: nombre.trim(),
                         comprador_telefono: telefono.trim() || null,
+                        responsable_venta: responsable.trim() || null,
                       }),
                     "Datos actualizados",
                   )

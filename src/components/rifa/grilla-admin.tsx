@@ -54,14 +54,16 @@ export function GrillaAdmin({
         <span className="inline-flex items-center gap-1.5"><i className="size-3 rounded bg-emerald-500/40" /> Pagado</span>
       </div>
 
-      <BoletaModal
-        rifaId={rifaId}
-        numero={abierto}
-        boleta={abierto != null ? porNumero.get(abierto) : undefined}
-        ancho={ancho}
-        open={abierto !== null}
-        onClose={() => setAbierto(null)}
-      />
+      {abierto !== null && (
+        <BoletaModal
+          rifaId={rifaId}
+          numero={abierto}
+          boleta={porNumero.get(abierto)}
+          ancho={ancho}
+          open
+          onClose={() => setAbierto(null)}
+        />
+      )}
     </>
   );
 }

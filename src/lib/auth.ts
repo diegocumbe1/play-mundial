@@ -37,7 +37,17 @@ export async function getMembership(): Promise<Membership | null> {
     .limit(1)
     .maybeSingle();
 
-  return (data as Membership | null) ?? null;
+  const membership = (data as Membership | null) ?? null;
+  if (!membership) return null;
+  if (membership.rol === "superadmin") return membership;
+
+  const { data: tenant } = await supabase
+    .from("tenants")
+    .select("estado")
+    .eq("id", membership.tenant_id)
+    .maybeSingle();
+
+  return (tenant as { estado: string } | null)?.estado === "activo" ? membership : null;
 }
 
 /** ¿El usuario actual es superadmin de la plataforma? */

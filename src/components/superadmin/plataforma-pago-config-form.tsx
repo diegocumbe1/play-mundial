@@ -5,15 +5,15 @@ import { useRouter } from "next/navigation";
 import { ImageUp, Loader2, X } from "lucide-react";
 import { toast } from "sonner";
 
-import { guardarPagoConfig, subirQrImagen } from "@/actions/tenants";
+import { guardarPlataformaPagoConfig, subirQrPlataforma } from "@/actions/cobros";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { TIPOS_CUENTA_PAGO } from "@/lib/pagos";
-import type { TenantPagoConfig } from "@/types";
+import type { PlataformaPagoConfig } from "@/types";
 
-/** Datos de cobro del tenant (cuenta/Llave Bre-B/QR/WhatsApp). */
-export function PagoConfigForm({ inicial }: { inicial: TenantPagoConfig | null }) {
+/** Medios de pago de la plataforma para planes y activaciones por transferencia. */
+export function PlataformaPagoConfigForm({ inicial }: { inicial: PlataformaPagoConfig | null }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [subiendo, setSubiendo] = useState(false);
@@ -29,6 +29,7 @@ export function PagoConfigForm({ inicial }: { inicial: TenantPagoConfig | null }
   const [llave, setLlave] = useState(inicial?.llave ?? "");
   const [titular, setTitular] = useState(inicial?.titular ?? "");
   const [whatsapp, setWhatsapp] = useState(inicial?.whatsapp ?? "");
+  const [mensaje, setMensaje] = useState(inicial?.mensaje_qr ?? "");
   const [qr, setQr] = useState(inicial?.qr_url ?? "");
 
   async function onFile(e: React.ChangeEvent<HTMLInputElement>) {
@@ -37,7 +38,7 @@ export function PagoConfigForm({ inicial }: { inicial: TenantPagoConfig | null }
     setSubiendo(true);
     const fd = new FormData();
     fd.append("file", file);
-    const r = await subirQrImagen(fd);
+    const r = await subirQrPlataforma(fd);
     setSubiendo(false);
     if (!r.success) {
       toast.error(r.error);
@@ -58,19 +59,20 @@ export function PagoConfigForm({ inicial }: { inicial: TenantPagoConfig | null }
       return;
     }
     startTransition(async () => {
-      const r = await guardarPagoConfig({
+      const r = await guardarPlataformaPagoConfig({
         cuenta_tipo: cuentaNumero.trim() ? tipoCuentaFinal : null,
         cuenta_numero: cuentaNumero.trim() || null,
         llave: llave.trim() || null,
         titular: titular.trim() || null,
         whatsapp: whatsapp.trim() || null,
+        mensaje_qr: mensaje.trim() || null,
         qr_url: qr.trim() || null,
       });
       if (!r.success) {
         toast.error(r.error);
         return;
       }
-      toast.success("Datos de cobro guardados");
+      toast.success("Medios de pago guardados");
       router.refresh();
     });
   }
@@ -105,30 +107,29 @@ export function PagoConfigForm({ inicial }: { inicial: TenantPagoConfig | null }
         </p>
       </div>
       <div>
-        <Label className="text-muted-foreground mb-1.5 block text-xs">Llave / alias Bre-B (opcional)</Label>
-        <Input value={llave} onChange={(e) => setLlave(e.target.value)} placeholder="@turifa o correo" />
+        <Label className="text-muted-foreground mb-1.5 block text-xs">Llave / alias Bre-B</Label>
+        <Input value={llave} onChange={(e) => setLlave(e.target.value)} placeholder="@plataforma o correo" />
       </div>
-      <p className="text-muted-foreground -mt-1 text-[11px] sm:col-span-2">
-        Debes indicar al menos uno: cuenta o Llave Bre-B. Los dos no son obligatorios.
-      </p>
-
       <div>
         <Label className="text-muted-foreground mb-1.5 block text-xs">Titular</Label>
         <Input value={titular} onChange={(e) => setTitular(e.target.value)} placeholder="Nombre del titular" />
       </div>
       <div>
-        <Label className="text-muted-foreground mb-1.5 block text-xs">WhatsApp de contacto</Label>
+        <Label className="text-muted-foreground mb-1.5 block text-xs">WhatsApp para confirmar</Label>
         <Input value={whatsapp} onChange={(e) => setWhatsapp(e.target.value)} placeholder="573000000000" inputMode="tel" />
       </div>
-
-      {/* QR */}
       <div className="sm:col-span-2">
-        <Label className="text-muted-foreground mb-1.5 block text-xs">Imagen del QR (opcional)</Label>
+        <Label className="text-muted-foreground mb-1.5 block text-xs">Mensaje de pago</Label>
+        <Input value={mensaje} onChange={(e) => setMensaje(e.target.value)} placeholder="Envía el comprobante por WhatsApp para activar tu plan." />
+      </div>
+
+      <div className="sm:col-span-2">
+        <Label className="text-muted-foreground mb-1.5 block text-xs">QR de transferencia</Label>
         <div className="flex items-center gap-3">
           {qr ? (
             <div className="relative">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={qr} alt="QR de pago" width={72} height={72} className="border-border size-[72px] rounded-lg border object-cover" />
+              <img src={qr} alt="QR de pago de la plataforma" width={72} height={72} className="border-border size-[72px] rounded-lg border object-cover" />
               <button
                 type="button"
                 onClick={() => setQr("")}
@@ -152,7 +153,7 @@ export function PagoConfigForm({ inicial }: { inicial: TenantPagoConfig | null }
       </div>
 
       <div className="sm:col-span-2">
-        <Button onClick={guardar} disabled={pending || subiendo}>Guardar datos de cobro</Button>
+        <Button onClick={guardar} disabled={pending || subiendo}>Guardar medios de pago</Button>
       </div>
     </div>
   );

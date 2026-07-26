@@ -19,6 +19,7 @@ export function PlataformaConfigForm({ inicial }: { inicial: PlataformaConfig })
     moneda: inicial.moneda,
     precio_rifa_100: String(inicial.precio_rifa_100),
     precio_rifa_500: String(inicial.precio_rifa_500),
+    precio_rifa_1000: String(inicial.precio_rifa_1000),
     precio_suscripcion_mes: String(inicial.precio_suscripcion_mes),
     free_rifas_por_mes: String(inicial.free_rifas_por_mes),
     free_rifas_total: String(inicial.free_rifas_total),
@@ -35,6 +36,7 @@ export function PlataformaConfigForm({ inicial }: { inicial: PlataformaConfig })
         moneda: f.moneda.trim() || "COP",
         precio_rifa_100: Number(f.precio_rifa_100) || 0,
         precio_rifa_500: Number(f.precio_rifa_500) || 0,
+        precio_rifa_1000: Number(f.precio_rifa_1000) || 0,
         precio_suscripcion_mes: Number(f.precio_suscripcion_mes) || 0,
         free_rifas_por_mes: Number(f.free_rifas_por_mes) || 0,
         free_rifas_total: Number(f.free_rifas_total) || 0,
@@ -53,9 +55,10 @@ export function PlataformaConfigForm({ inicial }: { inicial: PlataformaConfig })
     <div className="flex flex-col gap-5">
       <div>
         <p className="mb-2 text-sm font-semibold">Precios (COP)</p>
-        <div className="grid gap-3 sm:grid-cols-3">
+        <div className="grid gap-3 sm:grid-cols-2">
           <CampoMoneda label="Rifa hasta 100 números" value={f.precio_rifa_100} onChange={(v) => set("precio_rifa_100", v)} />
           <CampoMoneda label="Rifa 101–500 números" value={f.precio_rifa_500} onChange={(v) => set("precio_rifa_500", v)} />
+          <CampoMoneda label="Rifa 501–1000 números" value={f.precio_rifa_1000} onChange={(v) => set("precio_rifa_1000", v)} />
           <CampoMoneda label="Suscripción / mes" value={f.precio_suscripcion_mes} onChange={(v) => set("precio_suscripcion_mes", v)} />
         </div>
       </div>

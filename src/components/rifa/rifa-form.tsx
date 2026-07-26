@@ -195,7 +195,9 @@ export function RifaForm({
         </Field>
         <Field label="Cantidad de números">
           <Input inputMode="numeric" value={cantidad} onChange={(e) => setCantidad(e.target.value)} placeholder="100" />
-          <p className="text-muted-foreground mt-1 text-xs">100 = del 00 al 99.</p>
+          <p className="text-muted-foreground mt-1 text-xs">
+            Puedes crear rifas hasta de 1000 números: 100 = 00–99, 1000 = 000–999.
+          </p>
         </Field>
         <Field label="Cifras del número">
           <Segmented

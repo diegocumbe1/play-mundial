@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { MessageCircle, Phone, Search, Users, X } from "lucide-react";
+import { MessageCircle, Phone, Search, UserCheck, Users, X } from "lucide-react";
 
 import { BoletaModal } from "@/components/rifa/boleta-modal";
 import { Input } from "@/components/ui/input";
@@ -29,6 +29,14 @@ interface Persona {
   debe: number;
 }
 
+interface ResponsableResumen {
+  nombre: string;
+  boletas: Boleta[];
+  pagadas: number;
+  pendientes: number;
+  porCobrar: number;
+}
+
 /** Listado de participantes: quién compró, cuánto debe y contacto por WhatsApp. */
 export function ParticipantesLista({
   rifa,
@@ -46,14 +54,43 @@ export function ParticipantesLista({
   const filtro = filtroProp ?? filtroLocal;
   const setFiltro = onFiltro ?? setFiltroLocal;
   const [busqueda, setBusqueda] = useState("");
+  const [responsableFiltro, setResponsableFiltro] = useState("");
   // Ningún cambio de estado es de un solo toque: se abre el modal de la boleta.
   const [boletaSel, setBoletaSel] = useState<Boleta | null>(null);
 
   const ancho = String(rifa.cantidad_numeros - 1).length;
 
+  const responsables = useMemo<ResponsableResumen[]>(() => {
+    const map = new Map<string, ResponsableResumen>();
+    for (const b of boletas) {
+      if (b.estado === "libre") continue;
+      const nombre = b.responsable_venta?.trim();
+      if (!nombre) continue;
+      const clave = normalizar(nombre);
+      const actual =
+        map.get(clave) ??
+        { nombre, boletas: [], pagadas: 0, pendientes: 0, porCobrar: 0 };
+      actual.boletas.push(b);
+      if (b.estado === "pagado") actual.pagadas += 1;
+      else actual.pendientes += 1;
+      actual.porCobrar = actual.pendientes * rifa.precio_boleta;
+      map.set(clave, actual);
+    }
+    return [...map.values()].sort((a, b) => b.boletas.length - a.boletas.length);
+  }, [boletas, rifa.precio_boleta]);
+
+  const responsableActivo = responsables.find((r) => normalizar(r.nombre) === responsableFiltro);
+  const boletasBase = useMemo(
+    () =>
+      responsableFiltro
+        ? boletas.filter((b) => normalizar(b.responsable_venta?.trim() ?? "") === responsableFiltro)
+        : boletas,
+    [boletas, responsableFiltro],
+  );
+
   const personas = useMemo<Persona[]>(() => {
     const map = new Map<string, Persona>();
-    for (const b of boletas) {
+    for (const b of boletasBase) {
       if (b.estado === "libre") continue;
       const nombre = b.comprador_nombre?.trim() || "Sin nombre";
       const telefono = b.comprador_telefono?.trim() || null;
@@ -68,7 +105,7 @@ export function ParticipantesLista({
       map.set(clave, actual);
     }
     return [...map.values()].sort((a, b) => b.pendientes - a.pendientes);
-  }, [boletas, rifa.precio_boleta]);
+  }, [boletasBase, rifa.precio_boleta]);
 
   const q = normalizar(busqueda.trim());
   const visibles = personas
@@ -80,7 +117,9 @@ export function ParticipantesLista({
       // Busca por nombre, teléfono o cualquiera de sus números.
       const qDigitos = q.replace(/\D/g, "");
       const numeros = p.boletas.map((b) => String(b.numero).padStart(ancho, "0")).join(" ");
+      const responsables = p.boletas.map((b) => b.responsable_venta ?? "").join(" ");
       if (normalizar(p.nombre).includes(q)) return true;
+      if (normalizar(responsables).includes(q)) return true;
       if (qDigitos && (p.telefono ?? "").replace(/\D/g, "").includes(qDigitos)) return true;
       if (qDigitos && numeros.split(" ").some((n) => n.includes(qDigitos))) return true;
       return false;
@@ -131,12 +170,79 @@ export function ParticipantesLista({
       </div>
 
       {/* Buscador */}
+      {responsables.length > 0 && (
+        <div className="border-border bg-muted/20 rounded-xl border p-3">
+          <div className="grid gap-2 sm:grid-cols-[1fr_auto] sm:items-end">
+            <div>
+              <label className="text-muted-foreground mb-1.5 block text-xs font-medium">
+                Responsable de venta
+              </label>
+              <select
+                value={responsableFiltro}
+                onChange={(e) => setResponsableFiltro(e.target.value)}
+                className="border-input bg-background h-9 w-full rounded-lg border px-2 text-sm"
+              >
+                <option value="">Todos los responsables</option>
+                {responsables.map((r) => (
+                  <option key={normalizar(r.nombre)} value={normalizar(r.nombre)}>
+                    {r.nombre} ({r.boletas.length})
+                  </option>
+                ))}
+              </select>
+            </div>
+            {responsableFiltro && (
+              <button
+                type="button"
+                onClick={() => setResponsableFiltro("")}
+                className="text-muted-foreground hover:text-foreground h-9 rounded-lg px-2 text-xs"
+              >
+                Ver todos
+              </button>
+            )}
+          </div>
+
+          {responsableActivo && (
+            <div className="mt-3">
+              <p className="text-muted-foreground text-xs">
+                <UserCheck className="mr-1 inline size-3.5" />
+                {responsableActivo.nombre}: {responsableActivo.boletas.length} número(s) ·{" "}
+                {responsableActivo.pagadas} pagado(s) · {responsableActivo.pendientes} por cobrar
+                {responsableActivo.porCobrar > 0 && (
+                  <> · <b className="text-foreground">{formatCOP(responsableActivo.porCobrar)}</b></>
+                )}
+              </p>
+              <div className="mt-2 flex max-h-20 flex-wrap gap-1.5 overflow-auto">
+                {responsableActivo.boletas
+                  .slice()
+                  .sort((a, b) => a.numero - b.numero)
+                  .map((b) => (
+                    <button
+                      key={b.id}
+                      type="button"
+                      onClick={() => setBoletaSel(b)}
+                      title={`${b.comprador_nombre ?? "Sin comprador"} · ${b.estado}`}
+                      className={
+                        "inline-flex items-center rounded-md px-2 py-0.5 text-xs font-bold tabular-nums " +
+                        (b.estado === "pagado"
+                          ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
+                          : "bg-amber-500/15 text-amber-700 dark:text-amber-300")
+                      }
+                    >
+                      {String(b.numero).padStart(ancho, "0")}
+                    </button>
+                  ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       <div className="relative">
         <Search className="text-muted-foreground pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2" />
         <Input
           value={busqueda}
           onChange={(e) => setBusqueda(e.target.value)}
-          placeholder="Buscar por nombre, teléfono o número…"
+          placeholder="Buscar por nombre, teléfono, número o responsable…"
           className="pl-8 pr-8"
           aria-label="Buscar participante"
         />
@@ -206,6 +312,17 @@ export function ParticipantesLista({
                   </button>
                 ))}
               </div>
+              {p.boletas.some((b) => b.responsable_venta) && (
+                <div className="text-muted-foreground mt-2 flex flex-wrap gap-1.5 text-[11px]">
+                  {p.boletas
+                    .filter((b) => b.responsable_venta)
+                    .map((b) => (
+                      <span key={`${b.id}-responsable`} className="bg-muted rounded-md px-2 py-0.5">
+                        #{String(b.numero).padStart(ancho, "0")}: {b.responsable_venta}
+                      </span>
+                    ))}
+                </div>
+              )}
 
               {p.telefono && (
                 <a
@@ -230,14 +347,16 @@ export function ParticipantesLista({
       )}
 
       {/* Mismo modal que la grilla: todo cambio de estado se confirma aquí. */}
-      <BoletaModal
-        rifaId={rifa.id}
-        numero={boletaSel?.numero ?? null}
-        boleta={boletaSel ?? undefined}
-        ancho={ancho}
-        open={boletaSel !== null}
-        onClose={() => setBoletaSel(null)}
-      />
+      {boletaSel && (
+        <BoletaModal
+          rifaId={rifa.id}
+          numero={boletaSel.numero}
+          boleta={boletaSel}
+          ancho={ancho}
+          open
+          onClose={() => setBoletaSel(null)}
+        />
+      )}
     </div>
   );
 }

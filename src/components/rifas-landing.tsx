@@ -60,7 +60,7 @@ export function RifasLanding() {
           <Paso
             icon={<Wallet className="size-5" />}
             titulo="3. Cobra y sortea"
-            texto="Recibe pagos a tu Nequi, marca quién pagó y resuelve el ganador automáticamente."
+            texto="Recibe pagos a tu cuenta, Bre-B o QR, marca quién pagó y resuelve el ganador automáticamente."
           />
         </section>
 

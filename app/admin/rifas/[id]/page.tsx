@@ -38,7 +38,7 @@ export default async function RifaDetallePage({
 
   const pagoRes = await getMiPagoConfig();
   const pago = pagoRes.success ? pagoRes.data : null;
-  const pagoIncompleto = !pago?.nequi_llave && !pago?.qr_url;
+  const pagoIncompleto = !(pago?.cuenta_numero ?? pago?.nequi_llave) && !pago?.llave && !pago?.qr_url;
 
   // Solo el superadmin puede transferir la rifa a otro organizador.
   const superadmin = await esSuperadmin();
@@ -110,7 +110,7 @@ export default async function RifaDetallePage({
           </p>
           {pagoIncompleto && (
             <p className="text-amber-600 dark:text-amber-400 mt-2 text-xs">
-              Configura tus datos de cobro (Nequi/QR) más abajo antes de vender.
+              Configura tus datos de cobro (cuenta, Bre-B o QR) más abajo antes de vender.
             </p>
           )}
         </div>

@@ -5,11 +5,11 @@ import { z } from "zod";
 
 import { esSuperadmin, getMembership } from "@/lib/auth";
 import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
-import type { ActionResult, Tenant, TenantPagoConfig } from "@/types";
+import type { ActionResult, PlanTenant, RolMembership, Tenant, TenantPagoConfig } from "@/types";
 
 /**
  * Server Actions de tenants. Crear tenants + owners es del superadmin; cada
- * owner administra su propia config de cobro (Nequi/QR/WhatsApp).
+ * owner administra su propia config de cobro (cuenta/Bre-B/QR/WhatsApp).
  */
 
 function slugify(nombre: string): string {
@@ -36,6 +36,145 @@ export async function getTenants(): Promise<ActionResult<Tenant[]>> {
     .order("created_at", { ascending: false });
   if (error) return { success: false, error: error.message };
   return { success: true, data: (data as Tenant[]) ?? [] };
+}
+
+export interface SuperadminTenantMetric {
+  tenant: Tenant;
+  roles: RolMembership[];
+  emails: string[];
+  rifasMes: number;
+  rifasTotal: number;
+  rifasPagasMes: number;
+  valorGeneradoMes: number;
+  pendienteMontoMes: number;
+  pendienteCantidadMes: number;
+  confirmadoMontoMes: number;
+  confirmadoCantidadMes: number;
+}
+
+export interface SuperadminDashboard {
+  mes: string;
+  nowMs: number;
+  totalUsuarios: number;
+  totalOrganizadores: number;
+  totalSuperadmins: number;
+  usuariosSuscripcion: number;
+  usuariosPagoPorRifa: number;
+  usuariosGratis: number;
+  usuariosBloqueados: number;
+  rifasMes: number;
+  rifasTotal: number;
+  rifasPagasMes: number;
+  valorGeneradoMes: number;
+  pendienteMontoMes: number;
+  pendienteCantidadMes: number;
+  confirmadoMontoMes: number;
+  confirmadoCantidadMes: number;
+  tenants: SuperadminTenantMetric[];
+}
+
+function normalizarMes(mes?: string): string {
+  return /^\d{4}-\d{2}$/.test(mes ?? "") ? mes! : new Date().toISOString().slice(0, 7);
+}
+
+function rangoMes(mes: string) {
+  const [year, month] = mes.split("-").map(Number);
+  const inicio = new Date(Date.UTC(year, month - 1, 1));
+  const fin = new Date(Date.UTC(year, month, 1));
+  return { inicio: inicio.toISOString(), fin: fin.toISOString() };
+}
+
+/** Métricas de plataforma para el dashboard de superadmin. */
+export async function getSuperadminDashboard(mesInput?: string): Promise<ActionResult<SuperadminDashboard>> {
+  if (!(await esSuperadmin())) {
+    return { success: false, error: "No autorizado" };
+  }
+
+  const mes = normalizarMes(mesInput);
+  const { inicio, fin } = rangoMes(mes);
+  const svc = createServiceRoleClient();
+
+  const [
+    { data: tenantsData, error: tenantsError },
+    { data: membershipsData, error: membershipsError },
+    { data: rifasData, error: rifasError },
+    { data: cobrosData, error: cobrosError },
+  ] = await Promise.all([
+    svc.from("tenants").select("*").order("created_at", { ascending: false }),
+    svc.from("memberships").select("*"),
+    svc.from("rifas").select("id, tenant_id, cobro_tipo, created_at, activada_at"),
+    svc.from("cobros").select("id, tenant_id, tipo, monto, estado, created_at, pagado_at"),
+  ]);
+
+  const error = tenantsError ?? membershipsError ?? rifasError ?? cobrosError;
+  if (error) return { success: false, error: error.message };
+
+  const tenants = (tenantsData as Tenant[]) ?? [];
+  const memberships = (membershipsData as { user_id: string; tenant_id: string; rol: RolMembership }[]) ?? [];
+  const rifas = (rifasData as { tenant_id: string; cobro_tipo: PlanTenant | null; created_at: string; activada_at: string | null }[]) ?? [];
+  const cobros = (cobrosData as { tenant_id: string; monto: number; estado: string; created_at: string; pagado_at: string | null }[]) ?? [];
+
+  const emailsPorUser = new Map<string, string>();
+  let pagina = 1;
+  while (pagina <= 20) {
+    const { data, error: usersError } = await svc.auth.admin.listUsers({ page: pagina, perPage: 1000 });
+    if (usersError) return { success: false, error: usersError.message };
+    for (const user of data.users) emailsPorUser.set(user.id, user.email ?? user.id);
+    if (data.users.length < 1000) break;
+    pagina += 1;
+  }
+
+  const enMes = (fecha: string | null) => Boolean(fecha && fecha >= inicio && fecha < fin);
+  const tenantMetrics = tenants.map<SuperadminTenantMetric>((tenant) => {
+    const m = memberships.filter((x) => x.tenant_id === tenant.id);
+    const tenantRifas = rifas.filter((r) => r.tenant_id === tenant.id);
+    const tenantCobros = cobros.filter((c) => c.tenant_id === tenant.id);
+    const pendientes = tenantCobros.filter((c) => c.estado === "pendiente" && enMes(c.created_at));
+    const confirmados = tenantCobros.filter((c) => c.estado === "pagado" && enMes(c.pagado_at ?? c.created_at));
+
+    return {
+      tenant,
+      roles: [...new Set(m.map((x) => x.rol))],
+      emails: m.map((x) => emailsPorUser.get(x.user_id) ?? x.user_id),
+      rifasMes: tenantRifas.filter((r) => enMes(r.created_at)).length,
+      rifasTotal: tenantRifas.length,
+      rifasPagasMes: tenantRifas.filter((r) => r.cobro_tipo === "pago_rifa" && enMes(r.activada_at ?? r.created_at)).length,
+      valorGeneradoMes: confirmados.reduce((s, c) => s + c.monto, 0),
+      pendienteMontoMes: pendientes.reduce((s, c) => s + c.monto, 0),
+      pendienteCantidadMes: pendientes.length,
+      confirmadoMontoMes: confirmados.reduce((s, c) => s + c.monto, 0),
+      confirmadoCantidadMes: confirmados.length,
+    };
+  });
+
+  const totalUsuarios = new Set(memberships.map((m) => m.user_id)).size;
+  const totalSuperadmins = new Set(memberships.filter((m) => m.rol === "superadmin").map((m) => m.user_id)).size;
+  const pendientesMes = cobros.filter((c) => c.estado === "pendiente" && enMes(c.created_at));
+  const confirmadosMes = cobros.filter((c) => c.estado === "pagado" && enMes(c.pagado_at ?? c.created_at));
+
+  return {
+    success: true,
+    data: {
+      mes,
+      nowMs: Date.now(),
+      totalUsuarios,
+      totalOrganizadores: tenants.length,
+      totalSuperadmins,
+      usuariosGratis: tenants.filter((t) => t.plan_actual === "gratis").length,
+      usuariosSuscripcion: tenants.filter((t) => t.plan_actual === "suscripcion").length,
+      usuariosPagoPorRifa: tenants.filter((t) => t.plan_actual === "pago_rifa").length,
+      usuariosBloqueados: tenants.filter((t) => t.estado !== "activo").length,
+      rifasMes: rifas.filter((r) => enMes(r.created_at)).length,
+      rifasTotal: rifas.length,
+      rifasPagasMes: rifas.filter((r) => r.cobro_tipo === "pago_rifa" && enMes(r.activada_at ?? r.created_at)).length,
+      valorGeneradoMes: confirmadosMes.reduce((s, c) => s + c.monto, 0),
+      pendienteMontoMes: pendientesMes.reduce((s, c) => s + c.monto, 0),
+      pendienteCantidadMes: pendientesMes.length,
+      confirmadoMontoMes: confirmadosMes.reduce((s, c) => s + c.monto, 0),
+      confirmadoCantidadMes: confirmadosMes.length,
+      tenants: tenantMetrics,
+    },
+  };
 }
 
 const nuevoTenantSchema = z.object({
@@ -108,6 +247,54 @@ export async function setEstadoTenant(
   return { success: true, data: undefined };
 }
 
+const planTenantSchema = z.object({
+  tenantId: z.string().uuid(),
+  plan: z.enum(["gratis", "pago_rifa", "suscripcion"]),
+});
+
+/** Cambia manualmente el plan de un organizador. Solo superadmin. */
+export async function setPlanTenant(
+  input: z.infer<typeof planTenantSchema>,
+): Promise<ActionResult> {
+  if (!(await esSuperadmin())) {
+    return { success: false, error: "No autorizado" };
+  }
+  const parsed = planTenantSchema.safeParse(input);
+  if (!parsed.success) {
+    return { success: false, error: parsed.error.issues[0].message };
+  }
+
+  const { tenantId, plan } = parsed.data;
+  const patch: { plan_actual: PlanTenant; suscripcion_vence_at: string | null } = {
+    plan_actual: plan,
+    suscripcion_vence_at: null,
+  };
+
+  if (plan === "suscripcion") {
+    const { data: tenantActual } = await createServiceRoleClient()
+      .from("tenants")
+      .select("suscripcion_vence_at")
+      .eq("id", tenantId)
+      .maybeSingle();
+    const actual = (tenantActual as { suscripcion_vence_at: string | null } | null)
+      ?.suscripcion_vence_at;
+    const vence =
+      actual && new Date(actual).getTime() > Date.now()
+        ? new Date(actual)
+        : new Date();
+    vence.setMonth(vence.getMonth() + 1);
+    patch.suscripcion_vence_at = vence.toISOString();
+  }
+
+  const svc = createServiceRoleClient();
+  const { error } = await svc.from("tenants").update(patch).eq("id", tenantId);
+  if (error) return { success: false, error: error.message };
+
+  revalidatePath("/superadmin");
+  revalidatePath("/admin/rifas");
+  return { success: true, data: undefined };
+}
+
 /** Config de cobro del tenant del usuario actual. */
 export async function getMiPagoConfig(): Promise<ActionResult<TenantPagoConfig | null>> {
   const membership = await getMembership();
@@ -123,6 +310,8 @@ export async function getMiPagoConfig(): Promise<ActionResult<TenantPagoConfig |
 
 const pagoConfigSchema = z.object({
   nequi_llave: z.string().trim().nullable().optional(),
+  cuenta_tipo: z.string().trim().nullable().optional(),
+  cuenta_numero: z.string().trim().nullable().optional(),
   llave: z.string().trim().nullable().optional(),
   titular: z.string().trim().nullable().optional(),
   qr_url: z.string().trim().nullable().optional(),
@@ -130,7 +319,7 @@ const pagoConfigSchema = z.object({
   mensaje_qr: z.string().trim().nullable().optional(),
 });
 
-/** El owner guarda sus datos de cobro (upsert por tenant). Requiere Nequi o Llave. */
+/** El owner guarda sus datos de cobro (upsert por tenant). Requiere cuenta o Bre-B. */
 export async function guardarPagoConfig(
   input: z.infer<typeof pagoConfigSchema>,
 ): Promise<ActionResult> {
@@ -143,14 +332,19 @@ export async function guardarPagoConfig(
   }
   const d = parsed.data;
 
-  if (!d.nequi_llave?.trim() && !d.llave?.trim()) {
-    return { success: false, error: "Indica al menos un medio de pago: Nequi o Llave" };
+  const cuentaNumero = d.cuenta_numero?.trim() || d.nequi_llave?.trim() || "";
+  const cuentaTipo = d.cuenta_tipo?.trim() || (cuentaNumero ? "nequi" : "");
+
+  if (!cuentaNumero && !d.llave?.trim()) {
+    return { success: false, error: "Indica al menos un medio de pago: cuenta o Llave Bre-B" };
   }
 
   const supabase = await createClient();
   const { error } = await supabase.from("tenant_pago_config").upsert({
     tenant_id: membership.tenant_id,
-    nequi_llave: d.nequi_llave?.trim() || null,
+    nequi_llave: cuentaTipo === "nequi" ? cuentaNumero : null,
+    cuenta_tipo: cuentaTipo || null,
+    cuenta_numero: cuentaNumero || null,
     llave: d.llave?.trim() || null,
     titular: d.titular?.trim() || null,
     qr_url: d.qr_url?.trim() || null,

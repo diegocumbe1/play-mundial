@@ -14,6 +14,7 @@ import type {
   GanadorPublico,
   Membership,
   Premio,
+  PlataformaPagoConfig,
   Rifa,
   TenantPagoConfig,
 } from "@/types";
@@ -51,7 +52,7 @@ const rifaSchema = z.object({
   descripcion: z.string().trim().nullable().optional(),
   tipo: z.enum(["interna", "loteria"]),
   precio_boleta: z.number().int().min(0),
-  cantidad_numeros: z.number().int().min(2).max(10000),
+  cantidad_numeros: z.number().int().min(2).max(1000),
   formato_cifras: z.union([z.literal(2), z.literal(3)]),
   solo_pagadas_juegan: z.boolean().default(true),
   tema: z.enum(["rosa", "clasico", "esmeralda", "oceano", "durazno"]).default("rosa"),
@@ -288,7 +289,7 @@ export async function guardarPremios(
  */
 export async function activarRifa(
   id: string,
-): Promise<ActionResult<{ activada: boolean; pendiente?: boolean; monto?: number }>> {
+): Promise<ActionResult<{ activada: boolean; pendiente?: boolean; monto?: number; pago?: PlataformaPagoConfig | null }>> {
   const membership = await requireMembership();
   if (!membership) return { success: false, error: "Sin sesión" };
 
@@ -308,14 +309,16 @@ export async function activarRifa(
     return { success: false, error: "La rifa ya fue activada" };
   }
 
-  const [{ data: tenant }, { data: cfg }] = await Promise.all([
+  const [{ data: tenant }, { data: cfg }, { data: pago }] = await Promise.all([
     svc.from("tenants").select("*").eq("id", r.tenant_id).maybeSingle(),
     svc.from("plataforma_config").select("*").limit(1).maybeSingle(),
+    svc.from("plataforma_pago_config").select("*").limit(1).maybeSingle(),
   ]);
 
   const config = cfg as {
     precio_rifa_100: number;
     precio_rifa_500: number;
+    precio_rifa_1000: number;
     free_rifas_por_mes: number;
     free_rifas_total: number;
     free_max_numeros: number;
@@ -366,7 +369,9 @@ export async function activarRifa(
   const monto =
     r.cantidad_numeros <= 100
       ? (config?.precio_rifa_100 ?? 0)
-      : (config?.precio_rifa_500 ?? 0);
+      : r.cantidad_numeros <= 500
+        ? (config?.precio_rifa_500 ?? 0)
+        : (config?.precio_rifa_1000 ?? 0);
 
   await svc.from("cobros").insert({
     tenant_id: r.tenant_id,
@@ -377,7 +382,15 @@ export async function activarRifa(
   });
 
   revalidatePath(`/admin/rifas/${id}`);
-  return { success: true, data: { activada: false, pendiente: true, monto } };
+  return {
+    success: true,
+    data: {
+      activada: false,
+      pendiente: true,
+      monto,
+      pago: (pago as PlataformaPagoConfig | null) ?? null,
+    },
+  };
 }
 
 /**
@@ -437,6 +450,7 @@ const registrarBoletaSchema = z.object({
     .regex(/^[+()\d\s.-]{7,20}$/, "Teléfono inválido")
     .nullable()
     .optional(),
+  responsable_venta: z.string().trim().nullable().optional(),
   pagado: z.boolean().default(false),
   metodo_pago: z.enum(["efectivo", "transferencia"]).nullable().optional(),
   nota: z.string().trim().nullable().optional(),
@@ -463,6 +477,7 @@ export async function registrarBoletaAdmin(
     estado: d.pagado ? "pagado" : "reservado",
     comprador_nombre: d.comprador_nombre,
     comprador_telefono: d.comprador_telefono ?? null,
+    responsable_venta: d.responsable_venta ?? null,
     metodo_pago: d.pagado ? (d.metodo_pago ?? null) : null,
     nota: d.nota ?? null,
     pagado_at: d.pagado ? new Date().toISOString() : null,
@@ -484,6 +499,7 @@ const editarBoletaSchema = z.object({
     .regex(/^[+()\d\s.-]{7,20}$/, "Teléfono inválido")
     .nullable()
     .optional(),
+  responsable_venta: z.string().trim().nullable().optional(),
 });
 
 /** Corrige los datos del comprador de una boleta (nombre mal escrito, teléfono). */
@@ -505,6 +521,7 @@ export async function actualizarBoleta(
     .update({
       comprador_nombre: parsed.data.comprador_nombre,
       comprador_telefono: parsed.data.comprador_telefono || null,
+      responsable_venta: parsed.data.responsable_venta || null,
     })
     .eq("id", boletaId)
     .select("rifa_id")

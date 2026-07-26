@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Bebas_Neue, Inter, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
+import { BackofficeHeader } from "@/components/backoffice-header";
 import { BottomNav } from "@/components/bottom-nav";
 import { PullToRefresh } from "@/components/pull-to-refresh";
 import { Toaster } from "@/components/ui/sonner";
@@ -64,6 +65,7 @@ export default async function RootLayout({
       {/* Padding inferior en mobile para que la barra fija no tape el contenido. */}
       <body className="bg-polla-dark flex min-h-full flex-col pb-[calc(var(--bottom-nav-height)+env(safe-area-inset-bottom))] sm:pb-0">
         <PullToRefresh />
+        <BackofficeHeader />
         {children}
         <BottomNav
           idioma={idioma}

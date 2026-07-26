@@ -316,9 +316,29 @@ export interface Membership {
 /** Datos de cobro que configura cada tenant (reemplaza POLLA.banco). */
 export interface TenantPagoConfig {
   tenant_id: string;
-  /** Número/cuenta Nequi. */
+  /** Campo legado: antes guardaba el número/cuenta Nequi. */
   nequi_llave: string | null;
+  /** Entidad/canal de la cuenta: Nequi, Daviplata, banco, otro. */
+  cuenta_tipo: string | null;
+  /** Número de cuenta, celular, producto o identificador de esa entidad. */
+  cuenta_numero: string | null;
   /** Llave Bre-B / alias (otra forma de transferencia). */
+  llave: string | null;
+  titular: string | null;
+  qr_url: string | null;
+  whatsapp: string | null;
+  mensaje_qr: string | null;
+  updated_at: string;
+}
+
+/** Datos de cobro de la plataforma para que los organizadores paguen planes. */
+export interface PlataformaPagoConfig {
+  /** Campo legado: antes guardaba el número/cuenta Nequi. */
+  nequi_llave: string | null;
+  /** Entidad/canal de la cuenta: Nequi, Daviplata, banco, otro. */
+  cuenta_tipo: string | null;
+  /** Número de cuenta, celular, producto o identificador de esa entidad. */
+  cuenta_numero: string | null;
   llave: string | null;
   titular: string | null;
   qr_url: string | null;
@@ -332,6 +352,7 @@ export interface PlataformaConfig {
   moneda: string;
   precio_rifa_100: number;
   precio_rifa_500: number;
+  precio_rifa_1000: number;
   precio_suscripcion_mes: number;
   free_rifas_por_mes: number;
   free_rifas_total: number;
@@ -393,6 +414,7 @@ export interface Boleta {
   estado: EstadoBoleta;
   comprador_nombre: string | null;
   comprador_telefono: string | null;
+  responsable_venta: string | null;
   cliente_id: string | null;
   metodo_pago: MetodoPago | null;
   nota: string | null;

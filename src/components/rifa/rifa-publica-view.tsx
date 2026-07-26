@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/dialog";
 import { formatCOP, labelCriterioPremio, labelModoCifras } from "@/lib/rifa";
 import { formatFechaCO } from "@/lib/fecha-co";
+import { labelCuentaPago } from "@/lib/pagos";
 import { getDecoracion, getTema } from "@/lib/temas-rifa";
 import { waLink } from "@/lib/whatsapp";
 import { Decoracion } from "@/components/rifa/decoracion-rifa";
@@ -43,6 +44,8 @@ export function RifaPublicaView({
   const [nombreReservado, setNombreReservado] = useState("");
 
   const { rifa, premios, grilla, pago, ganadores } = data;
+  const cuentaPago = pago?.cuenta_numero ?? pago?.nequi_llave ?? null;
+  const cuentaPagoLabel = labelCuentaPago(pago?.cuenta_tipo ?? (pago?.nequi_llave ? "nequi" : null));
   const t = getTema(rifa.tema).web;
   const disponibles = grilla.filter((c) => !c.ocupado).length;
   const vendidas = rifa.cantidad_numeros - disponibles;
@@ -300,12 +303,12 @@ export function RifaPublicaView({
         )}
 
         {/* Cómo pagar */}
-        {pago && (pago.nequi_llave || pago.llave || pago.whatsapp || pago.qr_url) && (
+        {pago && (cuentaPago || pago.llave || pago.whatsapp || pago.qr_url) && (
           <div className="mt-6 rounded-xl border p-3" style={{ borderColor: t.line }}>
             <p className="mb-2 text-sm font-semibold">¿Cómo pagar?</p>
             <div className="flex flex-col gap-2">
-              {pago.nequi_llave && (
-                <PagoLinea label="Nequi" value={pago.nequi_llave} sub={pago.titular ?? undefined} />
+              {cuentaPago && (
+                <PagoLinea label={cuentaPagoLabel} value={cuentaPago} sub={pago.titular ?? undefined} />
               )}
               {pago.llave && (
                 <PagoLinea label="Llave / Bre-B" value={pago.llave} sub={pago.titular ?? undefined} />
@@ -384,7 +387,7 @@ export function RifaPublicaView({
             </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-2">
-            {pago?.nequi_llave && <PagoLinea label="Nequi" value={pago.nequi_llave} sub={pago.titular ?? undefined} />}
+            {cuentaPago && <PagoLinea label={cuentaPagoLabel} value={cuentaPago} sub={pago?.titular ?? undefined} />}
             {pago?.llave && <PagoLinea label="Llave / Bre-B" value={pago.llave} sub={pago.titular ?? undefined} />}
           </div>
           <DialogFooter>

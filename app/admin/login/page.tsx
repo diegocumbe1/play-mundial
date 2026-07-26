@@ -35,7 +35,7 @@ export default async function AdminLoginPage({
           <h1 className="font-heading text-polla-gold text-3xl tracking-wide">
             Ingreso al panel
           </h1>
-          <p className="text-polla-muted text-sm">Panel de administración</p>
+          <p className="text-polla-muted text-sm">Inicia sesión o crea tu cuenta de organizador</p>
         </div>
 
         <div className="bg-polla-surface ring-polla-line rounded-2xl p-6 ring-1">

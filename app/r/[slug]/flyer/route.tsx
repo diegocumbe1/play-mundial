@@ -3,6 +3,7 @@ import { ImageResponse } from "next/og";
 import { getRifaPublica } from "@/actions/rifas";
 import { formatCOP, labelModoCifras } from "@/lib/rifa";
 import { formatFechaCO } from "@/lib/fecha-co";
+import { labelCuentaPago } from "@/lib/pagos";
 import { getDecoracion, getTema, type DecoracionRifa, type TemaFlyer } from "@/lib/temas-rifa";
 
 /**
@@ -118,8 +119,9 @@ export async function GET(
   const pago = res.data.pago;
   // Solo se embebe el QR si es una URL http(s) válida (satori la descarga).
   const qrOk = Boolean(pago?.qr_url && /^https?:\/\//i.test(pago.qr_url));
-  const pagoLinea = pago?.nequi_llave
-    ? `Paga a Nequi ${pago.nequi_llave}`
+  const cuentaPago = pago?.cuenta_numero ?? pago?.nequi_llave ?? null;
+  const pagoLinea = cuentaPago
+    ? `Paga a ${labelCuentaPago(pago?.cuenta_tipo ?? (pago?.nequi_llave ? "nequi" : null))} ${cuentaPago}`
     : pago?.llave
       ? `Paga a la llave ${pago.llave}`
       : null;

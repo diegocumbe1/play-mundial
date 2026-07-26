@@ -1,15 +1,18 @@
 import { Check } from "lucide-react";
 
+import { getMembership } from "@/lib/auth";
 import { getPlataformaConfig } from "@/lib/tenant-config";
 import { formatCOP } from "@/lib/rifa";
+import { PlanActionButton } from "@/components/precios/plan-action-button";
 
 export const dynamic = "force-dynamic";
 
 export default async function PreciosPage() {
-  const c = await getPlataformaConfig();
+  const [c, membership] = await Promise.all([getPlataformaConfig(), getMembership()]);
 
   const planes = [
     {
+      id: "gratis" as const,
       nombre: "Gratis",
       precio: "$0",
       destacado: false,
@@ -22,19 +25,22 @@ export default async function PreciosPage() {
       ],
     },
     {
+      id: "pago_rifa" as const,
       nombre: "Pago por rifa",
       precio: c.precio_rifa_100 > 0 ? formatCOP(c.precio_rifa_100) : "—",
       sub: "por rifa (hasta 100 números)",
       destacado: true,
       bullets: [
         "Rifas ilimitadas (pagas cada una)",
-        `Rifas grandes: ${c.precio_rifa_500 > 0 ? formatCOP(c.precio_rifa_500) : "—"} (hasta 500)`,
+        `101–500 números: ${c.precio_rifa_500 > 0 ? formatCOP(c.precio_rifa_500) : "—"}`,
+        `501–1000 números: ${c.precio_rifa_1000 > 0 ? formatCOP(c.precio_rifa_1000) : "—"}`,
         "Sin marca de agua",
         "Dashboard financiero completo",
-        "Prepago: se activa al confirmar",
+        "Pago por transferencia: se activa al confirmar",
       ],
     },
     {
+      id: "suscripcion" as const,
       nombre: "Suscripción",
       precio: c.precio_suscripcion_mes > 0 ? formatCOP(c.precio_suscripcion_mes) : "—",
       sub: "por mes",
@@ -44,7 +50,7 @@ export default async function PreciosPage() {
         "Sin marca de agua",
         "Export de imagen en alta",
         "Soporte prioritario",
-        "Siempre prepago",
+        "Pago mensual por transferencia",
       ],
     },
   ];
@@ -74,7 +80,7 @@ export default async function PreciosPage() {
             <p className="text-sm font-semibold">{p.nombre}</p>
             <p className="mt-1 text-2xl font-bold">{p.precio}</p>
             {p.sub && <p className="text-muted-foreground text-xs">{p.sub}</p>}
-            <ul className="mt-4 flex flex-col gap-2">
+            <ul className="mb-5 mt-4 flex flex-col gap-2">
               {p.bullets.map((b) => (
                 <li key={b} className="flex items-start gap-2 text-sm">
                   <Check className="text-primary mt-0.5 size-4 shrink-0" />
@@ -82,6 +88,11 @@ export default async function PreciosPage() {
                 </li>
               ))}
             </ul>
+            <PlanActionButton
+              plan={p.id}
+              logueado={Boolean(membership)}
+              montoSuscripcion={c.precio_suscripcion_mes}
+            />
           </div>
         ))}
       </div>

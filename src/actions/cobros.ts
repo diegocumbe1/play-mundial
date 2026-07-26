@@ -5,7 +5,7 @@ import { z } from "zod";
 
 import { esSuperadmin, getMembership } from "@/lib/auth";
 import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
-import type { ActionResult, Cobro, PlataformaConfig } from "@/types";
+import type { ActionResult, Cobro, PlataformaConfig, PlataformaPagoConfig } from "@/types";
 
 /**
  * Server Actions de monetización. Confirmar cobros y fijar precios son acciones
@@ -92,16 +92,15 @@ export async function confirmarCobro(
 }
 
 /** El owner solicita una suscripción → crea un cobro pendiente (lo confirma el superadmin). */
-export async function solicitarSuscripcion(): Promise<ActionResult> {
+export async function solicitarSuscripcion(): Promise<ActionResult<{ pago: PlataformaPagoConfig | null }>> {
   const membership = await getMembership();
   if (!membership) return { success: false, error: "Sin sesión" };
 
   const svc = createServiceRoleClient();
-  const { data: cfg } = await svc
-    .from("plataforma_config")
-    .select("precio_suscripcion_mes")
-    .limit(1)
-    .maybeSingle();
+  const [{ data: cfg }, { data: pago }] = await Promise.all([
+    svc.from("plataforma_config").select("precio_suscripcion_mes").limit(1).maybeSingle(),
+    svc.from("plataforma_pago_config").select("*").limit(1).maybeSingle(),
+  ]);
   const monto = (cfg as { precio_suscripcion_mes: number } | null)?.precio_suscripcion_mes ?? 0;
 
   const periodo = new Date().toISOString().slice(0, 7); // YYYY-MM
@@ -115,13 +114,14 @@ export async function solicitarSuscripcion(): Promise<ActionResult> {
   if (error) return { success: false, error: error.message };
 
   revalidatePath("/admin/rifas");
-  return { success: true, data: undefined };
+  return { success: true, data: { pago: (pago as PlataformaPagoConfig | null) ?? null } };
 }
 
 const configSchema = z.object({
   moneda: z.string().trim().min(1).default("COP"),
   precio_rifa_100: z.number().int().min(0),
   precio_rifa_500: z.number().int().min(0),
+  precio_rifa_1000: z.number().int().min(0),
   precio_suscripcion_mes: z.number().int().min(0),
   free_rifas_por_mes: z.number().int().min(0),
   free_rifas_total: z.number().int().min(0),
@@ -150,4 +150,86 @@ export async function guardarPlataformaConfig(
   revalidatePath("/superadmin/settings");
   revalidatePath("/precios");
   return { success: true, data: undefined };
+}
+
+const plataformaPagoSchema = z.object({
+  nequi_llave: z.string().trim().nullable().optional(),
+  cuenta_tipo: z.string().trim().nullable().optional(),
+  cuenta_numero: z.string().trim().nullable().optional(),
+  llave: z.string().trim().nullable().optional(),
+  titular: z.string().trim().nullable().optional(),
+  qr_url: z.string().trim().nullable().optional(),
+  whatsapp: z.string().trim().nullable().optional(),
+  mensaje_qr: z.string().trim().nullable().optional(),
+});
+
+/** Edita los medios de pago de la plataforma para planes/prepagos. Solo superadmin. */
+export async function guardarPlataformaPagoConfig(
+  input: z.infer<typeof plataformaPagoSchema>,
+): Promise<ActionResult> {
+  if (!(await esSuperadmin())) {
+    return { success: false, error: "Solo el superadmin puede editar pagos" };
+  }
+  const parsed = plataformaPagoSchema.safeParse(input);
+  if (!parsed.success) {
+    return { success: false, error: parsed.error.issues[0].message };
+  }
+  const d = parsed.data;
+
+  const cuentaNumero = d.cuenta_numero?.trim() || d.nequi_llave?.trim() || "";
+  const cuentaTipo = d.cuenta_tipo?.trim() || (cuentaNumero ? "nequi" : "");
+
+  if (!cuentaNumero && !d.llave?.trim()) {
+    return { success: false, error: "Indica al menos un medio de pago: cuenta o Llave Bre-B" };
+  }
+
+  const svc = createServiceRoleClient();
+  const { error } = await svc.from("plataforma_pago_config").upsert({
+    id: true,
+    nequi_llave: cuentaTipo === "nequi" ? cuentaNumero : null,
+    cuenta_tipo: cuentaTipo || null,
+    cuenta_numero: cuentaNumero || null,
+    llave: d.llave?.trim() || null,
+    titular: d.titular?.trim() || null,
+    qr_url: d.qr_url?.trim() || null,
+    whatsapp: d.whatsapp?.trim() || null,
+    mensaje_qr: d.mensaje_qr?.trim() || null,
+  });
+  if (error) return { success: false, error: error.message };
+
+  revalidatePath("/superadmin/settings");
+  return { success: true, data: undefined };
+}
+
+/** Sube el QR de cobro de la plataforma. Solo superadmin. */
+export async function subirQrPlataforma(
+  formData: FormData,
+): Promise<ActionResult<{ url: string }>> {
+  if (!(await esSuperadmin())) {
+    return { success: false, error: "Solo el superadmin puede subir el QR" };
+  }
+
+  const file = formData.get("file");
+  if (!(file instanceof File) || file.size === 0) {
+    return { success: false, error: "Selecciona una imagen" };
+  }
+  if (!file.type.startsWith("image/")) {
+    return { success: false, error: "El archivo debe ser una imagen" };
+  }
+  if (file.size > 3 * 1024 * 1024) {
+    return { success: false, error: "La imagen no puede superar 3 MB" };
+  }
+
+  const ext = (file.name.split(".").pop() || "png").toLowerCase();
+  const path = `plataforma/qr-${crypto.randomUUID().slice(0, 8)}.${ext}`;
+  const buffer = Buffer.from(await file.arrayBuffer());
+
+  const svc = createServiceRoleClient();
+  const { error } = await svc.storage
+    .from("qr-pagos")
+    .upload(path, buffer, { contentType: file.type, upsert: true });
+  if (error) return { success: false, error: error.message };
+
+  const { data } = svc.storage.from("qr-pagos").getPublicUrl(path);
+  return { success: true, data: { url: data.publicUrl } };
 }

@@ -3,12 +3,13 @@ import { redirect } from "next/navigation";
 import { Settings } from "lucide-react";
 
 import { esSuperadmin } from "@/lib/auth";
-import { getTenants } from "@/actions/tenants";
+import { getSuperadminDashboard } from "@/actions/tenants";
 import { getCobros } from "@/actions/cobros";
 import { formatCOP } from "@/lib/rifa";
 import { buttonVariants } from "@/components/ui/button";
 import { CrearTenantForm } from "@/components/superadmin/crear-tenant-form";
 import { ConfirmarCobroButton } from "@/components/superadmin/confirmar-cobro-button";
+import { SuperadminOrganizadoresTable } from "@/components/superadmin/superadmin-organizadores-table";
 
 export const dynamic = "force-dynamic";
 
@@ -18,16 +19,23 @@ const TIPO_LABEL: Record<string, string> = {
   gratis: "Gratis",
 };
 
-export default async function SuperadminPage() {
+export default async function SuperadminPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ mes?: string | string[] }>;
+}) {
   if (!(await esSuperadmin())) redirect("/admin/rifas");
 
-  const [tenantsRes, cobrosRes] = await Promise.all([getTenants(), getCobros()]);
-  const tenants = tenantsRes.success ? tenantsRes.data : [];
+  const params = await searchParams;
+  const mes = Array.isArray(params.mes) ? params.mes[0] : params.mes;
+  const [dashboardRes, cobrosRes] = await Promise.all([getSuperadminDashboard(mes), getCobros()]);
+  const dashboard = dashboardRes.success ? dashboardRes.data : null;
+  const tenants = dashboard?.tenants.map((m) => m.tenant) ?? [];
   const cobros = cobrosRes.success ? cobrosRes.data : [];
   const pendientes = cobros.filter((c) => c.estado === "pendiente");
 
   return (
-    <div className="mx-auto max-w-3xl px-4 py-8">
+    <div className="mx-auto max-w-5xl px-4 py-8">
       <header className="mb-6 flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">Panel de plataforma</h1>
@@ -37,6 +45,42 @@ export default async function SuperadminPage() {
           <Settings className="size-3.5" /> Precios
         </Link>
       </header>
+
+      {dashboard && (
+        <>
+          <section className="border-border mb-6 rounded-2xl border p-4">
+            <form className="flex flex-wrap items-end justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold">Dashboard</p>
+                <p className="text-muted-foreground text-xs">Métricas filtradas por mes.</p>
+              </div>
+              <label className="text-muted-foreground text-xs">
+                Mes
+                <input
+                  type="month"
+                  name="mes"
+                  defaultValue={dashboard.mes}
+                  className="border-input bg-background ml-2 h-8 rounded-lg border px-2 text-sm text-foreground"
+                />
+              </label>
+              <button className={buttonVariants({ size: "sm" })}>Filtrar</button>
+            </form>
+          </section>
+
+          <section className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <Metric label="Usuarios creados" value={String(dashboard.totalUsuarios)} sub={`${dashboard.totalSuperadmins} superadmin`} />
+            <Metric label="Organizadores" value={String(dashboard.totalOrganizadores)} sub={`${dashboard.usuariosBloqueados} bloqueado(s)`} />
+            <Metric label="Plan gratis" value={String(dashboard.usuariosGratis)} sub="Capa gratuita" />
+            <Metric label="Con suscripción" value={String(dashboard.usuariosSuscripcion)} sub={`${dashboard.usuariosPagoPorRifa} pago por rifa`} />
+            <Metric label="Rifas del mes" value={String(dashboard.rifasMes)} sub="Creadas este mes" />
+            <Metric label="Rifas totales" value={String(dashboard.rifasTotal)} sub="Acumulado plataforma" />
+            <Metric label="Rifas pagas" value={String(dashboard.rifasPagasMes)} sub="Activadas por pago" />
+            <Metric label="Valor generado" value={formatCOP(dashboard.valorGeneradoMes)} sub="Pagos confirmados" />
+            <Metric label="Pendiente por confirmar" value={formatCOP(dashboard.pendienteMontoMes)} sub={`${dashboard.pendienteCantidadMes} cobro(s)`} />
+            <Metric label="Pagos confirmados" value={String(dashboard.confirmadoCantidadMes)} sub={formatCOP(dashboard.confirmadoMontoMes)} />
+          </section>
+        </>
+      )}
 
       {/* Cobros pendientes */}
       <section className="border-border mb-6 rounded-2xl border p-4">
@@ -72,27 +116,22 @@ export default async function SuperadminPage() {
       {/* Organizadores */}
       <section className="border-border rounded-2xl border p-4">
         <p className="mb-3 text-sm font-semibold">Organizadores ({tenants.length})</p>
-        {tenants.length === 0 ? (
+        {!dashboard || dashboard.tenants.length === 0 ? (
           <p className="text-muted-foreground text-sm">Aún no hay organizadores.</p>
         ) : (
-          <ul className="flex flex-col gap-2">
-            {tenants.map((t) => (
-              <li key={t.id} className="border-border flex items-center justify-between gap-3 rounded-xl border p-3">
-                <div>
-                  <p className="text-sm font-semibold">{t.nombre}</p>
-                  <p className="text-muted-foreground text-xs">
-                    Plan: {t.plan_actual}
-                    {t.suscripcion_vence_at ? ` · vence ${new Date(t.suscripcion_vence_at).toLocaleDateString("es-CO")}` : ""}
-                  </p>
-                </div>
-                <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${t.estado === "activo" ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400" : "bg-muted text-muted-foreground"}`}>
-                  {t.estado}
-                </span>
-              </li>
-            ))}
-          </ul>
+          <SuperadminOrganizadoresTable metrics={dashboard.tenants} nowMs={dashboard.nowMs} />
         )}
       </section>
+    </div>
+  );
+}
+
+function Metric({ label, value, sub }: { label: string; value: string; sub?: string }) {
+  return (
+    <div className="border-border rounded-xl border p-3">
+      <p className="text-muted-foreground text-xs">{label}</p>
+      <p className="mt-1 text-lg font-bold tabular-nums">{value}</p>
+      {sub && <p className="text-muted-foreground text-[11px]">{sub}</p>}
     </div>
   );
 }
