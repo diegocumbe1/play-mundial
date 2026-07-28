@@ -5,7 +5,13 @@ import { z } from "zod";
 
 import { esSuperadmin, getMembership } from "@/lib/auth";
 import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
-import type { ActionResult, Cobro, PlataformaConfig, PlataformaPagoConfig } from "@/types";
+import type {
+  ActionResult,
+  Cobro,
+  PlanTenant,
+  PlataformaConfig,
+  PlataformaPagoConfig,
+} from "@/types";
 
 /**
  * Server Actions de monetización. Confirmar cobros y fijar precios son acciones
@@ -56,11 +62,8 @@ export async function confirmarCobro(
     .update({ estado: "pagado", pagado_at: ahora, comprobante })
     .eq("id", cobroId);
 
-  if (c.tipo === "pago_rifa" && c.rifa_id) {
-    await svc
-      .from("rifas")
-      .update({ estado: "activa", cobro_tipo: "pago_rifa", activada_at: ahora })
-      .eq("id", c.rifa_id);
+  if (c.tipo === "pago_rifa") {
+    await activarEntidadDelCobro(svc, c, "pago_rifa", ahora);
   } else if (c.tipo === "suscripcion") {
     const { data: tenant } = await svc
       .from("tenants")
@@ -78,17 +81,42 @@ export async function confirmarCobro(
       .from("tenants")
       .update({ plan_actual: "suscripcion", suscripcion_vence_at: base.toISOString() })
       .eq("id", c.tenant_id);
-    // Activa la rifa que quedó pendiente por falta de plan, si la hay.
-    if (c.rifa_id) {
-      await svc
-        .from("rifas")
-        .update({ estado: "activa", cobro_tipo: "suscripcion", activada_at: ahora })
-        .eq("id", c.rifa_id);
-    }
+    // Activa la entidad que quedó pendiente por falta de plan, si la hay.
+    await activarEntidadDelCobro(svc, c, "suscripcion", ahora);
   }
 
   revalidatePath("/superadmin");
+  revalidatePath("/admin/rifas");
+  revalidatePath("/admin/torneos");
   return { success: true, data: undefined };
+}
+
+/**
+ * Activa la rifa o el torneo al que apunta un cobro confirmado.
+ *
+ * El ledger es multi-producto: cada vertical tiene su tabla y su columna de
+ * fecha de activación. Los cobros antiguos no traen `producto` (default
+ * `rifas`), por eso se decide por el id que venga poblado.
+ */
+async function activarEntidadDelCobro(
+  svc: ReturnType<typeof createServiceRoleClient>,
+  cobro: Cobro,
+  cobroTipo: PlanTenant,
+  ahora: string,
+): Promise<void> {
+  if (cobro.torneo_id) {
+    await svc
+      .from("torneos")
+      .update({ estado: "inscripciones", cobro_tipo: cobroTipo, activado_at: ahora })
+      .eq("id", cobro.torneo_id);
+    return;
+  }
+  if (cobro.rifa_id) {
+    await svc
+      .from("rifas")
+      .update({ estado: "activa", cobro_tipo: cobroTipo, activada_at: ahora })
+      .eq("id", cobro.rifa_id);
+  }
 }
 
 /** El owner solicita una suscripción → crea un cobro pendiente (lo confirma el superadmin). */
@@ -126,6 +154,14 @@ const configSchema = z.object({
   free_rifas_por_mes: z.number().int().min(0),
   free_rifas_total: z.number().int().min(0),
   free_max_numeros: z.number().int().min(1),
+  // Torneos: escalones por cupo de equipos y reglas de su capa gratuita.
+  precio_torneo_8: z.number().int().min(0),
+  precio_torneo_16: z.number().int().min(0),
+  precio_torneo_32: z.number().int().min(0),
+  precio_torneo_mas: z.number().int().min(0),
+  free_torneos_por_mes: z.number().int().min(0),
+  free_torneos_total: z.number().int().min(0),
+  free_max_equipos: z.number().int().min(1),
 });
 
 /** Edita los precios y reglas del free. Solo superadmin. */

@@ -2,15 +2,16 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home, LayoutGrid, Plus, Settings, Ticket } from "lucide-react";
+import { Home, LayoutGrid, Settings, Ticket, Trophy } from "lucide-react";
 
 import { LogoutButton } from "@/components/admin/logout-button";
+import { NuevoMenu } from "@/components/admin/nuevo-menu";
 import { cn } from "@/lib/utils";
 
 const LINKS = [
   { href: "/admin", label: "Panel", icon: LayoutGrid },
   { href: "/admin/rifas", label: "Rifas", icon: Ticket },
-  { href: "/admin/rifas/nueva", label: "Nueva", icon: Plus },
+  { href: "/admin/torneos", label: "Torneos", icon: Trophy },
   { href: "/precios", label: "Planes", icon: Settings },
 ] as const;
 
@@ -33,8 +34,18 @@ export function BackofficeHeader() {
   function activo(href: string) {
     if (href === "/admin") return pathname === "/admin";
     if (href === "/precios") return pathname === "/precios";
+    // Crear vive en el menú "Nueva": las rutas de alta no marcan la sección.
     if (href === "/admin/rifas") {
-      return pathname === href || (pathname.startsWith(`${href}/`) && !pathname.startsWith("/admin/rifas/nueva"));
+      return (
+        pathname === href ||
+        (pathname.startsWith(`${href}/`) && !pathname.startsWith("/admin/rifas/nueva"))
+      );
+    }
+    if (href === "/admin/torneos") {
+      return (
+        pathname === href ||
+        (pathname.startsWith(`${href}/`) && !pathname.startsWith("/admin/torneos/nuevo"))
+      );
     }
     return pathname === href || pathname.startsWith(`${href}/`);
   }
@@ -44,9 +55,9 @@ export function BackofficeHeader() {
       <div className="mx-auto flex h-14 max-w-5xl items-center justify-between gap-4 px-4">
         <Link href="/" className="flex min-w-0 items-center gap-2">
           <span className="bg-primary text-primary-foreground flex size-8 shrink-0 items-center justify-center rounded-full font-bold">
-            N
+            P
           </span>
-          <span className="truncate text-sm font-bold">Rifas</span>
+          <span className="truncate text-sm font-bold">Play Mundial</span>
         </Link>
 
         <nav className="flex min-w-0 items-center gap-1 text-sm" aria-label="Menú del panel">
@@ -76,6 +87,7 @@ export function BackofficeHeader() {
               </Link>
             );
           })}
+          <NuevoMenu />
         </nav>
 
         <LogoutButton />

@@ -39,6 +39,13 @@ export async function getPlataformaConfig(): Promise<PlataformaConfig> {
     free_rifas_por_mes: 1,
     free_rifas_total: 2,
     free_max_numeros: 100,
+    precio_torneo_8: 0,
+    precio_torneo_16: 0,
+    precio_torneo_32: 0,
+    precio_torneo_mas: 0,
+    free_torneos_por_mes: 1,
+    free_torneos_total: 2,
+    free_max_equipos: 8,
     updated_at: new Date(0).toISOString(),
   };
   return { ...defaults, ...((data as Partial<PlataformaConfig> | null) ?? {}) };

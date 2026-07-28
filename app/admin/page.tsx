@@ -1,7 +1,8 @@
 import Link from "next/link";
-import { ArrowRight, Ban, Settings, Ticket, Trophy, Users } from "lucide-react";
+import { ArrowRight, Ban, Medal, Settings, Ticket, Trophy, Users } from "lucide-react";
 
 import { esSuperadmin, getMembership, getUser } from "@/lib/auth";
+import { getProductosHabilitados } from "@/lib/productos";
 import { LogoutButton } from "@/components/admin/logout-button";
 
 export const dynamic = "force-dynamic";
@@ -12,6 +13,12 @@ export default async function AdminHubPage() {
     getMembership(),
     esSuperadmin(),
   ]);
+
+  // Cada organizador ve solo sus verticales habilitadas. El superadmin ve todo:
+  // administra la plataforma aunque su propio tenant no las tenga activadas.
+  const productos = membership ? await getProductosHabilitados(membership.tenant_id) : [];
+  const ve = (producto: "rifas" | "torneos") =>
+    superadmin || productos.includes(producto);
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-8">
@@ -38,13 +45,23 @@ export default async function AdminHubPage() {
       )}
 
       <div className="grid gap-4 sm:grid-cols-2">
-        {/* Rifas — módulo principal */}
-        {membership && (
+        {/* Rifas */}
+        {membership && ve("rifas") && (
           <Modulo
             href="/admin/rifas"
             icon={<Ticket className="size-5" />}
             titulo="Rifas"
             texto="Crea y administra tus rifas: números, pagos, sorteo y enlace público."
+          />
+        )}
+
+        {/* Torneos deportivos */}
+        {membership && ve("torneos") && (
+          <Modulo
+            href="/admin/torneos"
+            icon={<Medal className="size-5" />}
+            titulo="Torneos deportivos"
+            texto="Crea y administra campeonatos, equipos, inscripciones, fixture, resultados y rentabilidad."
           />
         )}
 

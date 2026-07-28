@@ -5,6 +5,7 @@ import { Search, X } from "lucide-react";
 
 import type { SuperadminTenantMetric } from "@/actions/tenants";
 import { TenantPlanControls } from "@/components/superadmin/tenant-plan-controls";
+import { TenantProductosControls } from "@/components/superadmin/tenant-productos-controls";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,7 +18,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { formatCOP } from "@/lib/rifa";
-import type { Tenant } from "@/types";
+import type { ProductoPlataforma, Tenant } from "@/types";
 
 const PLAN_LABEL: Record<string, string> = {
   gratis: "Gratis",
@@ -35,9 +36,12 @@ function normalizar(s: string) {
 export function SuperadminOrganizadoresTable({
   metrics,
   nowMs,
+  productosPorTenant = {},
 }: {
   metrics: SuperadminTenantMetric[];
   nowMs: number;
+  /** Verticales habilitadas por organizador (las administra el superadmin). */
+  productosPorTenant?: Record<string, ProductoPlataforma[]>;
 }) {
   const [busqueda, setBusqueda] = useState("");
   const [plan, setPlan] = useState("todos");
@@ -142,11 +146,12 @@ export function SuperadminOrganizadoresTable({
           No hay organizadores con esos filtros.
         </p>
       ) : (
-        <Table className="min-w-[920px]">
+        <Table className="min-w-[1060px]">
           <TableHeader>
             <TableRow>
               <TableHead>Usuario</TableHead>
               <TableHead>Plan</TableHead>
+              <TableHead>Productos</TableHead>
               <TableHead className="text-right">Rifas mes</TableHead>
               <TableHead className="text-right">Rifas total</TableHead>
               <TableHead className="text-right">Generado</TableHead>
@@ -180,6 +185,12 @@ export function SuperadminOrganizadoresTable({
                   <TableCell>
                     <div className="font-medium">{PLAN_LABEL[t.plan_actual] ?? t.plan_actual}</div>
                     <div className="text-muted-foreground text-xs">{duracionPlan(t, nowMs)}</div>
+                  </TableCell>
+                  <TableCell>
+                    <TenantProductosControls
+                      tenantId={t.id}
+                      habilitados={productosPorTenant[t.id] ?? []}
+                    />
                   </TableCell>
                   <TableCell className="text-right">
                     <div>{m.rifasMes}</div>

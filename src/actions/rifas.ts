@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import { esSuperadmin, getMembership } from "@/lib/auth";
+import { resolverActivacion } from "@/lib/planes";
 import { resolverGanadores } from "@/lib/rifa";
 import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
 import type {
@@ -309,77 +310,26 @@ export async function activarRifa(
     return { success: false, error: "La rifa ya fue activada" };
   }
 
-  const [{ data: tenant }, { data: cfg }, { data: pago }] = await Promise.all([
-    svc.from("tenants").select("*").eq("id", r.tenant_id).maybeSingle(),
-    svc.from("plataforma_config").select("*").limit(1).maybeSingle(),
-    svc.from("plataforma_pago_config").select("*").limit(1).maybeSingle(),
-  ]);
+  // La decisión de plan/cuota/cobro es común a todas las verticales.
+  const resolucion = await resolverActivacion({
+    tenantId: r.tenant_id,
+    producto: "rifas",
+    entidadId: r.id,
+    tamano: r.cantidad_numeros,
+  });
 
-  const config = cfg as {
-    precio_rifa_100: number;
-    precio_rifa_500: number;
-    precio_rifa_1000: number;
-    free_rifas_por_mes: number;
-    free_rifas_total: number;
-    free_max_numeros: number;
-  } | null;
-
-  // 1) Suscripción vigente
-  const venceAt = (tenant as { suscripcion_vence_at: string | null })?.suscripcion_vence_at;
-  if (venceAt && new Date(venceAt).getTime() > Date.now()) {
+  if (resolucion.activada) {
     await svc
       .from("rifas")
-      .update({ estado: "activa", cobro_tipo: "suscripcion", activada_at: new Date().toISOString() })
+      .update({
+        estado: "activa",
+        cobro_tipo: resolucion.cobroTipo,
+        activada_at: new Date().toISOString(),
+      })
       .eq("id", id);
     revalidatePath(`/admin/rifas/${id}`);
     return { success: true, data: { activada: true } };
   }
-
-  // 2) Capa gratuita (tamaño ≤ tope y dentro de la cuota)
-  const maxNum = config?.free_max_numeros ?? 100;
-  const freeTotal = config?.free_rifas_total ?? 2;
-  const freeMes = config?.free_rifas_por_mes ?? 1;
-
-  if (r.cantidad_numeros <= maxNum) {
-    const { data: gratisRifas } = await svc
-      .from("rifas")
-      .select("activada_at")
-      .eq("tenant_id", r.tenant_id)
-      .eq("cobro_tipo", "gratis");
-    const usadas = gratisRifas ?? [];
-    const ahora = new Date();
-    const esteMes = usadas.filter((g) => {
-      const f = (g as { activada_at: string | null }).activada_at;
-      if (!f) return false;
-      const d = new Date(f);
-      return d.getFullYear() === ahora.getFullYear() && d.getMonth() === ahora.getMonth();
-    }).length;
-
-    if (usadas.length < freeTotal && esteMes < freeMes) {
-      await svc
-        .from("rifas")
-        .update({ estado: "activa", cobro_tipo: "gratis", activada_at: new Date().toISOString() })
-        .eq("id", id);
-      revalidatePath(`/admin/rifas/${id}`);
-      return { success: true, data: { activada: true } };
-    }
-  }
-
-  // 3) Requiere pago: crea cobro pendiente, la rifa sigue en borrador
-  const monto =
-    r.cantidad_numeros <= 100
-      ? (config?.precio_rifa_100 ?? 0)
-      : r.cantidad_numeros <= 500
-        ? (config?.precio_rifa_500 ?? 0)
-        : (config?.precio_rifa_1000 ?? 0);
-
-  await svc.from("cobros").insert({
-    tenant_id: r.tenant_id,
-    rifa_id: r.id,
-    tipo: "pago_rifa",
-    monto,
-    estado: "pendiente",
-  });
 
   revalidatePath(`/admin/rifas/${id}`);
   return {
@@ -387,8 +337,8 @@ export async function activarRifa(
     data: {
       activada: false,
       pendiente: true,
-      monto,
-      pago: (pago as PlataformaPagoConfig | null) ?? null,
+      monto: resolucion.monto,
+      pago: resolucion.pago,
     },
   };
 }

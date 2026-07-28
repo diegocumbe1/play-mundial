@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation";
 import { z } from "zod";
 
+import { habilitarProductosIniciales } from "@/lib/productos";
 import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
 import type { ActionResult } from "@/types";
 
@@ -90,6 +91,8 @@ export async function registrarOrganizador(
   }
 
   await svc.from("tenant_pago_config").insert({ tenant_id: tenantId });
+  // Estrena la plataforma con todas las verticales disponibles.
+  await habilitarProductosIniciales(tenantId);
 
   const supabase = await createClient();
   const { error: errLogin } = await supabase.auth.signInWithPassword({ email, password });

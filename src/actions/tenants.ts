@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import { esSuperadmin, getMembership } from "@/lib/auth";
+import { habilitarProductosIniciales } from "@/lib/productos";
 import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
 import type { ActionResult, PlanTenant, RolMembership, Tenant, TenantPagoConfig } from "@/types";
 
@@ -227,6 +228,8 @@ export async function crearTenantConOwner(
   if (errMem) return { success: false, error: errMem.message };
 
   await svc.from("tenant_pago_config").insert({ tenant_id: tenantId });
+  // Todo organizador nuevo nace con las verticales disponibles habilitadas.
+  await habilitarProductosIniciales(tenantId);
 
   revalidatePath("/superadmin");
   return { success: true, data: { tenantId } };

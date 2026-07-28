@@ -266,6 +266,23 @@ export type ActionResult<T = void> =
   | { success: false; error: string };
 
 // ===========================================================================
+// Plataforma multi-producto — qué verticales tiene habilitadas cada organizador
+// ===========================================================================
+
+/** Verticales de negocio de la plataforma. */
+export type ProductoPlataforma = "rifas" | "torneos";
+
+/** Producto habilitado (o no) para un organizador. Lo administra el superadmin. */
+export interface TenantProducto {
+  id: string;
+  tenant_id: string;
+  producto: ProductoPlataforma;
+  habilitado: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+// ===========================================================================
 // Vertical "Rifas" — plataforma multi-tenant. Ver docs/plan-rifas.md
 // ===========================================================================
 
@@ -357,6 +374,14 @@ export interface PlataformaConfig {
   free_rifas_por_mes: number;
   free_rifas_total: number;
   free_max_numeros: number;
+  /** Torneos: escalones por cupo de equipos (hasta 8 / 16 / 32 / más). */
+  precio_torneo_8: number;
+  precio_torneo_16: number;
+  precio_torneo_32: number;
+  precio_torneo_mas: number;
+  free_torneos_por_mes: number;
+  free_torneos_total: number;
+  free_max_equipos: number;
   updated_at: string;
 }
 
@@ -473,6 +498,10 @@ export interface Cobro {
   id: string;
   tenant_id: string;
   rifa_id: string | null;
+  /** Vertical a la que corresponde el cobro. Los cobros viejos son de rifas. */
+  producto: ProductoPlataforma;
+  /** Torneo asociado cuando `producto = "torneos"`. */
+  torneo_id: string | null;
   tipo: PlanTenant;
   monto: number;
   estado: EstadoCobro;
@@ -498,4 +527,241 @@ export interface RifaInput {
   fecha_loteria?: string | null;
   modo_cifras?: ModoCifras | null;
   fecha_sorteo?: string | null;
+}
+
+// ===========================================================================
+// Vertical "Torneos deportivos" — campeonatos multi-deporte por organizador.
+// Ver docs/plan-torneos.md. Reutiliza tenancy, planes y ledger de cobros.
+// ===========================================================================
+
+/** Ciclo de vida de un torneo. */
+export type EstadoTorneo =
+  | "borrador"
+  | "inscripciones"
+  | "programado"
+  | "en_curso"
+  | "finalizado"
+  | "cancelado";
+
+/** Cómo se define el campeón. */
+export type FormatoTorneo =
+  | "todos_contra_todos"
+  | "eliminacion_directa"
+  | "grupos_eliminacion"
+  | "personalizado";
+
+/** Estado de la inscripción de un equipo. */
+export type EstadoEquipoTorneo =
+  | "pendiente"
+  | "confirmado"
+  | "rechazado"
+  | "retirado";
+
+/** Un campeonato que organiza un tenant. */
+export interface Torneo {
+  id: string;
+  tenant_id: string;
+  nombre: string;
+  slug_publico: string;
+  deporte: string;
+  modalidad: string | null;
+  categoria: string | null;
+  rama: string | null;
+  formato: FormatoTorneo;
+  estado: EstadoTorneo;
+  ciudad: string | null;
+  escenario: string | null;
+  direccion: string | null;
+  fecha_inicio: string | null;
+  fecha_fin: string | null;
+  cierre_inscripciones: string | null;
+  cupo_equipos: number;
+  minimo_equipos: number | null;
+  jugadores_por_equipo: number | null;
+  duracion_partido_minutos: number | null;
+  cantidad_canchas: number;
+  valor_inscripcion: number;
+  reglamento: string | null;
+  /** Nota extra de premiación. Los premios por puesto viven en `premios_torneo`. */
+  premiacion_descripcion: string | null;
+  tema: string;
+  cobro_tipo: PlanTenant | null;
+  activado_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Un equipo inscrito. Contiene datos personales: nunca sale tal cual al público. */
+export interface EquipoTorneo {
+  id: string;
+  tenant_id: string;
+  torneo_id: string;
+  nombre: string;
+  escudo_url: string | null;
+  responsable_nombre: string | null;
+  responsable_telefono: string | null;
+  responsable_correo: string | null;
+  cantidad_jugadores: number | null;
+  estado: EstadoEquipoTorneo;
+  /** Lo que debe pagar este equipo (por defecto, el valor de inscripción). */
+  monto_inscripcion: number | null;
+  monto_pagado: number;
+  metodo_pago: MetodoPago | null;
+  comprobante_url: string | null;
+  consentimiento_datos: boolean;
+  confirmado_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/**
+ * Un premio del torneo, atado a un puesto (1° campeón, 2° subcampeón…). Un
+ * torneo premia tantos puestos como quiera: solo el primero, los dos primeros,
+ * los cuatro primeros…
+ */
+export interface PremioTorneo {
+  id: string;
+  tenant_id: string;
+  torneo_id: string;
+  puesto: number;
+  tipo: "valor" | "producto";
+  descripcion: string;
+  /** Solo si `tipo = "valor"`. Alimenta el costo real de la premiación. */
+  valor: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Un premio tal como lo arma el formulario del backoffice. */
+export interface PremioTorneoInput {
+  puesto: number;
+  tipo: "valor" | "producto";
+  descripcion: string;
+  valor?: number | null;
+}
+
+/** Premio en vistas públicas: el puesto y qué se lleva, sin datos internos. */
+export type PremioTorneoPublico = Pick<
+  PremioTorneo,
+  "puesto" | "tipo" | "descripcion" | "valor"
+>;
+
+/** Un gasto del torneo (cancha, arbitraje, premiación…). Solo uso interno. */
+export interface GastoTorneo {
+  id: string;
+  tenant_id: string;
+  torneo_id: string;
+  categoria: string;
+  descripcion: string | null;
+  cantidad: number | null;
+  valor_unitario: number | null;
+  valor_total: number;
+  pagado: boolean;
+  proveedor: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/**
+ * Corte PÚBLICO del torneo para `/t/[slug]`. Nunca incluye datos internos
+ * (gastos, utilidad, contactos de equipos ni estado de pago).
+ */
+export type TorneoPublico = Pick<
+  Torneo,
+  | "nombre"
+  | "slug_publico"
+  | "deporte"
+  | "modalidad"
+  | "categoria"
+  | "rama"
+  | "formato"
+  | "estado"
+  | "ciudad"
+  | "escenario"
+  | "direccion"
+  | "fecha_inicio"
+  | "fecha_fin"
+  | "cierre_inscripciones"
+  | "cupo_equipos"
+  | "jugadores_por_equipo"
+  | "valor_inscripcion"
+  | "reglamento"
+  | "premiacion_descripcion"
+  | "tema"
+>;
+
+/**
+ * Equipo en vistas PÚBLICAS: solo identidad deportiva. Jamás responsable,
+ * teléfono, correo, comprobante, método de pago ni montos.
+ */
+export interface EquipoTorneoPublico {
+  id: string;
+  nombre: string;
+  escudo_url: string | null;
+  /** Único estado que se revela afuera: si ya tiene el cupo asegurado. */
+  confirmado: boolean;
+}
+
+/** Métricas del dashboard de un torneo (ingresos, gastos y rentabilidad). */
+export interface DashboardTorneo {
+  /** Cupo configurado. */
+  cupoTotal: number;
+  equiposRegistrados: number;
+  equiposConfirmados: number;
+  equiposPendientes: number;
+  cuposDisponibles: number;
+  pctOcupacion: number;
+  /** Cupo completo × valor de inscripción. */
+  ingresosProyectados: number;
+  /** Dinero efectivamente recibido. */
+  ingresosRecaudados: number;
+  /** Lo que falta cobrar a los equipos ya registrados. */
+  porCobrar: number;
+  pctRecaudado: number;
+  gastosProyectados: number;
+  gastosPagados: number;
+  gastosPendientes: number;
+  /** Con el cupo lleno y todos los gastos ejecutados. */
+  utilidadProyectada: number;
+  /** Con lo recaudado y lo ya pagado, hoy. */
+  utilidadActual: number;
+  /** Equipos necesarios para cubrir los gastos. `null` si no es calculable. */
+  puntoEquilibrioEquipos: number | null;
+  /** Cuánto aporta a la utilidad cada equipo confirmado. */
+  utilidadPorEquipoConfirmado: number;
+}
+
+/** Una alerta de viabilidad del torneo (se pinta en el panel). */
+export interface AlertaTorneo {
+  /** `error` bloquea el negocio; `alerta` avisa; `info` sugiere. */
+  nivel: "error" | "alerta" | "info";
+  mensaje: string;
+}
+
+/** Datos para crear/editar un torneo desde el backoffice. */
+export interface TorneoInput {
+  nombre: string;
+  deporte: string;
+  modalidad?: string | null;
+  categoria?: string | null;
+  rama?: string | null;
+  formato: FormatoTorneo;
+  ciudad?: string | null;
+  escenario?: string | null;
+  direccion?: string | null;
+  fecha_inicio?: string | null;
+  fecha_fin?: string | null;
+  cierre_inscripciones?: string | null;
+  cupo_equipos: number;
+  minimo_equipos?: number | null;
+  jugadores_por_equipo?: number | null;
+  duracion_partido_minutos?: number | null;
+  cantidad_canchas: number;
+  valor_inscripcion: number;
+  reglamento?: string | null;
+  /** Nota extra; los premios por puesto se guardan aparte. */
+  premiacion_descripcion?: string | null;
+  tema?: string;
+  /** Solo superadmin: delegar el torneo a otro organizador. */
+  tenant_id?: string | null;
 }

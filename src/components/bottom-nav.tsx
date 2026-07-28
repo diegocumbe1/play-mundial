@@ -4,7 +4,7 @@ import type { ComponentType } from "react";
 import { useTransition } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { CalendarDays, Gamepad2, LayoutGrid, Plus, Shield, Ticket, Trophy } from "lucide-react";
+import { CalendarDays, Gamepad2, LayoutGrid, Medal, Shield, Ticket, Trophy } from "lucide-react";
 
 import type { Idioma } from "@/lib/idioma";
 import { cn } from "@/lib/utils";
@@ -31,11 +31,11 @@ const ITEMS_POLLA: Record<Idioma, Item[]> = {
   ],
 };
 
-/** Navegación del backoffice de rifas (mobile-first). */
-const ITEMS_RIFAS: Item[] = [
+/** Navegación del backoffice de la plataforma (mobile-first). */
+const ITEMS_BACKOFFICE: Item[] = [
   { href: "/admin", label: "Panel", icon: LayoutGrid },
   { href: "/admin/rifas", label: "Rifas", icon: Ticket },
-  { href: "/admin/rifas/nueva", label: "Nueva", icon: Plus },
+  { href: "/admin/torneos", label: "Torneos", icon: Medal },
 ];
 
 /**
@@ -63,7 +63,7 @@ export function BottomNav({
   // Modo rifas: nav solo en el backoffice (y nunca en el login).
   if (modo === "rifas" && (!esBackoffice || enLogin)) return null;
 
-  const items = modo === "rifas" ? ITEMS_RIFAS : ITEMS_POLLA[idioma];
+  const items = modo === "rifas" ? ITEMS_BACKOFFICE : ITEMS_POLLA[idioma];
 
   const esActivo = (href: string) =>
     href === "/"

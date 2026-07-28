@@ -4,12 +4,14 @@ import { Settings } from "lucide-react";
 
 import { esSuperadmin } from "@/lib/auth";
 import { getSuperadminDashboard } from "@/actions/tenants";
+import { getProductosDeTodos } from "@/actions/productos";
 import { getCobros } from "@/actions/cobros";
 import { formatCOP } from "@/lib/rifa";
 import { buttonVariants } from "@/components/ui/button";
 import { CrearTenantForm } from "@/components/superadmin/crear-tenant-form";
 import { ConfirmarCobroButton } from "@/components/superadmin/confirmar-cobro-button";
 import { SuperadminOrganizadoresTable } from "@/components/superadmin/superadmin-organizadores-table";
+import type { Cobro, ProductoPlataforma } from "@/types";
 
 export const dynamic = "force-dynamic";
 
@@ -18,6 +20,17 @@ const TIPO_LABEL: Record<string, string> = {
   suscripcion: "Suscripción",
   gratis: "Gratis",
 };
+
+/**
+ * El ledger es multi-producto: `pago_rifa` es la modalidad "pago por unidad",
+ * así que el texto depende de la vertical del cobro.
+ */
+function labelCobro(cobro: Cobro): string {
+  if (cobro.tipo === "pago_rifa") {
+    return cobro.producto === "torneos" ? "Pago por torneo" : "Pago por rifa";
+  }
+  return TIPO_LABEL[cobro.tipo] ?? cobro.tipo;
+}
 
 export default async function SuperadminPage({
   searchParams,
@@ -28,7 +41,20 @@ export default async function SuperadminPage({
 
   const params = await searchParams;
   const mes = Array.isArray(params.mes) ? params.mes[0] : params.mes;
-  const [dashboardRes, cobrosRes] = await Promise.all([getSuperadminDashboard(mes), getCobros()]);
+  const [dashboardRes, cobrosRes, productosRes] = await Promise.all([
+    getSuperadminDashboard(mes),
+    getCobros(),
+    getProductosDeTodos(),
+  ]);
+
+  // Verticales habilitadas por organizador, agrupadas para la tabla.
+  const productosPorTenant: Record<string, ProductoPlataforma[]> = {};
+  if (productosRes.success) {
+    for (const fila of productosRes.data) {
+      if (!fila.habilitado) continue;
+      (productosPorTenant[fila.tenant_id] ??= []).push(fila.producto);
+    }
+  }
   const dashboard = dashboardRes.success ? dashboardRes.data : null;
   const tenants = dashboard?.tenants.map((m) => m.tenant) ?? [];
   const cobros = cobrosRes.success ? cobrosRes.data : [];
@@ -96,7 +122,7 @@ export default async function SuperadminPage({
                 <div>
                   <p className="text-sm font-semibold">{formatCOP(c.monto)}</p>
                   <p className="text-muted-foreground text-xs">
-                    {TIPO_LABEL[c.tipo] ?? c.tipo}
+                    {labelCobro(c)}
                     {c.periodo ? ` · ${c.periodo}` : ""}
                   </p>
                 </div>
@@ -119,7 +145,11 @@ export default async function SuperadminPage({
         {!dashboard || dashboard.tenants.length === 0 ? (
           <p className="text-muted-foreground text-sm">Aún no hay organizadores.</p>
         ) : (
-          <SuperadminOrganizadoresTable metrics={dashboard.tenants} nowMs={dashboard.nowMs} />
+          <SuperadminOrganizadoresTable
+            metrics={dashboard.tenants}
+            nowMs={dashboard.nowMs}
+            productosPorTenant={productosPorTenant}
+          />
         )}
       </section>
     </div>

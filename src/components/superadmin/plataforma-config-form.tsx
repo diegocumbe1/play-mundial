@@ -24,6 +24,13 @@ export function PlataformaConfigForm({ inicial }: { inicial: PlataformaConfig })
     free_rifas_por_mes: String(inicial.free_rifas_por_mes),
     free_rifas_total: String(inicial.free_rifas_total),
     free_max_numeros: String(inicial.free_max_numeros),
+    precio_torneo_8: String(inicial.precio_torneo_8),
+    precio_torneo_16: String(inicial.precio_torneo_16),
+    precio_torneo_32: String(inicial.precio_torneo_32),
+    precio_torneo_mas: String(inicial.precio_torneo_mas),
+    free_torneos_por_mes: String(inicial.free_torneos_por_mes),
+    free_torneos_total: String(inicial.free_torneos_total),
+    free_max_equipos: String(inicial.free_max_equipos),
   });
 
   function set(k: keyof typeof f, v: string) {
@@ -41,6 +48,13 @@ export function PlataformaConfigForm({ inicial }: { inicial: PlataformaConfig })
         free_rifas_por_mes: Number(f.free_rifas_por_mes) || 0,
         free_rifas_total: Number(f.free_rifas_total) || 0,
         free_max_numeros: Number(f.free_max_numeros) || 1,
+        precio_torneo_8: Number(f.precio_torneo_8) || 0,
+        precio_torneo_16: Number(f.precio_torneo_16) || 0,
+        precio_torneo_32: Number(f.precio_torneo_32) || 0,
+        precio_torneo_mas: Number(f.precio_torneo_mas) || 0,
+        free_torneos_por_mes: Number(f.free_torneos_por_mes) || 0,
+        free_torneos_total: Number(f.free_torneos_total) || 0,
+        free_max_equipos: Number(f.free_max_equipos) || 1,
       });
       if (!r.success) {
         toast.error(r.error);
@@ -54,7 +68,7 @@ export function PlataformaConfigForm({ inicial }: { inicial: PlataformaConfig })
   return (
     <div className="flex flex-col gap-5">
       <div>
-        <p className="mb-2 text-sm font-semibold">Precios (COP)</p>
+        <p className="mb-2 text-sm font-semibold">Rifas — precios (COP)</p>
         <div className="grid gap-3 sm:grid-cols-2">
           <CampoMoneda label="Rifa hasta 100 números" value={f.precio_rifa_100} onChange={(v) => set("precio_rifa_100", v)} />
           <CampoMoneda label="Rifa 101–500 números" value={f.precio_rifa_500} onChange={(v) => set("precio_rifa_500", v)} />
@@ -63,11 +77,31 @@ export function PlataformaConfigForm({ inicial }: { inicial: PlataformaConfig })
         </div>
       </div>
       <div>
-        <p className="mb-2 text-sm font-semibold">Capa gratuita</p>
+        <p className="mb-2 text-sm font-semibold">Rifas — capa gratuita</p>
         <div className="grid gap-3 sm:grid-cols-3">
           <Campo label="Rifas gratis por mes" value={f.free_rifas_por_mes} onChange={(v) => set("free_rifas_por_mes", v)} />
           <Campo label="Rifas gratis en total" value={f.free_rifas_total} onChange={(v) => set("free_rifas_total", v)} />
           <Campo label="Máx. números en gratis" value={f.free_max_numeros} onChange={(v) => set("free_max_numeros", v)} />
+        </div>
+      </div>
+      <div>
+        <p className="mb-2 text-sm font-semibold">Torneos — precios (COP)</p>
+        <p className="text-muted-foreground mb-2 text-xs">
+          El escalón se decide por el cupo de equipos del torneo.
+        </p>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <CampoMoneda label="Torneo hasta 8 equipos" value={f.precio_torneo_8} onChange={(v) => set("precio_torneo_8", v)} />
+          <CampoMoneda label="Torneo 9–16 equipos" value={f.precio_torneo_16} onChange={(v) => set("precio_torneo_16", v)} />
+          <CampoMoneda label="Torneo 17–32 equipos" value={f.precio_torneo_32} onChange={(v) => set("precio_torneo_32", v)} />
+          <CampoMoneda label="Torneo de más de 32 equipos" value={f.precio_torneo_mas} onChange={(v) => set("precio_torneo_mas", v)} />
+        </div>
+      </div>
+      <div>
+        <p className="mb-2 text-sm font-semibold">Torneos — capa gratuita</p>
+        <div className="grid gap-3 sm:grid-cols-3">
+          <Campo label="Torneos gratis por mes" value={f.free_torneos_por_mes} onChange={(v) => set("free_torneos_por_mes", v)} />
+          <Campo label="Torneos gratis en total" value={f.free_torneos_total} onChange={(v) => set("free_torneos_total", v)} />
+          <Campo label="Máx. equipos en gratis" value={f.free_max_equipos} onChange={(v) => set("free_max_equipos", v)} />
         </div>
       </div>
       <div>
