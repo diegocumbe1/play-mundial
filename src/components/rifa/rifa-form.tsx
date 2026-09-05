@@ -347,7 +347,7 @@ export function RifaForm({
         <section className="border-border grid gap-4 rounded-xl border p-4 sm:grid-cols-2">
           <p className="text-muted-foreground sm:col-span-2 text-sm font-medium">Datos de la lotería</p>
           <Field label="Lotería">
-            <Input value={loteria} onChange={(e) => setLoteria(e.target.value)} placeholder="Lotería de Manizales" />
+            <Input value={loteria} onChange={(e) => setLoteria(e.target.value)} placeholder="Lotería de ..." />
           </Field>
           <Field label="Fecha de la lotería">
             <Input type="date" value={fechaLoteria ?? ""} onChange={(e) => setFechaLoteria(e.target.value)} />
@@ -356,7 +356,7 @@ export function RifaForm({
             <Input
               value={loteriaUrl}
               onChange={(e) => setLoteriaUrl(e.target.value)}
-              placeholder="https://loteriademanizales.com/"
+              placeholder="https://loteriade...com/"
               inputMode="url"
             />
             <p className="text-muted-foreground mt-1 text-xs">
@@ -492,7 +492,7 @@ export function RifaForm({
               </Field>
               {p.tipo === "valor" ? (
                 <Field label="Valor (COP)">
-                  <InputMoneda value={p.valor} onChange={(v) => setPremio(i, { valor: v })} placeholder="1.000.000" />
+                  <InputMoneda value={p.valor} onChange={(v) => setPremio(i, { valor: v })} placeholder="000.000" />
                 </Field>
               ) : (
                 <Field label="Cantidad de ganadores">

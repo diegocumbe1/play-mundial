@@ -527,7 +527,7 @@ export function TorneoForm({
                       <InputMoneda
                         value={p.valor}
                         onChange={(v) => setPremio(i, { valor: v })}
-                        placeholder="1.000.000"
+                        placeholder="000.000"
                       />
                     </Campo>
                   )}
