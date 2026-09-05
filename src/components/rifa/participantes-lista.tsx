@@ -65,7 +65,6 @@ export function ParticipantesLista({
 
   // El recordatorio lleva el enlace público: ahí el comprador ve sus números,
   // cuánto vale y a dónde pagar, sin que el organizador tenga que explicarlo.
-  const urlPublica = urlPublicaRifa(rifa.slug_publico);
   const fechaJuego = formatFechaCO(
     rifa.tipo === "loteria" ? (rifa.fecha_loteria ?? rifa.fecha_sorteo) : rifa.fecha_sorteo,
     { conAnio: false },
@@ -272,6 +271,10 @@ export function ParticipantesLista({
       {/* Personas */}
       <ul className="flex flex-col gap-2">
         {visibles.map((p) => {
+          const urlPersona = urlPublicaRifa(
+            rifa.slug_publico,
+            p.boletas.map((b) => b.numero),
+          );
           const numerosTxt = p.boletas
             .map((b) => String(b.numero).padStart(ancho, "0"))
             .join(", ");
@@ -288,8 +291,8 @@ export function ParticipantesLista({
                     : rifa.solo_pagadas_juegan
                       ? "Recuerda que solo juegan las boletas pagadas."
                       : "",
-                  "Aquí puedes ver la rifa y cómo pagar 👇",
-                  urlPublica,
+                  "Aquí ves tus números y cómo pagar 👇",
+                  urlPersona,
                   "¡Gracias! 🙌",
                 ]
                   .filter(Boolean)
@@ -298,7 +301,7 @@ export function ParticipantesLista({
                   `Hola ${p.nombre}, gracias por participar en la rifa "${rifa.nombre}" con el/los número(s) ${numerosTxt}.`,
                   fechaJuego ? `El sorteo es el ${fechaJuego}.` : "",
                   "Sigue la rifa aquí 👇",
-                  urlPublica,
+                  urlPersona,
                   "¡Mucha suerte! 🍀",
                 ]
                   .filter(Boolean)

@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
-import { Check, Copy, Dices, Loader2, MessageCircle, PartyPopper, Ticket, Trophy } from "lucide-react";
+import { useSearchParams } from "next/navigation";
+import { BadgeCheck, Check, Copy, Dices, Loader2, MessageCircle, PartyPopper, Ticket, Trophy } from "lucide-react";
 import { toast } from "sonner";
 
 import { getRifaPublica, reservarNumeros, type RifaPublica } from "@/actions/rifas";
@@ -141,6 +142,23 @@ export function RifaPublicaView({
   );
   const premioPrincipal = premiosOrdenados[0];
   // El mensaje es uno solo para toda la rifa: se toma del primer ganador que lo traiga.
+  // El recordatorio de WhatsApp llega con `?n=17,18`: son los números de esa
+  // persona. No hay dato personal en la URL —esos números ya se ven ocupados en
+  // la grilla—, solo sirve para no hacerla buscar cuáles eran los suyos.
+  const params = useSearchParams();
+  const misNumeros = useMemo(() => {
+    const crudo = params.get("n");
+    if (!crudo) return [];
+    const pedidos = crudo
+      .split(",")
+      .map((n) => Number(n.trim()))
+      .filter((n) => Number.isInteger(n));
+    return [...new Set(pedidos)]
+      .filter((n) => grilla.some((c) => c.numero === n))
+      .sort((a, b) => a - b);
+  }, [params, grilla]);
+  const misOcupados = misNumeros.filter((n) => grilla.find((c) => c.numero === n)?.ocupado);
+
   const mensajeGanadores =
     ganadores.find((g) => g.mensaje_felicitacion?.trim())?.mensaje_felicitacion?.trim() ?? "";
 
@@ -190,6 +208,63 @@ export function RifaPublicaView({
         claro={t.surface}
       />
       <div className="relative mx-auto max-w-md px-4 py-6">
+        {/* Los números de quien llegó por el recordatorio: primero lo suyo, con
+            el pago a un toque. */}
+        {misNumeros.length > 0 && (
+          <div
+            className="mb-4 rounded-2xl border p-4"
+            style={{ borderColor: t.accent, background: t.surface }}
+          >
+            <p className="flex items-center gap-1.5 text-sm font-semibold">
+              <BadgeCheck className="size-4 text-[var(--rifa-accent)]" />
+              {misNumeros.length === 1 ? "Tu número" : "Tus números"}
+            </p>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {misNumeros.map((n) => (
+                <span
+                  key={n}
+                  className="inline-flex items-center rounded-lg px-2.5 py-1 text-sm font-bold tabular-nums"
+                  style={{ background: t.accent, color: t.accentInk }}
+                >
+                  {formatNumero(n, ancho)}
+                </span>
+              ))}
+            </div>
+            <p className="mt-2 text-xs text-[var(--rifa-muted)]">
+              {misOcupados.length === misNumeros.length
+                ? `${misNumeros.length} número(s) apartado(s) · ${formatCOP(misNumeros.length * rifa.precio_boleta)}`
+                : "Algunos de estos números todavía están libres: apártalos abajo antes de que los tomen."}
+            </p>
+
+            {/* Cómo pagar, aquí mismo: es a lo que vino */}
+            {pago && (cuentaPago || pago.llave) && (
+              <div className="mt-3 flex flex-col gap-2">
+                {cuentaPago && (
+                  <PagoLinea label={cuentaPagoLabel} value={cuentaPago} sub={pago.titular ?? undefined} />
+                )}
+                {pago.llave && (
+                  <PagoLinea label="Llave / Bre-B" value={pago.llave} sub={pago.titular ?? undefined} />
+                )}
+              </div>
+            )}
+            {pago?.whatsapp && (
+              <a
+                href={waLink(
+                  pago.whatsapp,
+                  `¡Hola! Ya hice el pago de mi(s) número(s) ${misNumeros
+                    .map((n) => formatNumero(n, ancho))
+                    .join(", ")} de la rifa "${rifa.nombre}". Te envío el comprobante.`,
+                )}
+                target="_blank"
+                rel="noreferrer"
+                className="mt-3 inline-flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 text-sm font-semibold text-white"
+              >
+                <MessageCircle className="size-4" /> Enviar comprobante por WhatsApp
+              </a>
+            )}
+          </div>
+        )}
+
         {/* Foto del premio */}
         {rifa.imagen_url && (
           <div
@@ -419,8 +494,11 @@ export function RifaPublicaView({
         <div className="mb-2 grid grid-cols-10 gap-1">
           {grilla.map((c) => {
             const sel = seleccion.has(c.numero);
+            const mio = misNumeros.includes(c.numero);
             const base = "tap-scale flex aspect-square w-full items-center justify-center rounded-md text-[10px] font-bold tabular-nums transition-colors sm:text-xs";
-            const cls = c.ocupado
+            const cls = mio && c.ocupado
+              ? "bg-[var(--rifa-accent)] text-[var(--rifa-accent-ink)] ring-2 ring-[var(--rifa-accent)]"
+              : c.ocupado
               ? "line-through cursor-not-allowed bg-[var(--rifa-ocupado)] text-[var(--rifa-ocupado-ink)]"
               : sel
                 ? "bg-[var(--rifa-accent)] text-[var(--rifa-accent-ink)] ring-2 ring-[var(--rifa-accent)]"

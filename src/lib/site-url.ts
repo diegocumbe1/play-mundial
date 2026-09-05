@@ -11,6 +11,10 @@ export const SITE_URL = (
  * `window` no existe, y el enlace salía relativo (`/r/slug`) — WhatsApp lo
  * manda como texto plano y el comprador no puede abrirlo.
  */
-export function urlPublicaRifa(slug: string): string {
-  return `${SITE_URL}/r/${slug}`;
+export function urlPublicaRifa(slug: string, numeros?: number[]): string {
+  const base = `${SITE_URL}/r/${slug}`;
+  if (!numeros || numeros.length === 0) return base;
+  // `?n=` hace que la página abra con esos números marcados y el pago a la vista:
+  // el comprador no tiene que buscar cuáles eran los suyos.
+  return `${base}?n=${[...numeros].sort((a, b) => a - b).join(",")}`;
 }

@@ -94,8 +94,8 @@ export function BoletaModal({
             ? `Tu número ${formatNumero(boleta.numero, ancho)} está pago y confirmado.`
             : `Tienes apartado el número ${formatNumero(boleta.numero, ancho)} y queda pendiente ${formatCOP(rifa.precio_boleta)}.`,
           fechaJuego ? `El sorteo es el ${fechaJuego}.` : "",
-          boleta.estado === "pagado" ? "Sigue la rifa aquí 👇" : "Aquí puedes ver la rifa y cómo pagar 👇",
-          urlPublicaRifa(rifa.slug_publico),
+          boleta.estado === "pagado" ? "Sigue la rifa aquí 👇" : "Aquí ves tu número y cómo pagar 👇",
+          urlPublicaRifa(rifa.slug_publico, [boleta.numero]),
           boleta.estado === "pagado" ? "¡Mucha suerte! 🍀" : "¡Gracias! 🙌",
         ]
           .filter(Boolean)
