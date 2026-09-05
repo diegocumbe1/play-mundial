@@ -12,6 +12,7 @@ import { Label } from "@/components/ui/label";
 
 interface FormValues {
   nombre: string;
+  telefono: string;
   email: string;
   password: string;
 }
@@ -24,7 +25,9 @@ export function LoginForm({ nextPath = "/admin" }: { nextPath?: string }) {
     handleSubmit,
     formState: { isSubmitting },
     reset,
-  } = useForm<FormValues>({ defaultValues: { nombre: "", email: "", password: "" } });
+  } = useForm<FormValues>({
+    defaultValues: { nombre: "", telefono: "", email: "", password: "" },
+  });
 
   async function onSubmit(values: FormValues) {
     const result =
@@ -32,6 +35,7 @@ export function LoginForm({ nextPath = "/admin" }: { nextPath?: string }) {
         ? await login(values)
         : await registrarOrganizador({
             nombre: values.nombre,
+            telefono: values.telefono,
             email: values.email,
             password: values.password,
           });
@@ -39,7 +43,11 @@ export function LoginForm({ nextPath = "/admin" }: { nextPath?: string }) {
       toast.error(result.error);
       return;
     }
-    toast.success(modo === "login" ? "Sesión iniciada" : "Cuenta creada");
+    toast.success(
+      modo === "login"
+        ? "Sesión iniciada"
+        : "Cuenta creada. Ya puedes preparar tu rifa; para publicarla la revisamos primero.",
+    );
     router.push(nextPath);
     router.refresh();
   }
@@ -56,7 +64,7 @@ export function LoginForm({ nextPath = "/admin" }: { nextPath?: string }) {
             type="button"
             onClick={() => {
               setModo(opcion.id);
-              reset({ nombre: "", email: "", password: "" });
+              reset({ nombre: "", telefono: "", email: "", password: "" });
             }}
             aria-pressed={modo === opcion.id}
             className={
@@ -83,6 +91,26 @@ export function LoginForm({ nextPath = "/admin" }: { nextPath?: string }) {
             placeholder="Tu nombre o negocio"
             {...register("nombre", { required: modo === "registro" })}
           />
+        </div>
+      )}
+
+      {modo === "registro" && (
+        <div className="grid gap-2">
+          <Label htmlFor="telefono" className="text-polla-muted">
+            WhatsApp
+          </Label>
+          <Input
+            id="telefono"
+            type="tel"
+            inputMode="tel"
+            autoComplete="tel"
+            className="h-11 focus-visible:border-polla-gold focus-visible:ring-polla-gold/30"
+            placeholder="300 000 0000"
+            {...register("telefono", { required: modo === "registro" })}
+          />
+          <p className="text-polla-muted text-xs">
+            Por aquí te contactamos para activar la cuenta. Un WhatsApp, una cuenta.
+          </p>
         </div>
       )}
 
@@ -123,7 +151,7 @@ export function LoginForm({ nextPath = "/admin" }: { nextPath?: string }) {
       <p className="text-polla-muted text-center text-xs">
         {modo === "login"
           ? "Si aún no tienes cuenta, elige Usuario nuevo."
-          : "Con esto tendrás acceso al panel para crear y administrar tus rifas."}
+          : "Entras de una a preparar tu rifa. Para publicarla revisamos la cuenta primero."}
       </p>
     </form>
   );

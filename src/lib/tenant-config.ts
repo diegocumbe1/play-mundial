@@ -32,6 +32,10 @@ export async function getPlataformaConfig(): Promise<PlataformaConfig> {
 
   const defaults: PlataformaConfig = {
     moneda: "COP",
+    // Por defecto la rifa cuesta una boleta, sin piso ni techo.
+    cobro_rifa_modo: "boleta",
+    cobro_rifa_min: 0,
+    cobro_rifa_max: 0,
     precio_rifa_100: 0,
     precio_rifa_500: 0,
     precio_rifa_1000: 0,

@@ -17,6 +17,9 @@ export function PlataformaConfigForm({ inicial }: { inicial: PlataformaConfig })
   const [pending, startTransition] = useTransition();
   const [f, setF] = useState({
     moneda: inicial.moneda,
+    cobro_rifa_modo: inicial.cobro_rifa_modo ?? "boleta",
+    cobro_rifa_min: String(inicial.cobro_rifa_min ?? 0),
+    cobro_rifa_max: String(inicial.cobro_rifa_max ?? 0),
     precio_rifa_100: String(inicial.precio_rifa_100),
     precio_rifa_500: String(inicial.precio_rifa_500),
     precio_rifa_1000: String(inicial.precio_rifa_1000),
@@ -41,6 +44,9 @@ export function PlataformaConfigForm({ inicial }: { inicial: PlataformaConfig })
     startTransition(async () => {
       const r = await guardarPlataformaConfig({
         moneda: f.moneda.trim() || "COP",
+        cobro_rifa_modo: f.cobro_rifa_modo === "escalones" ? "escalones" : "boleta",
+        cobro_rifa_min: Number(f.cobro_rifa_min) || 0,
+        cobro_rifa_max: Number(f.cobro_rifa_max) || 0,
         precio_rifa_100: Number(f.precio_rifa_100) || 0,
         precio_rifa_500: Number(f.precio_rifa_500) || 0,
         precio_rifa_1000: Number(f.precio_rifa_1000) || 0,
@@ -68,7 +74,34 @@ export function PlataformaConfigForm({ inicial }: { inicial: PlataformaConfig })
   return (
     <div className="flex flex-col gap-5">
       <div>
-        <p className="mb-2 text-sm font-semibold">Rifas — precios (COP)</p>
+        <p className="mb-2 text-sm font-semibold">Rifas — cómo se cobra</p>
+        <div className="grid gap-3 sm:grid-cols-3">
+          <div>
+            <Label className="text-muted-foreground mb-1.5 block text-xs">Regla de cobro</Label>
+            <select
+              value={f.cobro_rifa_modo}
+              onChange={(e) => set("cobro_rifa_modo", e.target.value)}
+              className="border-input bg-background h-10 w-full rounded-lg border px-3 text-sm"
+            >
+              <option value="boleta">El valor de 1 boleta de la rifa</option>
+              <option value="escalones">Precio fijo por tamaño</option>
+            </select>
+          </div>
+          <CampoMoneda label="Mínimo por rifa (0 = sin mínimo)" value={f.cobro_rifa_min} onChange={(v) => set("cobro_rifa_min", v)} />
+          <CampoMoneda label="Máximo por rifa (0 = sin tope)" value={f.cobro_rifa_max} onChange={(v) => set("cobro_rifa_max", v)} />
+        </div>
+        <p className="text-muted-foreground mt-2 text-xs">
+          Cobrar una boleta equivale a 100/N del recaudo: 1% en una rifa de 100 números,
+          3,3% en una de 30 y 0,1% en una de 1000. El mínimo y el máximo evitan los
+          extremos (una rifa de boleta muy barata o muy cara).
+        </p>
+      </div>
+      <div>
+        <p className="mb-2 text-sm font-semibold">Rifas — precios por tamaño (COP)</p>
+        <p className="text-muted-foreground mb-2 text-xs">
+          Solo se usan con la regla &quot;precio fijo por tamaño&quot;. La suscripción
+          aplica siempre.
+        </p>
         <div className="grid gap-3 sm:grid-cols-2">
           <CampoMoneda label="Rifa hasta 100 números" value={f.precio_rifa_100} onChange={(v) => set("precio_rifa_100", v)} />
           <CampoMoneda label="Rifa 101–500 números" value={f.precio_rifa_500} onChange={(v) => set("precio_rifa_500", v)} />

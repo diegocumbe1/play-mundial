@@ -47,7 +47,26 @@ export async function getMembership(): Promise<Membership | null> {
     .eq("id", membership.tenant_id)
     .maybeSingle();
 
-  return (tenant as { estado: string } | null)?.estado === "activo" ? membership : null;
+  // `pendiente` también entra: puede preparar sus rifas en borrador. Lo que no
+  // puede es activarlas — ese muro está en `resolverActivacion`. Una cuenta
+  // rechazada o archivada no pasa de aquí.
+  const estado = (tenant as { estado: string } | null)?.estado;
+  return estado === "activo" || estado === "pendiente" ? membership : null;
+}
+
+/** ¿La cuenta del usuario ya fue aprobada por el superadmin? */
+export async function cuentaAprobada(): Promise<boolean> {
+  const membership = await getMembership();
+  if (!membership) return false;
+  if (membership.rol === "superadmin") return true;
+
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("tenants")
+    .select("estado")
+    .eq("id", membership.tenant_id)
+    .maybeSingle();
+  return (data as { estado: string } | null)?.estado === "activo";
 }
 
 /** ¿El usuario actual es superadmin de la plataforma? */

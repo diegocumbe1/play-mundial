@@ -1,17 +1,18 @@
 import Link from "next/link";
 import { ArrowRight, Ban, Medal, Settings, Ticket, Trophy, Users } from "lucide-react";
 
-import { esSuperadmin, getMembership, getUser } from "@/lib/auth";
+import { cuentaAprobada, esSuperadmin, getMembership, getUser } from "@/lib/auth";
 import { getProductosHabilitados } from "@/lib/productos";
 import { LogoutButton } from "@/components/admin/logout-button";
 
 export const dynamic = "force-dynamic";
 
 export default async function AdminHubPage() {
-  const [user, membership, superadmin] = await Promise.all([
+  const [user, membership, superadmin, aprobada] = await Promise.all([
     getUser(),
     getMembership(),
     esSuperadmin(),
+    cuentaAprobada(),
   ]);
 
   // Cada organizador ve solo sus verticales habilitadas. El superadmin ve todo:
@@ -32,6 +33,21 @@ export default async function AdminHubPage() {
         </div>
         <LogoutButton />
       </header>
+
+      {/* Cuenta registrada que aún no pasa la revisión. Puede preparar todo; lo
+          único bloqueado es publicar. */}
+      {membership && !aprobada && (
+        <div className="mb-6 rounded-2xl border border-amber-500/40 bg-amber-500/10 p-4">
+          <p className="text-sm font-semibold text-amber-700 dark:text-amber-300">
+            Tu cuenta está en revisión
+          </p>
+          <p className="text-muted-foreground mt-1 text-sm">
+            Puedes crear tu rifa, subir las fotos y dejarla lista. Para publicarla y
+            empezar a vender necesitamos aprobar la cuenta primero — normalmente es
+            cosa de horas.
+          </p>
+        </div>
+      )}
 
       {!membership && (
         <div className="border-amber-500/40 bg-amber-500/10 mb-6 rounded-xl border p-4 text-sm">

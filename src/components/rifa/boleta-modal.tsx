@@ -146,7 +146,7 @@ export function BoletaModal({
               <Input
                 value={responsable}
                 onChange={(e) => setResponsable(e.target.value)}
-                placeholder="Diego Cumbe"
+                placeholder=""
               />
             </div>
           </div>

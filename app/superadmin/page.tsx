@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { Settings } from "lucide-react";
 
 import { esSuperadmin } from "@/lib/auth";
-import { getSuperadminDashboard } from "@/actions/tenants";
+import { getSolicitudesCuenta, getSuperadminDashboard } from "@/actions/tenants";
 import { getProductosDeTodos } from "@/actions/productos";
 import { getCobros } from "@/actions/cobros";
 import { formatCOP } from "@/lib/rifa";
@@ -11,6 +11,10 @@ import { buttonVariants } from "@/components/ui/button";
 import { CrearTenantForm } from "@/components/superadmin/crear-tenant-form";
 import { ConfirmarCobroButton } from "@/components/superadmin/confirmar-cobro-button";
 import { SuperadminOrganizadoresTable } from "@/components/superadmin/superadmin-organizadores-table";
+import {
+  SolicitudesCuenta,
+  SolicitudesTitulo,
+} from "@/components/superadmin/solicitudes-cuenta";
 import type { Cobro, ProductoPlataforma } from "@/types";
 
 export const dynamic = "force-dynamic";
@@ -41,11 +45,13 @@ export default async function SuperadminPage({
 
   const params = await searchParams;
   const mes = Array.isArray(params.mes) ? params.mes[0] : params.mes;
-  const [dashboardRes, cobrosRes, productosRes] = await Promise.all([
+  const [dashboardRes, cobrosRes, productosRes, solicitudesRes] = await Promise.all([
     getSuperadminDashboard(mes),
     getCobros(),
     getProductosDeTodos(),
+    getSolicitudesCuenta(),
   ]);
+  const solicitudes = solicitudesRes.success ? solicitudesRes.data : [];
 
   // Verticales habilitadas por organizador, agrupadas para la tabla.
   const productosPorTenant: Record<string, ProductoPlataforma[]> = {};
@@ -71,6 +77,17 @@ export default async function SuperadminPage({
           <Settings className="size-3.5" /> Precios
         </Link>
       </header>
+
+      {/* Cuentas nuevas: lo primero, porque hay gente esperando para publicar. */}
+      <section
+        className={
+          "mb-6 rounded-2xl border p-4 " +
+          (solicitudes.length > 0 ? "border-primary/50 bg-primary/5" : "border-border")
+        }
+      >
+        <SolicitudesTitulo cantidad={solicitudes.length} />
+        <SolicitudesCuenta solicitudes={solicitudes} />
+      </section>
 
       {dashboard && (
         <>

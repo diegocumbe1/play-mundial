@@ -26,6 +26,7 @@ export function ActivarRifaButton({ rifaId }: { rifaId: string }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [montoPendiente, setMontoPendiente] = useState<number | null>(null);
+  const [enRevision, setEnRevision] = useState(false);
   const [pago, setPago] = useState<PlataformaPagoConfig | null>(null);
 
   function activar() {
@@ -38,6 +39,9 @@ export function ActivarRifaButton({ rifaId }: { rifaId: string }) {
       if (r.data.activada) {
         toast.success("¡Rifa activada! Ya puedes compartir el enlace.");
         router.refresh();
+      } else if (r.data.requiereAprobacion) {
+        setPago(r.data.pago ?? null);
+        setEnRevision(true);
       } else {
         setMontoPendiente(r.data.monto ?? 0);
         setPago(r.data.pago ?? null);
@@ -50,6 +54,37 @@ export function ActivarRifaButton({ rifaId }: { rifaId: string }) {
       <Button size="lg" onClick={activar} disabled={pending}>
         <Rocket className="size-4" /> Activar y publicar
       </Button>
+
+      {/* Cuenta nueva sin aprobar: la rifa queda lista, solo falta el visto bueno. */}
+      <Dialog open={enRevision} onOpenChange={(o) => !o && setEnRevision(false)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Tu cuenta está en revisión</DialogTitle>
+            <DialogDescription>
+              Tu rifa quedó lista y guardada. Antes de publicarla revisamos la cuenta —
+              es lo que nos permite mantener la plataforma sana. Normalmente es cosa de
+              horas.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            {pago?.whatsapp ? (
+              <a
+                href={waLink(
+                  pago.whatsapp,
+                  "¡Hola! Acabo de crear mi cuenta y ya tengo la rifa lista. ¿Me ayudan a activarla?",
+                )}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 text-sm font-semibold text-white sm:w-auto"
+              >
+                <MessageCircle className="size-4" /> Escribirnos por WhatsApp
+              </a>
+            ) : (
+              <Button onClick={() => setEnRevision(false)}>Entendido</Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={montoPendiente !== null} onOpenChange={(o) => !o && setMontoPendiente(null)}>
         <DialogContent>

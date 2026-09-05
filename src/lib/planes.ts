@@ -39,8 +39,20 @@ interface ReglasProducto {
   /** Cuántas activaciones gratis se permiten en total y por mes. */
   cuotaTotal: (c: PlataformaConfig) => number;
   cuotaMes: (c: PlataformaConfig) => number;
-  /** Precio del escalón según el tamaño (números de la rifa / cupo de equipos). */
-  precio: (c: PlataformaConfig, tamano: number) => number;
+  /**
+   * Cuánto cuesta activar. `tamano` son los números de la rifa o el cupo de
+   * equipos; `precioUnitario` es lo que vale un puesto (boleta / inscripción),
+   * que es la base del cobro "una boleta".
+   */
+  precio: (c: PlataformaConfig, tamano: number, precioUnitario: number) => number;
+}
+
+/** Deja el cobro dentro del piso y el techo configurados (0 = desactivado). */
+function acotar(valor: number, min: number, max: number): number {
+  let v = Math.max(0, Math.round(valor));
+  if (min > 0) v = Math.max(v, min);
+  if (max > 0) v = Math.min(v, max);
+  return v;
 }
 
 const REGLAS: Record<ProductoPlataforma, ReglasProducto> = {
@@ -51,8 +63,13 @@ const REGLAS: Record<ProductoPlataforma, ReglasProducto> = {
     maxGratis: (c) => c.free_max_numeros,
     cuotaTotal: (c) => c.free_rifas_total,
     cuotaMes: (c) => c.free_rifas_por_mes,
-    precio: (c, n) =>
-      n <= 100 ? c.precio_rifa_100 : n <= 500 ? c.precio_rifa_500 : c.precio_rifa_1000,
+    precio: (c, n, precioBoleta) => {
+      // Modo "boleta": activar la rifa cuesta lo mismo que uno de sus puestos.
+      if (c.cobro_rifa_modo !== "escalones") {
+        return acotar(precioBoleta, c.cobro_rifa_min, c.cobro_rifa_max);
+      }
+      return n <= 100 ? c.precio_rifa_100 : n <= 500 ? c.precio_rifa_500 : c.precio_rifa_1000;
+    },
   },
   torneos: {
     tabla: "torneos",
@@ -61,6 +78,7 @@ const REGLAS: Record<ProductoPlataforma, ReglasProducto> = {
     maxGratis: (c) => c.free_max_equipos,
     cuotaTotal: (c) => c.free_torneos_total,
     cuotaMes: (c) => c.free_torneos_por_mes,
+    // Los torneos siguen por escalones de cupo: no hay "boleta" que replicar.
     precio: (c, n) =>
       n <= 8
         ? c.precio_torneo_8
@@ -75,6 +93,9 @@ const REGLAS: Record<ProductoPlataforma, ReglasProducto> = {
 /** Valores por defecto si aún no existe la fila de configuración. */
 const CONFIG_DEFAULT: PlataformaConfig = {
   moneda: "COP",
+  cobro_rifa_modo: "boleta",
+  cobro_rifa_min: 0,
+  cobro_rifa_max: 0,
   precio_rifa_100: 0,
   precio_rifa_500: 0,
   precio_rifa_1000: 0,
@@ -96,6 +117,11 @@ const CONFIG_DEFAULT: PlataformaConfig = {
 export interface ResolucionActivacion {
   /** `true` → el llamador debe marcarla como activa. */
   activada: boolean;
+  /**
+   * `true` → la cuenta todavía no está aprobada por el superadmin. No se cobra
+   * ni se publica nada: primero pasa la revisión.
+   */
+  requiereAprobacion?: boolean;
   /** Con qué modalidad quedó cubierta (solo si `activada`). */
   cobroTipo: PlanTenant | null;
   /** `true` → quedó un cobro pendiente; sigue en borrador. */
@@ -118,13 +144,15 @@ export async function resolverActivacion(params: {
   entidadId: string;
   /** Tamaño con el que se cotiza: números de la rifa o cupo de equipos. */
   tamano: number;
+  /** Valor de un puesto: la boleta de la rifa o la inscripción del torneo. */
+  precioUnitario?: number;
 }): Promise<ResolucionActivacion> {
-  const { tenantId, producto, entidadId, tamano } = params;
+  const { tenantId, producto, entidadId, tamano, precioUnitario = 0 } = params;
   const reglas = REGLAS[producto];
   const svc = createServiceRoleClient();
 
   const [{ data: tenant }, { data: cfg }, { data: pagoData }] = await Promise.all([
-    svc.from("tenants").select("suscripcion_vence_at").eq("id", tenantId).maybeSingle(),
+    svc.from("tenants").select("suscripcion_vence_at, estado").eq("id", tenantId).maybeSingle(),
     svc.from("plataforma_config").select("*").limit(1).maybeSingle(),
     svc.from("plataforma_pago_config").select("*").limit(1).maybeSingle(),
   ]);
@@ -134,6 +162,21 @@ export async function resolverActivacion(params: {
     ...((cfg as Partial<PlataformaConfig> | null) ?? {}),
   };
   const pago = (pagoData as PlataformaPagoConfig | null) ?? null;
+
+  // 0) La cuenta tiene que estar aprobada. Se revisa aquí porque es el único
+  // paso por el que pasa TODO lo que se hace público (rifas y torneos), y así
+  // no se registra un cobro por algo que todavía no puede publicarse.
+  const estadoTenant = (tenant as { estado?: string } | null)?.estado;
+  if (estadoTenant && estadoTenant !== "activo") {
+    return {
+      activada: false,
+      requiereAprobacion: true,
+      cobroTipo: null,
+      pendiente: false,
+      monto: 0,
+      pago,
+    };
+  }
 
   // 1) Suscripción vigente: activa sin cobrar.
   const venceAt = (tenant as { suscripcion_vence_at: string | null } | null)
@@ -167,7 +210,7 @@ export async function resolverActivacion(params: {
   }
 
   // 3) Requiere pago: cobro pendiente; la entidad sigue en borrador.
-  const monto = reglas.precio(config, tamano);
+  const monto = reglas.precio(config, tamano, precioUnitario);
   await svc.from("cobros").insert({
     tenant_id: tenantId,
     producto,
@@ -185,6 +228,19 @@ export function precioEscalon(
   config: PlataformaConfig,
   producto: ProductoPlataforma,
   tamano: number,
+  precioUnitario = 0,
 ): number {
-  return REGLAS[producto].precio(config, tamano);
+  return REGLAS[producto].precio(config, tamano, precioUnitario);
+}
+
+/**
+ * A qué porcentaje del recaudo equivale el cobro. Con el modo "boleta" el
+ * resultado es 100/N y NO depende del precio del puesto: 1% en una rifa de 100
+ * números, 3,3% en una de 30, 0,1% en una de 1000. Es el dato que se le muestra
+ * al organizador para que no se lleve sorpresas.
+ */
+export function porcentajeDelRecaudo(monto: number, tamano: number, precioUnitario: number): number | null {
+  const recaudo = tamano * precioUnitario;
+  if (recaudo <= 0 || monto <= 0) return null;
+  return (monto / recaudo) * 100;
 }

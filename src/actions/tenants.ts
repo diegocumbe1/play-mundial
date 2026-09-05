@@ -6,7 +6,14 @@ import { z } from "zod";
 import { esSuperadmin, getMembership } from "@/lib/auth";
 import { habilitarProductosIniciales } from "@/lib/productos";
 import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
-import type { ActionResult, PlanTenant, RolMembership, Tenant, TenantPagoConfig } from "@/types";
+import type {
+  ActionResult,
+  EstadoTenant,
+  PlanTenant,
+  RolMembership,
+  Tenant,
+  TenantPagoConfig,
+} from "@/types";
 
 /**
  * Server Actions de tenants. Crear tenants + owners es del superadmin; cada
@@ -238,16 +245,82 @@ export async function crearTenantConOwner(
 /** Archiva o reactiva un tenant. Solo superadmin. */
 export async function setEstadoTenant(
   tenantId: string,
-  estado: "activo" | "archivado",
+  estado: EstadoTenant,
 ): Promise<ActionResult> {
   if (!(await esSuperadmin())) {
     return { success: false, error: "No autorizado" };
   }
   const svc = createServiceRoleClient();
-  const { error } = await svc.from("tenants").update({ estado }).eq("id", tenantId);
+  const { error } = await svc
+    .from("tenants")
+    .update({
+      estado,
+      // Queda la marca de cuándo se aprobó; al rechazar se limpia.
+      aprobado_at: estado === "activo" ? new Date().toISOString() : null,
+    })
+    .eq("id", tenantId);
   if (error) return { success: false, error: error.message };
   revalidatePath("/superadmin");
   return { success: true, data: undefined };
+}
+
+/** Una cuenta esperando aprobación, con lo necesario para decidir. */
+export interface SolicitudCuenta {
+  tenant: Tenant;
+  /** Correo del owner que se registró. */
+  email: string | null;
+  /** Rifas que ya dejó preparadas en borrador (señal de que va en serio). */
+  rifasBorrador: number;
+}
+
+/**
+ * Cuentas registradas que esperan el visto bueno del superadmin. Van con el
+ * WhatsApp y cuántas rifas alcanzó a preparar: es lo que hace falta para
+ * decidir sin salir de la pantalla.
+ */
+export async function getSolicitudesCuenta(): Promise<ActionResult<SolicitudCuenta[]>> {
+  if (!(await esSuperadmin())) {
+    return { success: false, error: "No autorizado" };
+  }
+  const svc = createServiceRoleClient();
+
+  const { data: tenants, error } = await svc
+    .from("tenants")
+    .select("*")
+    .eq("estado", "pendiente")
+    .order("created_at", { ascending: true });
+  if (error) return { success: false, error: error.message };
+
+  const filas = (tenants as Tenant[]) ?? [];
+  if (filas.length === 0) return { success: true, data: [] };
+
+  const ids = filas.map((t) => t.id);
+  const [{ data: memberships }, { data: rifas }] = await Promise.all([
+    svc.from("memberships").select("tenant_id, user_id").in("tenant_id", ids),
+    svc.from("rifas").select("tenant_id").in("tenant_id", ids).eq("estado", "borrador"),
+  ]);
+
+  // El correo vive en auth.users, no en una tabla del esquema público.
+  const emailPorTenant = new Map<string, string | null>();
+  for (const m of (memberships as { tenant_id: string; user_id: string }[]) ?? []) {
+    if (emailPorTenant.has(m.tenant_id)) continue;
+    const { data } = await svc.auth.admin.getUserById(m.user_id);
+    emailPorTenant.set(m.tenant_id, data?.user?.email ?? null);
+  }
+
+  const borradores = new Map<string, number>();
+  for (const r of (rifas as { tenant_id: string }[]) ?? []) {
+    borradores.set(r.tenant_id, (borradores.get(r.tenant_id) ?? 0) + 1);
+  }
+
+  return {
+    success: true,
+    data: filas.map((tenant) => ({
+      tenant,
+      email: emailPorTenant.get(tenant.id) ?? null,
+      rifasBorrador: borradores.get(tenant.id) ?? 0,
+    })),
+  };
 }
 
 const planTenantSchema = z.object({

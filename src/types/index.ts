@@ -315,11 +315,24 @@ export type OrdenSorteo = "ultimo_mayor" | "primero_mayor";
 export type EstadoCobro = "pendiente" | "pagado" | "anulado";
 
 /** Organizador (dueño de sus rifas). */
+/**
+ * Ciclo de vida de una cuenta de organizador. Las que se registran solas nacen
+ * `pendiente`: pueden preparar rifas en borrador, pero no publicarlas hasta que
+ * el superadmin apruebe.
+ */
+export type EstadoTenant = "pendiente" | "activo" | "rechazado" | "archivado";
+
 export interface Tenant {
   id: string;
   nombre: string;
   slug: string;
-  estado: "activo" | "archivado";
+  estado: EstadoTenant;
+  /** WhatsApp del organizador: su identidad real y única en la plataforma. */
+  telefono: string | null;
+  /** Cuándo lo aprobó el superadmin. */
+  aprobado_at: string | null;
+  /** Nota interna del superadmin (motivo del rechazo, contexto). */
+  nota_admin: string | null;
   plan_actual: PlanTenant;
   suscripcion_vence_at: string | null;
   created_at: string;
@@ -372,6 +385,15 @@ export interface PlataformaPagoConfig {
 /** Precios y reglas de la capa gratuita, editables por el superadmin. */
 export interface PlataformaConfig {
   moneda: string;
+  /**
+   * Cómo se cobra una rifa: `boleta` cobra el valor de un puesto de esa misma
+   * rifa; `escalones` usa los precios fijos por tamaño (esquema anterior).
+   */
+  cobro_rifa_modo: "boleta" | "escalones";
+  /** Piso del cobro por rifa (0 = sin mínimo). */
+  cobro_rifa_min: number;
+  /** Techo del cobro por rifa (0 = sin tope). */
+  cobro_rifa_max: number;
   precio_rifa_100: number;
   precio_rifa_500: number;
   precio_rifa_1000: number;

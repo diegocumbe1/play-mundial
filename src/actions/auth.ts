@@ -15,8 +15,22 @@ const loginSchema = z.object({
 const registroSchema = z.object({
   nombre: z.string().trim().min(2, "Indica el nombre del organizador"),
   email: z.string().email("Email inválido"),
+  telefono: z
+    .string()
+    .trim()
+    .regex(/^[+()\d\s.-]{7,20}$/, "WhatsApp inválido"),
   password: z.string().min(6, "La contraseña debe tener al menos 6 caracteres"),
 });
+
+/**
+ * Deja el celular en solo dígitos y con indicativo. Es la identidad del
+ * organizador: un correo es gratis e infinito, un número no. Guardarlo
+ * normalizado es lo que hace que el índice único sirva de algo.
+ */
+function normalizarTelefono(valor: string): string {
+  const digitos = valor.replace(/\D/g, "");
+  return digitos.length === 10 ? `57${digitos}` : digitos;
+}
 
 function slugify(nombre: string): string {
   const base = nombre
@@ -57,15 +71,41 @@ export async function registrarOrganizador(
     return { success: false, error: parsed.error.issues[0].message };
   }
   const { nombre, email, password } = parsed.data;
+  const telefono = normalizarTelefono(parsed.data.telefono);
+  if (telefono.length < 10) {
+    return { success: false, error: "Escribe tu WhatsApp completo" };
+  }
 
   const svc = createServiceRoleClient();
 
+  // Un WhatsApp, un organizador: es lo que evita que se reinicie la cuota
+  // gratuita creando cuentas nuevas.
+  const { data: repetido } = await svc
+    .from("tenants")
+    .select("id")
+    .eq("telefono", telefono)
+    .maybeSingle();
+  if (repetido) {
+    return {
+      success: false,
+      error: "Ese WhatsApp ya tiene una cuenta. Inicia sesión o escríbenos si necesitas ayuda.",
+    };
+  }
+
+  // Nace pendiente: puede entrar y preparar su rifa, pero publicarla requiere
+  // que el superadmin apruebe la cuenta.
   const { data: tenant, error: errTenant } = await svc
     .from("tenants")
-    .insert({ nombre, slug: slugify(nombre) })
+    .insert({ nombre, slug: slugify(nombre), telefono, estado: "pendiente" })
     .select("id")
     .single();
-  if (errTenant) return { success: false, error: errTenant.message };
+  if (errTenant) {
+    const dup = errTenant.code === "23505";
+    return {
+      success: false,
+      error: dup ? "Ese WhatsApp ya tiene una cuenta" : errTenant.message,
+    };
+  }
   const tenantId = (tenant as { id: string }).id;
 
   const { data: userRes, error: errUser } = await svc.auth.admin.createUser({

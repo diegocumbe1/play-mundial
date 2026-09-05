@@ -392,7 +392,15 @@ export async function subirImagenRifa(
  */
 export async function activarRifa(
   id: string,
-): Promise<ActionResult<{ activada: boolean; pendiente?: boolean; monto?: number; pago?: PlataformaPagoConfig | null }>> {
+): Promise<
+  ActionResult<{
+    activada: boolean;
+    requiereAprobacion?: boolean;
+    pendiente?: boolean;
+    monto?: number;
+    pago?: PlataformaPagoConfig | null;
+  }>
+> {
   const membership = await requireMembership();
   if (!membership) return { success: false, error: "Sin sesión" };
 
@@ -418,6 +426,8 @@ export async function activarRifa(
     producto: "rifas",
     entidadId: r.id,
     tamano: r.cantidad_numeros,
+    // Con el cobro "una boleta", el precio del puesto ES la tarifa.
+    precioUnitario: r.precio_boleta,
   });
 
   if (resolucion.activada) {
@@ -439,7 +449,8 @@ export async function activarRifa(
     success: true,
     data: {
       activada: false,
-      pendiente: true,
+      requiereAprobacion: resolucion.requiereAprobacion ?? false,
+      pendiente: resolucion.pendiente,
       monto: resolucion.monto,
       pago: resolucion.pago,
     },
