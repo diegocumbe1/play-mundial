@@ -20,7 +20,7 @@ import { cn } from "@/lib/utils";
 /**
  * Chip para marcar si el premio ya se le pagó a una apuesta ganadora. Abre un
  * diálogo para confirmar el pago y dejar una nota opcional (ej. "corresponde al
- * pago de Edilson" o "se descuenta de la ganancia").
+ * pago de otra persona" o "se descuenta de la ganancia").
  */
 export function PremioPagoToggle({
   apuestaId,
@@ -98,7 +98,7 @@ export function PremioPagoToggle({
               onChange={(e) => setNota(e.target.value)}
               maxLength={500}
               rows={3}
-              placeholder="Ej. corresponde al pago de Edilson · se descuenta de la ganancia · pagado a otra cuenta"
+              placeholder="Ej. corresponde al pago de otra persona · se descuenta de la ganancia · pagado a otra cuenta"
               className="border-polla-line bg-polla-elevated focus:ring-polla-gold/40 w-full resize-none rounded-lg border px-3 py-2 text-sm text-white outline-none focus:ring-2"
             />
           </div>

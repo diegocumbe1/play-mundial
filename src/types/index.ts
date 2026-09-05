@@ -145,7 +145,7 @@ export interface Apuesta {
   no_pago: boolean;
   /** Si el premio de esta apuesta ganadora ya fue entregado. */
   premio_pagado: boolean;
-  /** Nota opcional del admin sobre el pago del premio (ej. "corresponde a Edilson"). */
+  /** Nota opcional del admin sobre el pago del premio (ej. "corresponde a otra persona"). */
   nota_premio: string | null;
   created_at: string;
   updated_at: string;

@@ -6,12 +6,16 @@ import { ResultadosPersonales } from "@/components/resultados-personales";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import { getIdioma } from "@/lib/idioma-server";
+import { getPlataformaPagoConfig } from "@/lib/tenant-config";
 
 export const dynamic = "force-dynamic";
 
 export default async function ResultadosPage() {
   const idioma = await getIdioma();
-  const partidosRes = await getPartidos();
+  const [partidosRes, pago] = await Promise.all([
+    getPartidos(),
+    getPlataformaPagoConfig(),
+  ]);
   const partidos = partidosRes.success ? partidosRes.data : [];
   const hayLive = partidos.some((p) => p.estado === "en_juego");
 
@@ -33,7 +37,7 @@ export default async function ResultadosPage() {
             <p className="text-polla-red">{partidosRes.error}</p>
           </div>
         ) : (
-          <ResultadosPersonales partidos={partidos} idioma={idioma} />
+          <ResultadosPersonales partidos={partidos} idioma={idioma} pago={pago} />
         )}
       </main>
       <SiteFooter />

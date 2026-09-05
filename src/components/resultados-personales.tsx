@@ -32,6 +32,7 @@ import { getClienteId } from "@/lib/cliente-id";
 import { traducirEquipo, type Idioma } from "@/lib/idioma";
 import { getMarcadorActual } from "@/lib/marcador-reglamentario";
 import { estadoEfectivo } from "@/lib/partido-vivo";
+import { datosCuentaPago, type PagoConfigLike } from "@/lib/pagos";
 import { formatCOP, POLLA } from "@/lib/polla";
 import { cn } from "@/lib/utils";
 import type { ApuestaCliente, Partido, ResultadoCliente } from "@/types";
@@ -295,13 +296,16 @@ function ModalPagoPendiente({
   open,
   onOpenChange,
   detalle,
+  pago,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   detalle: string[];
+  pago: PagoConfigLike | null;
 }) {
   const [qrError, setQrError] = useState(false);
   const [pagoComunicado, setPagoComunicado] = useState(false);
+  const cuenta = datosCuentaPago(pago);
   const total = detalle.length * POLLA.costo;
   const mensajePago = [
     "Hola, ya realice mi pago.",
@@ -311,13 +315,18 @@ function ModalPagoPendiente({
     ...detalle,
     "Por favor confirmar y habilitar mi apuesta.",
   ].join("\n");
-  const whatsappPagoUrl = `https://wa.me/${POLLA.whatsappAdmin}?text=${encodeURIComponent(
-    mensajePago,
-  )}`;
+  const whatsappPagoUrl = cuenta.whatsapp
+    ? `https://wa.me/${cuenta.whatsapp}?text=${encodeURIComponent(mensajePago)}`
+    : null;
 
   function comunicarPago() {
     if (pagoComunicado) {
       toast.info("El pago ya fue comunicado para estas apuestas.");
+      return;
+    }
+
+    if (!whatsappPagoUrl) {
+      toast.info("El admin aún no configuró un WhatsApp para avisar el pago.");
       return;
     }
 
@@ -343,16 +352,15 @@ function ModalPagoPendiente({
 
         <div className="flex flex-col items-center gap-4 py-2">
           <div className="ring-polla-line flex w-full max-w-80 items-center justify-center overflow-hidden rounded-2xl bg-white ring-1">
-            {qrError ? (
+            {!cuenta.qrUrl || qrError ? (
               <div className="text-polla-muted flex aspect-square w-full flex-col items-center justify-center gap-2 p-4 text-center text-xs">
                 <QrCode className="size-8" />
-                Coloca tu QR en
-                <code className="text-polla-gold">public/qr-pago.png</code>
+                El admin aún no cargó el QR de pago.
               </div>
             ) : (
               /* eslint-disable-next-line @next/next/no-img-element */
               <img
-                src={POLLA.qrSrc}
+                src={cuenta.qrUrl}
                 alt="QR de pago"
                 className="h-auto w-full"
                 onError={() => setQrError(true)}
@@ -360,34 +368,36 @@ function ModalPagoPendiente({
             )}
           </div>
           <p className="text-polla-muted w-full max-w-80 text-center text-xs leading-relaxed">
-            {POLLA.mensajeQr}
+            {cuenta.mensajeQr}
           </p>
-          <CopyPaymentKeyButton llave={POLLA.banco.llave} />
-          <div className="grid w-full max-w-80 grid-cols-2 gap-2">
-            <a
-              href={POLLA.qrSrc}
-              download="qr-pago-paola-gomez.png"
-              className={cn(
-                buttonVariants({ variant: "outline", size: "lg" }),
-                "border-polla-gold/50 text-polla-gold hover:bg-polla-gold/10",
-              )}
-            >
-              <Download className="size-4" />
-              Descargar QR
-            </a>
-            <a
-              href={POLLA.qrSrc}
-              target="_blank"
-              rel="noreferrer"
-              className={cn(
-                buttonVariants({ variant: "outline", size: "lg" }),
-                "border-polla-line text-white hover:bg-white/5",
-              )}
-            >
-              <ExternalLink className="size-4" />
-              Abrir QR
-            </a>
-          </div>
+          {cuenta.llave && <CopyPaymentKeyButton llave={cuenta.llave} />}
+          {cuenta.qrUrl && (
+            <div className="grid w-full max-w-80 grid-cols-2 gap-2">
+              <a
+                href={cuenta.qrUrl}
+                download="qr-pago.png"
+                className={cn(
+                  buttonVariants({ variant: "outline", size: "lg" }),
+                  "border-polla-gold/50 text-polla-gold hover:bg-polla-gold/10",
+                )}
+              >
+                <Download className="size-4" />
+                Descargar QR
+              </a>
+              <a
+                href={cuenta.qrUrl}
+                target="_blank"
+                rel="noreferrer"
+                className={cn(
+                  buttonVariants({ variant: "outline", size: "lg" }),
+                  "border-polla-line text-white hover:bg-white/5",
+                )}
+              >
+                <ExternalLink className="size-4" />
+                Abrir QR
+              </a>
+            </div>
+          )}
           <div className="bg-polla-dark/40 ring-polla-line/70 grid w-full max-w-80 gap-1 rounded-xl px-3 py-2 text-xs ring-1">
             {detalle.map((item, index) => (
               <div key={`${index}-${item}`} className="text-polla-muted">
@@ -407,9 +417,24 @@ function ModalPagoPendiente({
             {pagoComunicado ? "Pago comunicado" : "Comunicar pago"}
           </Button>
           <div className="text-center text-sm">
-            <div className="font-semibold text-white">{POLLA.banco.entidad}</div>
-            <div className="text-polla-muted">{POLLA.banco.numero}</div>
-            <div className="text-polla-muted">{POLLA.banco.titular}</div>
+            {cuenta.configurado ? (
+              <>
+                {cuenta.entidad && (
+                  <div className="font-semibold text-white">{cuenta.entidad}</div>
+                )}
+                {cuenta.numero && <div className="text-polla-muted">{cuenta.numero}</div>}
+                {cuenta.llave && (
+                  <div className="text-polla-muted">Llave {cuenta.llave}</div>
+                )}
+                {cuenta.titular && (
+                  <div className="text-polla-muted">{cuenta.titular}</div>
+                )}
+              </>
+            ) : (
+              <div className="text-polla-muted">
+                El admin aún no configuró los datos de pago.
+              </div>
+            )}
           </div>
           <Link
             href="/terminos"
@@ -428,9 +453,12 @@ function ModalPagoPendiente({
 export function ResultadosPersonales({
   partidos,
   idioma,
+  pago = null,
 }: {
   partidos: Partido[];
   idioma: Idioma;
+  /** Datos de cobro configurados por el superadmin (nunca quemados en código). */
+  pago?: PagoConfigLike | null;
 }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -595,6 +623,7 @@ export function ResultadosPersonales({
           open={pagoOpen}
           onOpenChange={setPagoOpen}
           detalle={detallePendiente}
+          pago={pago}
         />
       )}
     </div>

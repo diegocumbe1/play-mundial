@@ -24,7 +24,7 @@ export type ApuestaBusqueda = {
 
 /**
  * Busca apuestas por nombre o teléfono a través de TODOS los partidos, para
- * ver de un vistazo qué apostó cada persona (Diego, Nico, Juan…). Solo muestra
+ * ver de un vistazo qué apostó cada participante. Solo muestra
  * resultados cuando hay texto; vacío no estorba a las pestañas de abajo.
  */
 export function BuscadorPersonas({

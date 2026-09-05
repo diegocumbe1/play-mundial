@@ -121,7 +121,7 @@ export function BoletasLoteModal({
             <Input
               value={responsable}
               onChange={(e) => setResponsable(e.target.value)}
-              placeholder="Diego Cumbe"
+              placeholder="Nombre de quien vendió"
             />
           </div>
         </div>

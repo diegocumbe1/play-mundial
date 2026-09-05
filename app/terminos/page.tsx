@@ -1,7 +1,9 @@
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import { getIdioma } from "@/lib/idioma-server";
+import { datosCuentaPago } from "@/lib/pagos";
 import { formatCOP, POLLA } from "@/lib/polla";
+import { getPlataformaPagoConfig } from "@/lib/tenant-config";
 
 export const dynamic = "force-dynamic";
 
@@ -28,7 +30,11 @@ function Seccion({
 }
 
 export default async function TerminosPage() {
-  const idioma = await getIdioma();
+  const [idioma, pago] = await Promise.all([getIdioma(), getPlataformaPagoConfig()]);
+  const cuenta = datosCuentaPago(pago);
+  const datosPago = [cuenta.entidad, cuenta.numero, cuenta.titular]
+    .filter(Boolean)
+    .join(" · ");
 
   return (
     <>
@@ -75,9 +81,8 @@ export default async function TerminosPage() {
           <p>
             El pago se realiza por transferencia <strong>antes</strong> de
             participar, a los datos indicados al confirmar la apuesta
-            ({POLLA.banco.entidad} · {POLLA.banco.numero} ·{" "}
-            {POLLA.banco.titular}). La apuesta se considera válida una vez el
-            administrador confirma el pago.
+            {datosPago ? ` (${datosPago})` : ""}. La apuesta se considera válida
+            una vez el administrador confirma el pago.
           </p>
           <p>
             El premio se entrega a los ganadores por el mismo medio una vez

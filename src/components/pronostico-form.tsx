@@ -37,6 +37,7 @@ import { getOrCreateClienteId } from "@/lib/cliente-id";
 import { lanzarConfetti } from "@/lib/confetti";
 import { formatFechaCorta } from "@/lib/format";
 import { traducirEquipo, traducirLiga, type Idioma } from "@/lib/idioma";
+import { datosCuentaPago, type PagoConfigLike } from "@/lib/pagos";
 import { formatCOP, POLLA } from "@/lib/polla";
 import { cn } from "@/lib/utils";
 import type { Partido } from "@/types";
@@ -139,13 +140,17 @@ export function PronosticoForm({
   idioma = "es",
   partidoInicialId = "",
   busquedaInicial = "",
+  pago = null,
 }: {
   partidos: Partido[];
   idioma?: Idioma;
   partidoInicialId?: string;
   busquedaInicial?: string;
+  /** Datos de cobro configurados por el superadmin (nunca quemados en código). */
+  pago?: PagoConfigLike | null;
 }) {
   const router = useRouter();
+  const cuenta = datosCuentaPago(pago);
   // Valores que se están editando por partido (antes de "Agregar").
   const [editing, setEditing] = useState<
     Record<string, { local: number; visitante: number }>
@@ -259,9 +264,9 @@ export function PronosticoForm({
     ...resumenPago.detalle,
     "Por favor confirmar y habilitar mi apuesta.",
   ].join("\n");
-  const whatsappPagoUrl = `https://wa.me/${POLLA.whatsappAdmin}?text=${encodeURIComponent(
-    mensajePago,
-  )}`;
+  const whatsappPagoUrl = cuenta.whatsapp
+    ? `https://wa.me/${cuenta.whatsapp}?text=${encodeURIComponent(mensajePago)}`
+    : null;
   const modalTotal = resumenPago.total;
   const modalCantidad = resumenPago.apuestas;
   const modalDetalle = resumenPago.detalle;
@@ -431,7 +436,8 @@ export function PronosticoForm({
     }
 
     comunicandoRef.current = true;
-    const ventanaWhatsapp = window.open("", "_blank");
+    // Sin WhatsApp configurado igual se registra la apuesta: solo no hay a dónde avisar.
+    const ventanaWhatsapp = whatsappPagoUrl ? window.open("", "_blank") : null;
     if (ventanaWhatsapp) ventanaWhatsapp.opener = null;
     const registrada = apuestaRegistrada || (await registrarApuestasPendientes());
 
@@ -443,10 +449,12 @@ export function PronosticoForm({
 
     setPagoComunicado(true);
 
-    if (ventanaWhatsapp) {
-      ventanaWhatsapp.location.href = whatsappPagoUrl;
-    } else {
-      window.location.assign(whatsappPagoUrl);
+    if (whatsappPagoUrl) {
+      if (ventanaWhatsapp) {
+        ventanaWhatsapp.location.href = whatsappPagoUrl;
+      } else {
+        window.location.assign(whatsappPagoUrl);
+      }
     }
 
     setModalOpen(false);
@@ -667,16 +675,15 @@ export function PronosticoForm({
           <div className="min-h-0 overflow-y-auto px-4 py-3">
             <div className="flex flex-col items-center gap-4">
               <div className="ring-polla-line flex w-full max-w-72 items-center justify-center overflow-hidden rounded-2xl bg-white ring-1 sm:max-w-80">
-                {qrError ? (
+                {!cuenta.qrUrl || qrError ? (
                   <div className="text-polla-muted flex aspect-square w-full flex-col items-center justify-center gap-2 p-4 text-center text-xs">
                     <QrCode className="size-8" />
-                    Coloca tu QR en
-                    <code className="text-polla-gold">public/qr-pago.png</code>
+                    El admin aún no cargó el QR de pago.
                   </div>
                 ) : (
                   /* eslint-disable-next-line @next/next/no-img-element */
                   <img
-                    src={POLLA.qrSrc}
+                    src={cuenta.qrUrl}
                     alt="QR de pago"
                     className="h-auto w-full"
                     onError={() => setQrError(true)}
@@ -684,34 +691,36 @@ export function PronosticoForm({
                 )}
               </div>
               <p className="text-polla-muted w-full max-w-80 text-center text-xs leading-relaxed">
-                {POLLA.mensajeQr}
+                {cuenta.mensajeQr}
               </p>
-              <CopyPaymentKeyButton llave={POLLA.banco.llave} />
-              <div className="grid w-full max-w-80 grid-cols-2 gap-2">
-                <a
-                  href={POLLA.qrSrc}
-                  download="qr-pago-paola-gomez.png"
-                  className={cn(
-                    buttonVariants({ variant: "outline", size: "lg" }),
-                    "border-polla-gold/50 text-polla-gold hover:bg-polla-gold/10",
-                  )}
-                >
-                  <Download className="size-4" />
-                  Descargar QR
-                </a>
-                <a
-                  href={POLLA.qrSrc}
-                  target="_blank"
-                  rel="noreferrer"
-                  className={cn(
-                    buttonVariants({ variant: "outline", size: "lg" }),
-                    "border-polla-line text-white hover:bg-white/5",
-                  )}
-                >
-                  <ExternalLink className="size-4" />
-                  Abrir QR
-                </a>
-              </div>
+              {cuenta.llave && <CopyPaymentKeyButton llave={cuenta.llave} />}
+              {cuenta.qrUrl && (
+                <div className="grid w-full max-w-80 grid-cols-2 gap-2">
+                  <a
+                    href={cuenta.qrUrl}
+                    download="qr-pago.png"
+                    className={cn(
+                      buttonVariants({ variant: "outline", size: "lg" }),
+                      "border-polla-gold/50 text-polla-gold hover:bg-polla-gold/10",
+                    )}
+                  >
+                    <Download className="size-4" />
+                    Descargar QR
+                  </a>
+                  <a
+                    href={cuenta.qrUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className={cn(
+                      buttonVariants({ variant: "outline", size: "lg" }),
+                      "border-polla-line text-white hover:bg-white/5",
+                    )}
+                  >
+                    <ExternalLink className="size-4" />
+                    Abrir QR
+                  </a>
+                </div>
+              )}
               {modalDetalle.length > 0 && (
                 <div className="bg-polla-dark/40 ring-polla-line/70 grid w-full max-w-80 gap-1 rounded-xl px-3 py-2 text-xs ring-1">
                   {modalDetalle.map((detalle, index) => (
@@ -739,9 +748,26 @@ export function PronosticoForm({
                     : "Comunicar pago"}
               </Button>
               <div className="text-center text-sm">
-                <div className="font-semibold text-white">{POLLA.banco.entidad}</div>
-                <div className="text-polla-muted">{POLLA.banco.numero}</div>
-                <div className="text-polla-muted">{POLLA.banco.titular}</div>
+                {cuenta.configurado ? (
+                  <>
+                    {cuenta.entidad && (
+                      <div className="font-semibold text-white">{cuenta.entidad}</div>
+                    )}
+                    {cuenta.numero && (
+                      <div className="text-polla-muted">{cuenta.numero}</div>
+                    )}
+                    {cuenta.llave && (
+                      <div className="text-polla-muted">Llave {cuenta.llave}</div>
+                    )}
+                    {cuenta.titular && (
+                      <div className="text-polla-muted">{cuenta.titular}</div>
+                    )}
+                  </>
+                ) : (
+                  <div className="text-polla-muted">
+                    El admin aún no configuró los datos de pago.
+                  </div>
+                )}
               </div>
               <p className="text-polla-muted max-w-xs text-center text-xs">
                 Después de enviar, el admin validará el pago y lo marcará como

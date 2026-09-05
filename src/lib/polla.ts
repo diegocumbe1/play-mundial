@@ -2,9 +2,11 @@ import type { Apuesta, Partido, ResultadoPartido } from "@/types";
 import { getMarcadorReglamentario } from "@/lib/marcador-reglamentario";
 
 /**
- * Configuración de la polla (costos por partido y datos de pago).
+ * Configuración económica de la polla (costo por partido y reparto del pozo).
  *
- * Para el QR de pago: coloca tu imagen en `public/qr-pago.png`.
+ * Los datos de cobro (cuenta, llave, QR y WhatsApp) NO viven aquí: se leen de
+ * `plataforma_pago_config` vía `getPlataformaPagoConfig()` y los edita el
+ * superadmin. Nunca quemar una cuenta real en el código.
  */
 export const POLLA = {
   nombre: "Polla Mundial 2026",
@@ -12,20 +14,6 @@ export const POLLA = {
   costo: 5000,
   /** Porcentaje del pozo que se queda la casa (el resto va al premio). */
   porcentajeCasa: 0.2,
-  /** Datos para la transferencia (se muestran en el modal de confirmación). */
-  banco: {
-    entidad: "Bre-B · Nequi",
-    titular: "Paola Gomez",
-    llave: "@3132542284",
-    numero: "Llave @3132542284",
-  },
-  /** WhatsApp del admin para avisar pagos. Formato internacional sin +. */
-  whatsappAdmin: "573132542284",
-  /** Ruta del QR de pago dentro de /public. */
-  qrSrc: "/qr-pago.png",
-  /** Aviso para quienes ven el QR desde el mismo celular. */
-  mensajeQr:
-    "El pago se hace desde tu app bancaria. Aquí no se cobra ni se redirige al banco: descarga el QR o copia la llave.",
 } as const;
 
 /** Formatea un número como pesos colombianos. Ej: 5000 -> "$ 5.000". */

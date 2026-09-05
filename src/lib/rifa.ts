@@ -23,7 +23,7 @@ export { formatCOP } from "@/lib/polla";
 
 /**
  * Enmascara un nombre para vistas públicas: conserva las 2 primeras letras de
- * cada palabra y tapa el resto. "Diego Cumbe" → "Di**** Cu***".
+ * cada palabra y tapa el resto. "Maria Torres" → "Ma*** To****".
  */
 export function enmascararNombre(nombre: string): string {
   return nombre

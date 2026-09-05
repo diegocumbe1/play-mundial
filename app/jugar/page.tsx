@@ -5,6 +5,7 @@ import { PronosticoForm } from "@/components/pronostico-form";
 import { SiteHeader } from "@/components/site-header";
 import { getIdioma } from "@/lib/idioma-server";
 import { estadoEfectivo } from "@/lib/partido-vivo";
+import { getPlataformaPagoConfig } from "@/lib/tenant-config";
 
 export const dynamic = "force-dynamic";
 
@@ -21,7 +22,10 @@ export default async function JugarPage({
   const query = await searchParams;
   const partidoInicial = getSearchValue(query.partido) ?? "";
   const equipoInicial = getSearchValue(query.equipo) ?? "";
-  const result = await getPartidos();
+  const [result, pago] = await Promise.all([
+    getPartidos(),
+    getPlataformaPagoConfig(),
+  ]);
   const todos = result.success ? result.data : [];
   // Solo se puede pronosticar partidos que aún no han empezado. Usamos el estado
   // derivado de la hora (el del proveedor gratuito es inestable) más la hora de
@@ -63,6 +67,7 @@ export default async function JugarPage({
             idioma={idioma}
             partidoInicialId={partidoInicial}
             busquedaInicial={equipoInicial}
+            pago={pago}
           />
         )}
       </main>
