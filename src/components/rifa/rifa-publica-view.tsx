@@ -107,14 +107,21 @@ export function RifaPublicaView({
   }, [slug]);
 
   // Durante el sorteo la página consulta cada 2s (así se ve balota a balota);
-  // el resto del tiempo, cada 20s.
+  // el resto del tiempo cada 8s, y siempre al volver a la pestaña o a la ventana
+  // (es lo que pasa cuando el organizador cambia algo y se pasa a mirar).
   useEffect(() => {
-    const id = setInterval(refrescar, sorteoEnVivo ? 2000 : 20000);
-    const onVis = () => document.visibilityState === "visible" && refrescar();
-    document.addEventListener("visibilitychange", onVis);
+    const id = setInterval(refrescar, sorteoEnVivo ? 2000 : 8000);
+    const alVolver = () => {
+      if (document.visibilityState === "visible") refrescar();
+    };
+    document.addEventListener("visibilitychange", alVolver);
+    window.addEventListener("focus", alVolver);
+    window.addEventListener("pageshow", alVolver);
     return () => {
       clearInterval(id);
-      document.removeEventListener("visibilitychange", onVis);
+      document.removeEventListener("visibilitychange", alVolver);
+      window.removeEventListener("focus", alVolver);
+      window.removeEventListener("pageshow", alVolver);
     };
   }, [refrescar, sorteoEnVivo]);
 
@@ -133,6 +140,9 @@ export function RifaPublicaView({
     [premios],
   );
   const premioPrincipal = premiosOrdenados[0];
+  // El mensaje es uno solo para toda la rifa: se toma del primer ganador que lo traiga.
+  const mensajeGanadores =
+    ganadores.find((g) => g.mensaje_felicitacion?.trim())?.mensaje_felicitacion?.trim() ?? "";
 
   function reservar() {
     startTransition(async () => {
@@ -351,6 +361,13 @@ export function RifaPublicaView({
                 </li>
               ))}
             </ul>
+            {/* Mensaje que escribe el organizador al publicar. Va aquí abajo,
+                igual que en la vista previa del panel. */}
+            {mensajeGanadores && (
+              <p className="mt-2 text-sm italic text-[var(--rifa-muted)]">
+                “{mensajeGanadores}”
+              </p>
+            )}
           </div>
         )}
 

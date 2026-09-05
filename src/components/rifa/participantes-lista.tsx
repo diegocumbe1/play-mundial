@@ -1,11 +1,13 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { MessageCircle, Phone, Search, UserCheck, Users, X } from "lucide-react";
+import { Copy, MessageCircle, Phone, Search, UserCheck, Users, X } from "lucide-react";
+import { toast } from "sonner";
 
 import { BoletaModal } from "@/components/rifa/boleta-modal";
 import { Input } from "@/components/ui/input";
 import { anchoNumeros, formatCOP } from "@/lib/rifa";
+import { formatFechaCO } from "@/lib/fecha-co";
 import { waLink } from "@/lib/whatsapp";
 import type { Boleta, Rifa } from "@/types";
 
@@ -59,6 +61,17 @@ export function ParticipantesLista({
   const [boletaSel, setBoletaSel] = useState<Boleta | null>(null);
 
   const ancho = anchoNumeros(rifa);
+
+  // El recordatorio lleva el enlace público: ahí el comprador ve sus números,
+  // cuánto vale y a dónde pagar, sin que el organizador tenga que explicarlo.
+  const urlPublica =
+    typeof window !== "undefined"
+      ? `${window.location.origin}/r/${rifa.slug_publico}`
+      : `/r/${rifa.slug_publico}`;
+  const fechaJuego = formatFechaCO(
+    rifa.tipo === "loteria" ? (rifa.fecha_loteria ?? rifa.fecha_sorteo) : rifa.fecha_sorteo,
+    { conAnio: false },
+  );
 
   const responsables = useMemo<ResponsableResumen[]>(() => {
     const map = new Map<string, ResponsableResumen>();
@@ -264,10 +277,32 @@ export function ParticipantesLista({
           const numerosTxt = p.boletas
             .map((b) => String(b.numero).padStart(ancho, "0"))
             .join(", ");
+          // Recordatorio de cobro (o agradecimiento si ya pagó). Siempre cierra
+          // con el enlace público, que es donde están los datos de pago.
           const mensaje =
             p.pendientes > 0
-              ? `Hola ${p.nombre}, te escribo por la rifa "${rifa.nombre}". Tienes apartado(s) el/los número(s) ${numerosTxt}. El valor pendiente es ${formatCOP(p.debe)}. ¿Me confirmas el pago? ¡Gracias!`
-              : `Hola ${p.nombre}, gracias por participar en la rifa "${rifa.nombre}" con el/los número(s) ${numerosTxt}. ¡Mucha suerte! 🍀`;
+              ? [
+                  `Hola ${p.nombre}, te escribo por la rifa "${rifa.nombre}".`,
+                  `Tienes apartado(s) el/los número(s) ${numerosTxt}.`,
+                  `Queda(n) pendiente(s) ${formatCOP(p.debe)}.`,
+                  fechaJuego
+                    ? `El sorteo es el ${fechaJuego} y ${rifa.solo_pagadas_juegan ? "solo juegan las boletas pagadas" : "las boletas vendidas entran al sorteo"}.`
+                    : rifa.solo_pagadas_juegan
+                      ? "Recuerda que solo juegan las boletas pagadas."
+                      : "",
+                  `Aquí puedes ver la rifa y cómo pagar: ${urlPublica}`,
+                  "¡Gracias! 🙌",
+                ]
+                  .filter(Boolean)
+                  .join("\n")
+              : [
+                  `Hola ${p.nombre}, gracias por participar en la rifa "${rifa.nombre}" con el/los número(s) ${numerosTxt}.`,
+                  fechaJuego ? `El sorteo es el ${fechaJuego}.` : "",
+                  `Sigue la rifa aquí: ${urlPublica}`,
+                  "¡Mucha suerte! 🍀",
+                ]
+                  .filter(Boolean)
+                  .join("\n");
 
           return (
             <li key={p.clave} className="border-border rounded-xl border p-3">
@@ -324,17 +359,35 @@ export function ParticipantesLista({
                 </div>
               )}
 
-              {p.telefono && (
-                <a
-                  href={waLink(p.telefono, mensaje)}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="mt-2 inline-flex items-center gap-1.5 text-xs font-medium text-emerald-600 hover:underline dark:text-emerald-400"
+              <div className="mt-2 flex flex-wrap items-center gap-3">
+                {p.telefono && (
+                  <a
+                    href={waLink(p.telefono, mensaje)}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-600 hover:underline dark:text-emerald-400"
+                  >
+                    <MessageCircle className="size-3.5" />
+                    {p.pendientes > 0 ? "Recordar el pago por WhatsApp" : "Escribir por WhatsApp"}
+                  </a>
+                )}
+                {/* Sin teléfono guardado el recordatorio igual sirve: se copia
+                    y se pega en el chat que ya se tenga abierto. */}
+                <button
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      await navigator.clipboard.writeText(mensaje);
+                      toast.success("Mensaje copiado");
+                    } catch {
+                      toast.error("No se pudo copiar");
+                    }
+                  }}
+                  className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5 text-xs font-medium"
                 >
-                  <MessageCircle className="size-3.5" />
-                  {p.pendientes > 0 ? "Cobrar por WhatsApp" : "Escribir por WhatsApp"}
-                </a>
-              )}
+                  <Copy className="size-3.5" /> Copiar mensaje
+                </button>
+              </div>
             </li>
           );
         })}

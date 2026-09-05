@@ -58,6 +58,23 @@ async function requireMembership(): Promise<Membership | null> {
   return getMembership();
 }
 
+/**
+ * Revalida el enlace público de una rifa. Todo lo que cambia lo que ve el
+ * comprador (números vendidos, premios, imágenes, ganadores) tiene que pasar
+ * por aquí: si no, quien ya tenía la página abierta sigue viendo lo viejo hasta
+ * el siguiente sondeo.
+ */
+async function revalidarPublica(rifaId: string): Promise<void> {
+  const svc = createServiceRoleClient();
+  const { data } = await svc
+    .from("rifas")
+    .select("slug_publico")
+    .eq("id", rifaId)
+    .maybeSingle();
+  const slug = (data as { slug_publico: string } | null)?.slug_publico;
+  if (slug) revalidatePath(`/r/${slug}`);
+}
+
 const rifaSchema = z.object({
   nombre: z.string().trim().min(1, "El nombre es obligatorio"),
   descripcion: z.string().trim().nullable().optional(),
@@ -270,6 +287,7 @@ export async function actualizarRifa(
 
   if (error) return { success: false, error: error.message };
   revalidatePath(`/admin/rifas/${id}`);
+  await revalidarPublica(id);
   return { success: true, data: undefined };
 }
 
@@ -305,6 +323,7 @@ export async function guardarPremios(
   }
 
   revalidatePath(`/admin/rifas/${rifaId}`);
+  await revalidarPublica(rifaId);
   return { success: true, data: undefined };
 }
 
@@ -411,6 +430,7 @@ export async function activarRifa(
       })
       .eq("id", id);
     revalidatePath(`/admin/rifas/${id}`);
+    await revalidarPublica(id);
     return { success: true, data: { activada: true } };
   }
 
@@ -467,6 +487,7 @@ export async function cambiarEstadoRifa(
   const { error } = await supabase.from("rifas").update({ estado }).eq("id", id);
   if (error) return { success: false, error: error.message };
   revalidatePath(`/admin/rifas/${id}`);
+  await revalidarPublica(id);
   return { success: true, data: undefined };
 }
 
@@ -521,6 +542,7 @@ export async function registrarBoletaAdmin(
     return { success: false, error: msg };
   }
   revalidatePath(`/admin/rifas/${d.rifa_id}`);
+  await revalidarPublica(d.rifa_id);
   return { success: true, data: undefined };
 }
 
@@ -585,6 +607,7 @@ export async function registrarBoletasLote(
   }
 
   revalidatePath(`/admin/rifas/${d.rifa_id}`);
+  await revalidarPublica(d.rifa_id);
   if (registrados.length === 0) {
     return { success: false, error: "Todos esos números ya estaban tomados" };
   }
@@ -628,7 +651,11 @@ export async function actualizarBoleta(
     .maybeSingle();
 
   if (error) return { success: false, error: error.message };
-  if (data) revalidatePath(`/admin/rifas/${(data as { rifa_id: string }).rifa_id}`);
+  if (data) {
+    const rifaId = (data as { rifa_id: string }).rifa_id;
+    revalidatePath(`/admin/rifas/${rifaId}`);
+    await revalidarPublica(rifaId);
+  }
   return { success: true, data: undefined };
 }
 
@@ -654,7 +681,11 @@ export async function marcarPagoBoleta(
     .maybeSingle();
 
   if (error) return { success: false, error: error.message };
-  if (data) revalidatePath(`/admin/rifas/${(data as { rifa_id: string }).rifa_id}`);
+  if (data) {
+    const rifaId = (data as { rifa_id: string }).rifa_id;
+    revalidatePath(`/admin/rifas/${rifaId}`);
+    await revalidarPublica(rifaId);
+  }
   return { success: true, data: undefined };
 }
 
@@ -671,7 +702,11 @@ export async function liberarBoleta(boletaId: string): Promise<ActionResult> {
     .maybeSingle();
   const { error } = await supabase.from("boletas").delete().eq("id", boletaId);
   if (error) return { success: false, error: error.message };
-  if (data) revalidatePath(`/admin/rifas/${(data as { rifa_id: string }).rifa_id}`);
+  if (data) {
+    const rifaId = (data as { rifa_id: string }).rifa_id;
+    revalidatePath(`/admin/rifas/${rifaId}`);
+    await revalidarPublica(rifaId);
+  }
   return { success: true, data: undefined };
 }
 
@@ -725,6 +760,7 @@ export async function ingresarResultadoLoteria(
     .eq("id", rifaId);
 
   revalidatePath(`/admin/rifas/${rifaId}`);
+  await revalidarPublica(rifaId);
   return {
     success: true,
     data: { ganadores: conBoleta.length, sinVender: resueltos.length - conBoleta.length },
@@ -759,6 +795,7 @@ export async function registrarGanadorInterna(
 
   await supabase.from("rifas").update({ estado: "sorteada" }).eq("id", rifaId);
   revalidatePath(`/admin/rifas/${rifaId}`);
+  await revalidarPublica(rifaId);
   return { success: true, data: undefined };
 }
 
@@ -894,6 +931,7 @@ export async function sortearRifaInterna(
   if (errRifa) return { success: false, error: errRifa.message };
 
   revalidatePath(`/admin/rifas/${rifaId}`);
+  await revalidarPublica(rifaId);
   return { success: true, data: { secuencia, bolas } };
 }
 
@@ -968,6 +1006,7 @@ export async function limpiarSorteo(rifaId: string): Promise<ActionResult> {
   if (error) return { success: false, error: error.message };
 
   revalidatePath(`/admin/rifas/${rifaId}`);
+  await revalidarPublica(rifaId);
   return { success: true, data: undefined };
 }
 
@@ -987,6 +1026,7 @@ export async function publicarGanadores(
   if (error) return { success: false, error: error.message };
 
   revalidatePath(`/admin/rifas/${rifaId}`);
+  await revalidarPublica(rifaId);
   return { success: true, data: undefined };
 }
 
