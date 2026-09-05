@@ -8,6 +8,7 @@ import { BoletaModal } from "@/components/rifa/boleta-modal";
 import { Input } from "@/components/ui/input";
 import { anchoNumeros, formatCOP } from "@/lib/rifa";
 import { formatFechaCO } from "@/lib/fecha-co";
+import { urlPublicaRifa } from "@/lib/site-url";
 import { waLink } from "@/lib/whatsapp";
 import type { Boleta, Rifa } from "@/types";
 
@@ -64,10 +65,7 @@ export function ParticipantesLista({
 
   // El recordatorio lleva el enlace público: ahí el comprador ve sus números,
   // cuánto vale y a dónde pagar, sin que el organizador tenga que explicarlo.
-  const urlPublica =
-    typeof window !== "undefined"
-      ? `${window.location.origin}/r/${rifa.slug_publico}`
-      : `/r/${rifa.slug_publico}`;
+  const urlPublica = urlPublicaRifa(rifa.slug_publico);
   const fechaJuego = formatFechaCO(
     rifa.tipo === "loteria" ? (rifa.fecha_loteria ?? rifa.fecha_sorteo) : rifa.fecha_sorteo,
     { conAnio: false },
@@ -290,7 +288,8 @@ export function ParticipantesLista({
                     : rifa.solo_pagadas_juegan
                       ? "Recuerda que solo juegan las boletas pagadas."
                       : "",
-                  `Aquí puedes ver la rifa y cómo pagar: ${urlPublica}`,
+                  "Aquí puedes ver la rifa y cómo pagar 👇",
+                  urlPublica,
                   "¡Gracias! 🙌",
                 ]
                   .filter(Boolean)
@@ -298,7 +297,8 @@ export function ParticipantesLista({
               : [
                   `Hola ${p.nombre}, gracias por participar en la rifa "${rifa.nombre}" con el/los número(s) ${numerosTxt}.`,
                   fechaJuego ? `El sorteo es el ${fechaJuego}.` : "",
-                  `Sigue la rifa aquí: ${urlPublica}`,
+                  "Sigue la rifa aquí 👇",
+                  urlPublica,
                   "¡Mucha suerte! 🍀",
                 ]
                   .filter(Boolean)
@@ -403,6 +403,7 @@ export function ParticipantesLista({
       {boletaSel && (
         <BoletaModal
           rifaId={rifa.id}
+          rifa={rifa}
           numero={boletaSel.numero}
           boleta={boletaSel}
           ancho={ancho}

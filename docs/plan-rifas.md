@@ -686,9 +686,26 @@ recorta la secuencia a esas balotas —las que faltan NO viajan al cliente— y 
 en modo `espectador` con los espacios vacíos de las que faltan. Publicados los
 ganadores, se envía la secuencia completa y queda el replay.
 
+**Sorteo en dos rondas (migración `20260905040000_rifa_sorteo_dos_rondas.sql`).**
+`sorteo_bolas` son las balotas FINALISTAS (ronda 1, sobre todas las que juegan) y
+`sorteo_ganadores` (por defecto 1) las que salen revolviendo SOLO esas finalistas
+(ronda 2, guardada en `sorteo_finales`). Si `sorteo_ganadores >= sorteo_bolas` no
+hay segunda ronda y cada balota que sale ya lleva su premio. `construirBolas()`
+en `src/lib/rifa.ts` es la única traducción de "números sorteados" a lo que se
+pinta, para que panel, live, replay y simulación no se contradigan.
+
 Las imágenes se reducen en el navegador (`src/lib/imagen.ts`) antes de subirlas:
 el body de una Server Action tiene tope (`serverActions.bodySizeLimit`, 4 MB en
-`next.config.ts`) y una foto de celular lo pasaba con un 413.
+`next.config.ts`) y una foto de celular lo pasaba con un 413. Ahí mismo se
+convierte a JPEG todo lo que no sea JPEG/PNG: **satori no dibuja WebP ni AVIF** y
+el flyer salía con un hueco en blanco (`imagenRenderizableEnFlyer` protege a las
+imágenes ya subidas en esos formatos).
+
+**Torneos es un módulo por invitación** (migración `20260905030000`): un
+organizador nuevo solo estrena rifas y el superadmin habilita torneos desde
+`/superadmin`. Al migrar no se le quitó a quien ya tenía torneos creados. La
+navegación lo oculta (layout → `BackofficeHeader`/`BottomNav`/`NuevoMenu`); el
+bloqueo real sigue siendo `accesoTorneos()` en las Server Actions.
 
 # Checklists
 

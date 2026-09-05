@@ -123,6 +123,7 @@ export function GrillaAdmin({
       {abierto !== null && (
         <BoletaModal
           rifaId={rifa.id}
+          rifa={rifa}
           numero={abierto}
           boleta={porNumero.get(abierto)}
           ancho={ancho}

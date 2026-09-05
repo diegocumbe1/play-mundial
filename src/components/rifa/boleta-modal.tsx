@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Check, Clock, Pencil, Trash2 } from "lucide-react";
+import { Check, Clock, MessageCircle, Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -22,7 +22,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import type { Boleta } from "@/types";
+import { formatCOP, formatNumero } from "@/lib/rifa";
+import { formatFechaCO } from "@/lib/fecha-co";
+import { urlPublicaRifa } from "@/lib/site-url";
+import { waLink } from "@/lib/whatsapp";
+import type { Boleta, Rifa } from "@/types";
 
 /**
  * Modal único para gestionar un número de la rifa. Se reusa desde la grilla y
@@ -31,6 +35,7 @@ import type { Boleta } from "@/types";
  */
 export function BoletaModal({
   rifaId,
+  rifa,
   numero,
   boleta,
   ancho,
@@ -38,6 +43,8 @@ export function BoletaModal({
   onClose,
 }: {
   rifaId: string;
+  /** Rifa a la que pertenece: da el enlace público y los datos del recordatorio. */
+  rifa?: Rifa;
   numero: number | null;
   /** Boleta existente; `undefined` si el número está libre. */
   boleta?: Boleta;
@@ -71,6 +78,29 @@ export function BoletaModal({
   }
 
   const etiqueta = numero != null ? String(numero).padStart(ancho, "0") : "";
+
+  // Recordatorio listo para mandar: mismo texto que en la lista de participantes.
+  const fechaJuego = rifa
+    ? formatFechaCO(
+        rifa.tipo === "loteria" ? (rifa.fecha_loteria ?? rifa.fecha_sorteo) : rifa.fecha_sorteo,
+        { conAnio: false },
+      )
+    : null;
+  const mensajeRecordatorio =
+    rifa && boleta
+      ? [
+          `Hola ${boleta.comprador_nombre ?? ""}, te escribo por la rifa "${rifa.nombre}".`,
+          boleta.estado === "pagado"
+            ? `Tu número ${formatNumero(boleta.numero, ancho)} está pago y confirmado.`
+            : `Tienes apartado el número ${formatNumero(boleta.numero, ancho)} y queda pendiente ${formatCOP(rifa.precio_boleta)}.`,
+          fechaJuego ? `El sorteo es el ${fechaJuego}.` : "",
+          boleta.estado === "pagado" ? "Sigue la rifa aquí 👇" : "Aquí puedes ver la rifa y cómo pagar 👇",
+          urlPublicaRifa(rifa.slug_publico),
+          boleta.estado === "pagado" ? "¡Mucha suerte! 🍀" : "¡Gracias! 🙌",
+        ]
+          .filter(Boolean)
+          .join("\n")
+      : "";
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
@@ -120,6 +150,20 @@ export function BoletaModal({
               />
             </div>
           </div>
+        )}
+
+        {/* Con el teléfono ya guardado, escribirle es un toque: no hay que salir
+            a buscar el número ni copiar nada. */}
+        {boleta?.comprador_telefono && mensajeRecordatorio && !editando && (
+          <a
+            href={waLink(boleta.comprador_telefono, mensajeRecordatorio)}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-1.5 text-sm font-medium text-emerald-600 hover:underline dark:text-emerald-400"
+          >
+            <MessageCircle className="size-4" />
+            {boleta.estado === "pagado" ? "Escribir por WhatsApp" : "Recordar el pago por WhatsApp"}
+          </a>
         )}
 
         {/* Confirmación extra para liberar (borra la venta). */}
