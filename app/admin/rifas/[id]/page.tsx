@@ -5,7 +5,13 @@ import { ArrowLeft, Pencil } from "lucide-react";
 import { getRifa } from "@/actions/rifas";
 import { esSuperadmin, getMembership } from "@/lib/auth";
 import { getMiPagoConfig, getTenants } from "@/actions/tenants";
-import { calcularDashboard, formatCOP, labelModoCifras } from "@/lib/rifa";
+import {
+  calcularDashboard,
+  formatCOP,
+  labelModoCifras,
+  labelRango,
+  labelSorteoPropio,
+} from "@/lib/rifa";
 import { formatFechaCO } from "@/lib/fecha-co";
 import { buttonVariants } from "@/components/ui/button";
 import { EstadoRifaBadge } from "@/components/rifa/estado-rifa-badge";
@@ -54,11 +60,13 @@ export default async function RifaDetallePage({
     rifa.tipo === "loteria" ? (rifa.fecha_loteria ?? rifa.fecha_sorteo) : rifa.fecha_sorteo;
   const fechaJuegoRifaTxt = formatFechaCO(fechaJuegoRifa, { conAnio: false });
   const resumenParaCompartir = [
-    rifa.tipo === "loteria" && rifa.modo_cifras
-      ? `Juega con las ${labelModoCifras(rifa.modo_cifras, rifa.formato_cifras)}${
-          rifa.loteria ? ` de la ${rifa.loteria}` : ""
-        }`
-      : null,
+    rifa.tipo === "loteria"
+      ? rifa.modo_cifras
+        ? `Juega con las ${labelModoCifras(rifa.modo_cifras, rifa.formato_cifras)}${
+            rifa.loteria ? ` de la ${rifa.loteria}` : ""
+          }`
+        : null
+      : labelSorteoPropio(rifa.sorteo_bolas || 1, rifa.sorteo_orden),
     fechaJuegoRifaTxt ? `Juega el ${fechaJuegoRifaTxt}` : null,
     `${formatCOP(rifa.precio_boleta)} por número`,
     `Quedan ${dash.libres} de ${rifa.cantidad_numeros}`,
@@ -82,7 +90,7 @@ export default async function RifaDetallePage({
             <EstadoRifaBadge estado={rifa.estado} />
           </div>
           <p className="text-muted-foreground text-sm">
-            {rifa.cantidad_numeros} números · {formatCOP(rifa.precio_boleta)} c/u
+            {rifa.cantidad_numeros} números ({labelRango(rifa)}) · {formatCOP(rifa.precio_boleta)} c/u
             {rifa.tipo === "loteria" && rifa.loteria ? ` · ${rifa.loteria}` : " · sorteo propio"}
           </p>
           {(() => {
@@ -134,7 +142,7 @@ export default async function RifaDetallePage({
       {/* Grilla */}
       <section className="border-border mb-6 rounded-2xl border p-4">
         <p className="mb-3 text-sm font-semibold">Números</p>
-        <GrillaAdmin rifaId={rifa.id} cantidad={rifa.cantidad_numeros} boletas={boletas} />
+        <GrillaAdmin rifa={rifa} boletas={boletas} />
       </section>
 
 

@@ -1,9 +1,9 @@
 import { ImageResponse } from "next/og";
 
 import { getRifaPublica } from "@/actions/rifas";
-import { formatCOP, labelModoCifras } from "@/lib/rifa";
+import { formatCOP, labelModoCifras, labelSorteoPropio } from "@/lib/rifa";
 import { formatFechaCO } from "@/lib/fecha-co";
-import { getTema } from "@/lib/temas-rifa";
+import { conAlfa, getTema } from "@/lib/temas-rifa";
 
 /**
  * Imagen de la vista previa del enlace (WhatsApp, Facebook, X…).
@@ -67,17 +67,38 @@ export default async function Image({
       ? `Juega con las ${labelModoCifras(rifa.modo_cifras, rifa.formato_cifras)}${
           rifa.loteria ? ` de la ${rifa.loteria}` : ""
         }`
-      : null;
+      : labelSorteoPropio(rifa.sorteo_bolas || 1, rifa.sorteo_orden);
+
+  // Una sola imagen remota (la del premio, o la de fondo): es lo que hace que
+  // el enlace se vea como la publicación. Se deja de lado si no es http(s) —
+  // satori no puede descargarla— y el resto del diseño no depende de ella.
+  const fondo = rifa.imagen_fondo_url ?? rifa.imagen_url;
+  const fondoOk = Boolean(fondo && /^https?:\/\//i.test(fondo));
 
   return new ImageResponse(
     (
       <div
         style={{
-          width: "100%", height: "100%", display: "flex",
+          width: "100%", height: "100%", display: "flex", position: "relative",
           background: `linear-gradient(135deg, ${f.bgTop} 0%, ${f.bgBottom} 100%)`,
           padding: 56, fontFamily: "sans-serif", color: f.titulo,
         }}
       >
+        {fondoOk && (
+          <div style={{ display: "flex", position: "absolute", left: 0, top: 0, width: 1200, height: 630 }}>
+            <img src={fondo!} alt="" width={1200} height={630} style={{ objectFit: "cover" }} />
+          </div>
+        )}
+        {/* El texto vive a la izquierda: ahí el velo es fuerte y hacia la derecha
+            se abre para que la foto se vea. */}
+        {fondoOk && (
+          <div
+            style={{
+              display: "flex", position: "absolute", left: 0, top: 0, width: 1200, height: 630,
+              background: `linear-gradient(90deg, ${conAlfa(f.bgTop, 0.88)} 0%, ${conAlfa(f.bgBottom, 0.55)} 55%, ${conAlfa(f.bgBottom, 0.3)} 100%)`,
+            }}
+          />
+        )}
         {/* Izquierda: qué es y cómo se gana */}
         <div style={{ display: "flex", flexDirection: "column", flex: 1, paddingRight: 40 }}>
           <div style={{ display: "flex", fontSize: 64, fontWeight: 800, lineHeight: 1.05 }}>

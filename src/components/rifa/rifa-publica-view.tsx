@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
-import { Check, Copy, Loader2, MessageCircle, PartyPopper, Ticket, Trophy } from "lucide-react";
+import { Check, Copy, Dices, Loader2, MessageCircle, PartyPopper, Ticket, Trophy } from "lucide-react";
 import { toast } from "sonner";
 
 import { getRifaPublica, reservarNumeros, type RifaPublica } from "@/actions/rifas";
@@ -16,12 +16,23 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { formatCOP, labelCriterioPremio, labelModoCifras } from "@/lib/rifa";
+import {
+  anchoNumeros,
+  formatCOP,
+  formatNumero,
+  inicioNumeros,
+  labelCriterioPremio,
+  labelModoCifras,
+  labelSorteoPropio,
+  ultimoNumero,
+} from "@/lib/rifa";
 import { formatFechaCO } from "@/lib/fecha-co";
 import { labelCuentaPago } from "@/lib/pagos";
-import { getDecoracion, getTema } from "@/lib/temas-rifa";
+import { conAlfa, esTemaClaro, getDecoracion, getTema } from "@/lib/temas-rifa";
 import { waLink } from "@/lib/whatsapp";
 import { Decoracion } from "@/components/rifa/decoracion-rifa";
+import { SorteoAnimado } from "@/components/rifa/sorteo-animado";
+import { SorteoDemo } from "@/components/rifa/sorteo-demo";
 import { getOrCreateClienteId } from "@/lib/cliente-id";
 
 /** Vista pública de una rifa: embudo de reserva + grilla en vivo (ocupado/libre). */
@@ -43,14 +54,22 @@ export function RifaPublicaView({
   // Se conserva para el mensaje de WhatsApp después de limpiar el formulario.
   const [nombreReservado, setNombreReservado] = useState("");
 
-  const { rifa, premios, grilla, pago, ganadores } = data;
+  const { rifa, premios, grilla, pago, ganadores, sorteo, sorteoEnVivo, sorteoTotal } = data;
   const cuentaPago = pago?.cuenta_numero ?? pago?.nequi_llave ?? null;
   const cuentaPagoLabel = labelCuentaPago(pago?.cuenta_tipo ?? (pago?.nequi_llave ? "nequi" : null));
-  const t = getTema(rifa.tema).web;
+  const tema = getTema(rifa.tema);
+  const t = tema.web;
+  // Sobre la foto de fondo: un tema claro (texto oscuro) necesita más velo para
+  // que el texto se lea; uno oscuro deja lucir mucho más la imagen.
+  const claro = esTemaClaro(tema);
+  const veloFondo = `linear-gradient(180deg, ${conAlfa(t.bg, claro ? 0.5 : 0.3)} 0%, ${conAlfa(
+    t.bg,
+    claro ? 0.78 : 0.62,
+  )} 55%, ${conAlfa(t.bg, claro ? 0.9 : 0.8)} 100%)`;
   const disponibles = grilla.filter((c) => !c.ocupado).length;
   const vendidas = rifa.cantidad_numeros - disponibles;
   const pct = rifa.cantidad_numeros > 0 ? Math.round((vendidas / rifa.cantidad_numeros) * 100) : 0;
-  const ancho = String(rifa.cantidad_numeros - 1).length;
+  const ancho = anchoNumeros(rifa);
   const abierta = rifa.estado === "activa";
   const fechaJuego =
     rifa.tipo === "loteria" ? (rifa.fecha_loteria ?? rifa.fecha_sorteo) : rifa.fecha_sorteo;
@@ -77,15 +96,17 @@ export function RifaPublicaView({
     if (r.success) setData(r.data);
   }, [slug]);
 
+  // Durante el sorteo la página consulta cada 2s (así se ve balota a balota);
+  // el resto del tiempo, cada 20s.
   useEffect(() => {
-    const id = setInterval(refrescar, 20000);
+    const id = setInterval(refrescar, sorteoEnVivo ? 2000 : 20000);
     const onVis = () => document.visibilityState === "visible" && refrescar();
     document.addEventListener("visibilitychange", onVis);
     return () => {
       clearInterval(id);
       document.removeEventListener("visibilitychange", onVis);
     };
-  }, [refrescar]);
+  }, [refrescar, sorteoEnVivo]);
 
   function toggle(n: number) {
     setSeleccion((prev) => {
@@ -134,6 +155,14 @@ export function RifaPublicaView({
 
   return (
     <div style={temaVars}>
+      {/* Imagen de fondo: se vela con el color del tema para que el texto se lea */}
+      {rifa.imagen_fondo_url && (
+        <div aria-hidden className="pointer-events-none absolute inset-0">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={rifa.imagen_fondo_url} alt="" className="size-full object-cover" />
+          <div className="absolute inset-0" style={{ background: veloFondo }} />
+        </div>
+      )}
       <Decoracion
         tipo={getDecoracion(rifa.decoracion)}
         accent={t.accent}
@@ -141,12 +170,36 @@ export function RifaPublicaView({
         claro={t.surface}
       />
       <div className="relative mx-auto max-w-md px-4 py-6">
+        {/* Foto del premio */}
+        {rifa.imagen_url && (
+          <div
+            className="mb-4 overflow-hidden rounded-2xl border"
+            style={{ borderColor: t.line, background: t.surface }}
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={rifa.imagen_url}
+              alt={`Premio de la rifa ${rifa.nombre}`}
+              className="max-h-80 w-full object-cover"
+            />
+          </div>
+        )}
+
         {/* Hero: premio + promesa */}
         <div className="mb-4 text-center">
           <p className="text-xs font-semibold uppercase tracking-wide text-[var(--rifa-accent)]">
             {rifa.tipo === "loteria" && rifa.loteria ? rifa.loteria : "Rifa"}
           </p>
-          <h1 className="text-2xl font-bold text-balance">{rifa.nombre}</h1>
+          <h1
+            className="text-2xl font-bold text-balance"
+            style={
+              rifa.imagen_fondo_url
+                ? { textShadow: `0 1px 12px ${conAlfa(t.bg, 0.95)}` }
+                : undefined
+            }
+          >
+            {rifa.nombre}
+          </h1>
           {premioPrincipal && (
             <p className="mt-1 inline-flex items-center gap-1.5 text-sm">
               <Trophy className="size-4 text-[var(--rifa-accent)]" />
@@ -236,6 +289,30 @@ export function RifaPublicaView({
           </p>
         )}
 
+        {/* Cómo se juega (sorteo propio) */}
+        {rifa.tipo === "interna" && !sorteo && !sorteoEnVivo && (
+          <div
+            className="mb-4 flex flex-col items-center gap-2 rounded-lg border p-3 text-center text-xs text-[var(--rifa-muted)]"
+            style={{ borderColor: t.line }}
+          >
+            <p>
+              🎱 <b style={{ color: t.text }}>{labelSorteoPropio(rifa.sorteo_bolas || 1, rifa.sorteo_orden)}</b>{" "}
+              El sorteo queda grabado y se puede ver aquí mismo.
+            </p>
+            <SorteoDemo
+              bolas={rifa.sorteo_bolas || 1}
+              orden={rifa.sorteo_orden}
+              premios={premiosOrdenados.map((p) =>
+                p.tipo === "valor" && p.valor ? formatCOP(p.valor) : p.descripcion,
+              )}
+              min={inicioNumeros(rifa)}
+              max={ultimoNumero(rifa)}
+              ancho={ancho}
+              className="w-full"
+            />
+          </div>
+        )}
+
         {/* Ganadores publicados */}
         {ganadores.length > 0 && (
           <div className="mb-4 rounded-xl border p-3" style={{ borderColor: t.accent, background: t.surface }}>
@@ -245,11 +322,53 @@ export function RifaPublicaView({
             <ul className="flex flex-col gap-1 text-sm">
               {ganadores.map((g, i) => (
                 <li key={i}>
-                  <b className="tabular-nums">#{String(g.numero).padStart(ancho, "0")}</b> — {g.nombre_enmascarado}{" "}
+                  <b className="tabular-nums">#{formatNumero(g.numero, ancho)}</b> — {g.nombre_enmascarado}{" "}
                   <span className="text-[var(--rifa-muted)]">({g.premio})</span>
                 </li>
               ))}
             </ul>
+          </div>
+        )}
+
+        {/* El sorteo: en vivo mientras se canta, repetición después */}
+        {(sorteoEnVivo || (sorteo && sorteo.length > 0)) && (
+          <div
+            className="mb-4 rounded-xl border p-3"
+            style={{
+              borderColor: sorteoEnVivo ? t.accent : t.line,
+              background: t.surface,
+            }}
+          >
+            <p className="mb-1 flex items-center gap-1.5 text-sm font-semibold">
+              <Dices className="size-4 text-[var(--rifa-accent)]" />
+              {sorteoEnVivo ? "Sorteo en vivo" : "Así se sorteó"}
+              {sorteoEnVivo && (
+                <span
+                  className="animate-live ml-1 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase"
+                  style={{ background: t.accent, color: t.accentInk }}
+                >
+                  En vivo
+                </span>
+              )}
+            </p>
+            <p className="mb-3 text-xs text-[var(--rifa-muted)]">
+              {labelSorteoPropio(sorteoTotal || (sorteo?.length ?? 1), rifa.sorteo_orden)}
+              {sorteoEnVivo
+                ? " Las balotas van saliendo en este momento."
+                : formatFechaCO(rifa.sorteo_at, { conAnio: false })
+                  ? ` Se sorteó el ${formatFechaCO(rifa.sorteo_at, { conAnio: false })}.`
+                  : ""}
+            </p>
+            <SorteoAnimado
+              bolas={sorteo ?? []}
+              ancho={ancho}
+              min={inicioNumeros(rifa)}
+              max={ultimoNumero(rifa)}
+              modo={sorteoEnVivo ? "espectador" : "auto"}
+              reveladas={sorteo?.length ?? 0}
+              total={sorteoTotal || undefined}
+              autoPlay={false}
+            />
           </div>
         )}
 
@@ -272,7 +391,7 @@ export function RifaPublicaView({
                 onClick={() => toggle(c.numero)}
                 className={`${base} ${cls}`}
               >
-                {String(c.numero).padStart(ancho, "0")}
+                {formatNumero(c.numero, ancho)}
               </button>
             );
           })}
@@ -340,7 +459,7 @@ export function RifaPublicaView({
           <DialogHeader>
             <DialogTitle>Reservar {seleccion.size} número(s)</DialogTitle>
             <DialogDescription>
-              {[...seleccion].sort((a, b) => a - b).map((n) => String(n).padStart(ancho, "0")).join(", ")} · {formatCOP(total)}
+              {[...seleccion].sort((a, b) => a - b).map((n) => formatNumero(n, ancho)).join(", ")} · {formatCOP(total)}
             </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-3">
@@ -382,7 +501,7 @@ export function RifaPublicaView({
               <Check className="text-emerald-500 size-5" /> ¡Reservado!
             </DialogTitle>
             <DialogDescription>
-              Guardamos tus números: {reservadoOk?.map((n) => String(n).padStart(ancho, "0")).join(", ")}.
+              Guardamos tus números: {reservadoOk?.map((n) => formatNumero(n, ancho)).join(", ")}.
               Ahora realiza el pago para confirmar.
             </DialogDescription>
           </DialogHeader>
@@ -396,7 +515,7 @@ export function RifaPublicaView({
                 href={waLink(
                   pago.whatsapp,
                   `¡Hola! Quiero tomar el/los número(s) ${reservadoOk
-                    ?.map((n) => String(n).padStart(ancho, "0"))
+                    ?.map((n) => formatNumero(n, ancho))
                     .join(", ")} de la rifa "${rifa.nombre}". Ya los aparté a nombre de ${nombreReservado || "mí"}. ¿Cómo hago el pago?`,
                 )}
                 target="_blank"

@@ -120,6 +120,44 @@ export function getTema(t?: string | null): Tema {
 }
 
 /* -------------------------------------------------------------------------- */
+/* Velos sobre la imagen de fondo                                              */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * `#RRGGBB` + opacidad → `rgba(...)`. Se usa para velar la imagen de fondo sin
+ * taparla; `rgba()` en vez de hex de 8 dígitos porque satori (flyer) lo entiende
+ * mejor.
+ */
+export function conAlfa(hex: string, alfa: number): string {
+  const limpio = hex.replace("#", "");
+  const n = parseInt(
+    limpio.length === 3
+      ? limpio
+          .split("")
+          .map((c) => c + c)
+          .join("")
+      : limpio.slice(0, 6),
+    16,
+  );
+  if (Number.isNaN(n)) return hex;
+  return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alfa})`;
+}
+
+/**
+ * ¿El tema es de fondo claro? Sobre una foto, un tema claro (texto oscuro)
+ * necesita más velo para que el texto siga legible; uno oscuro admite mucho
+ * menos y deja lucir la imagen.
+ */
+export function esTemaClaro(t: Tema): boolean {
+  const limpio = t.web.bg.replace("#", "");
+  const n = parseInt(limpio.slice(0, 6), 16);
+  if (Number.isNaN(n)) return true;
+  const [r, g, b] = [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+  // Luminancia percibida (ITU-R BT.601), suficiente para esta decisión.
+  return (0.299 * r + 0.587 * g + 0.114 * b) / 255 > 0.5;
+}
+
+/* -------------------------------------------------------------------------- */
 /* Decoración: motivo de adornos que acompaña a la paleta                      */
 /* -------------------------------------------------------------------------- */
 

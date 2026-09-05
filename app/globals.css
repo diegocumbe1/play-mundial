@@ -66,6 +66,9 @@
   --animate-rise: rise 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
   --animate-float: float 6s ease-in-out infinite;
   --animate-glow: glow 2s ease-in-out infinite;
+  /* Sorteo tipo baloto */
+  --animate-tombola: tombola 0.55s ease-in-out infinite;
+  --animate-bola-sale: bola-sale 0.6s cubic-bezier(0.18, 1.4, 0.4, 1) both;
 }
 
 /*
@@ -225,6 +228,33 @@
   }
   50% {
     transform: translateY(-10px);
+  }
+}
+
+/* El bombo se agita mientras revuelve las balotas */
+@keyframes tombola {
+  0%,
+  100% {
+    transform: rotate(-3deg) scale(1);
+  }
+  50% {
+    transform: rotate(3deg) scale(1.02);
+  }
+}
+
+/* La balota sale disparada y se asienta */
+@keyframes bola-sale {
+  0% {
+    opacity: 0;
+    transform: scale(0.4) translateY(14px);
+  }
+  60% {
+    opacity: 1;
+    transform: scale(1.12) translateY(-4px);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
   }
 }
 

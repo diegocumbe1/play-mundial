@@ -10,13 +10,16 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { InputMoneda } from "@/components/rifa/input-moneda";
+import { ImagenRifaInput } from "@/components/rifa/imagen-rifa-input";
+import { SorteoDemo } from "@/components/rifa/sorteo-demo";
 import {
   DECORACIONES,
   TEMAS,
   type DecoracionRifa,
   type TemaRifa,
 } from "@/lib/temas-rifa";
-import type { CriterioPremio, Premio, Rifa, TipoRifa } from "@/types";
+import { formatNumero, labelSorteoPropio } from "@/lib/rifa";
+import type { CriterioPremio, OrdenSorteo, Premio, Rifa, TipoRifa } from "@/types";
 
 interface PremioDraft {
   tipo: "valor" | "producto";
@@ -52,6 +55,7 @@ export function RifaForm({
   const [tipo, setTipo] = useState<TipoRifa>(rifa?.tipo ?? "loteria");
   const [precio, setPrecio] = useState(String(rifa?.precio_boleta ?? ""));
   const [cantidad, setCantidad] = useState(String(rifa?.cantidad_numeros ?? "100"));
+  const [numeroInicial, setNumeroInicial] = useState<0 | 1>(rifa?.numero_inicial === 1 ? 1 : 0);
   const [formato, setFormato] = useState<2 | 3>(rifa?.formato_cifras ?? 2);
   const [soloPagadas, setSoloPagadas] = useState(rifa?.solo_pagadas_juegan ?? true);
   const [loteria, setLoteria] = useState(rifa?.loteria ?? "");
@@ -65,7 +69,20 @@ export function RifaForm({
   const [decoracion, setDecoracion] = useState<DecoracionRifa>(
     (rifa?.decoracion as DecoracionRifa) ?? "floral",
   );
+  const [imagenUrl, setImagenUrl] = useState(rifa?.imagen_url ?? "");
+  const [imagenFondoUrl, setImagenFondoUrl] = useState(rifa?.imagen_fondo_url ?? "");
+  const [sorteoBolas, setSorteoBolas] = useState(String(rifa?.sorteo_bolas ?? 1));
+  const [sorteoOrden, setSorteoOrden] = useState<OrdenSorteo>(
+    rifa?.sorteo_orden ?? "ultimo_mayor",
+  );
   const [tenantId, setTenantId] = useState<string>("");
+
+  // Rango resultante, para que el owner vea de una qué números tendrá la rifa.
+  const cantidadNum = Number(cantidad) || 0;
+  const inicio = tipo === "loteria" ? 0 : numeroInicial;
+  const ultimo = Math.max(inicio, inicio + cantidadNum - 1);
+  const anchoRango = String(ultimo).length;
+  const rangoTxt = `${formatNumero(inicio, anchoRango)}–${formatNumero(ultimo, anchoRango)}`;
 
   // Con un solo premio no se vuelve a preguntar por las cifras: se hereda del
   // "Se gana con…" de la rifa.
@@ -95,10 +112,15 @@ export function RifaForm({
       tipo,
       precio_boleta: Number(precio) || 0,
       cantidad_numeros: Number(cantidad) || 0,
+      numero_inicial: tipo === "loteria" ? (0 as const) : numeroInicial,
       formato_cifras: formato,
       solo_pagadas_juegan: soloPagadas,
       tema,
       decoracion,
+      imagen_url: imagenUrl || null,
+      imagen_fondo_url: imagenFondoUrl || null,
+      sorteo_bolas: Math.min(10, Math.max(1, Number(sorteoBolas) || 1)),
+      sorteo_orden: sorteoOrden,
       loteria: tipo === "loteria" ? loteria.trim() || null : null,
       loteria_url: tipo === "loteria" ? loteriaUrl.trim() || null : null,
       fecha_loteria: tipo === "loteria" ? fechaLoteria || null : null,
@@ -196,20 +218,87 @@ export function RifaForm({
         <Field label="Cantidad de números">
           <Input inputMode="numeric" value={cantidad} onChange={(e) => setCantidad(e.target.value)} placeholder="100" />
           <p className="text-muted-foreground mt-1 text-xs">
-            Puedes crear rifas hasta de 1000 números: 100 = 00–99, 1000 = 000–999.
+            Hasta 1000 números. Esta rifa quedaría <b>{rangoTxt}</b>.
           </p>
         </Field>
-        <Field label="Cifras del número">
-          <Segmented
-            value={String(formato)}
-            onChange={(v) => setFormato(Number(v) as 2 | 3)}
-            options={[
-              { value: "2", label: "2 cifras (00–99)" },
-              { value: "3", label: "3 cifras (000–999)" },
-            ]}
-          />
-        </Field>
+
+        {tipo === "interna" ? (
+          <Field label="¿Desde qué número empieza?">
+            <Segmented
+              value={String(numeroInicial)}
+              onChange={(v) => setNumeroInicial(Number(v) as 0 | 1)}
+              options={[
+                { value: "0", label: `Desde 0 (${formatNumero(0, anchoRango)}–${formatNumero(Math.max(0, cantidadNum - 1), anchoRango)})` },
+                { value: "1", label: `Desde 1 (${formatNumero(1, anchoRango)}–${formatNumero(Math.max(1, cantidadNum), anchoRango)})` },
+              ]}
+            />
+            <p className="text-muted-foreground mt-1 text-xs">
+              Los talonarios impresos suelen ir del 1 al 30. Puedes cambiarlo después,
+              siempre que ningún número ya vendido quede fuera del rango.
+            </p>
+          </Field>
+        ) : (
+          <Field label="Cifras del número">
+            <Segmented
+              value={String(formato)}
+              onChange={(v) => setFormato(Number(v) as 2 | 3)}
+              options={[
+                { value: "2", label: "2 cifras (00–99)" },
+                { value: "3", label: "3 cifras (000–999)" },
+              ]}
+            />
+          </Field>
+        )}
       </section>
+
+      {/* Cómo se juega (sorteo propio) */}
+      {tipo === "interna" && (
+        <section className="border-border grid gap-4 rounded-xl border p-4 sm:grid-cols-2">
+          <p className="text-muted-foreground text-sm font-medium sm:col-span-2">Cómo se juega</p>
+          <Field label="Balotas que se sacan">
+            <Input
+              inputMode="numeric"
+              value={sorteoBolas}
+              onChange={(e) => setSorteoBolas(e.target.value)}
+              placeholder="3"
+            />
+            <p className="text-muted-foreground mt-1 text-xs">
+              De 1 a 10. Si sacas más balotas que premios, las de más quedan como
+              suplentes.
+            </p>
+          </Field>
+          <Field label="El premio mayor lo gana…">
+            <Segmented
+              value={sorteoOrden}
+              onChange={(v) => setSorteoOrden(v as OrdenSorteo)}
+              options={[
+                { value: "ultimo_mayor", label: "La última balota" },
+                { value: "primero_mayor", label: "La primera" },
+              ]}
+            />
+          </Field>
+          <p className="bg-muted/40 text-muted-foreground rounded-lg px-3 py-2 text-xs sm:col-span-2">
+            🎱 {labelSorteoPropio(Math.min(10, Math.max(1, Number(sorteoBolas) || 1)), sorteoOrden)}{" "}
+            Se sortea en vivo con una animación tipo baloto que queda guardada para que
+            todos vean cómo salió.
+          </p>
+
+          {/* Preview: así se va a ver el día del sorteo */}
+          <div className="sm:col-span-2">
+            <SorteoDemo
+              bolas={Math.min(10, Math.max(1, Number(sorteoBolas) || 1))}
+              orden={sorteoOrden}
+              premios={premios.map((p) =>
+                p.descripcion.trim() ||
+                (p.tipo === "valor" && p.valor ? `$${p.valor}` : ""),
+              )}
+              min={inicio}
+              max={ultimo}
+              ancho={anchoRango}
+            />
+          </div>
+        </section>
+      )}
 
       {tipo === "loteria" && (
         <section className="border-border grid gap-4 rounded-xl border p-4 sm:grid-cols-2">
@@ -262,6 +351,26 @@ export function RifaForm({
             Recomendado: solo las boletas pagadas entran al sorteo.
           </p>
         </Field>
+      </section>
+
+      {/* Imágenes de la publicación */}
+      <section className="border-border grid gap-4 rounded-xl border p-4 sm:grid-cols-2">
+        <p className="text-muted-foreground text-sm font-medium sm:col-span-2">
+          Imágenes de la publicación
+        </p>
+        <ImagenRifaInput
+          label="Foto del premio"
+          ayuda="Se muestra arriba en la página pública, en el flyer y en la vista previa del enlace."
+          valor={imagenUrl}
+          onChange={setImagenUrl}
+        />
+        <ImagenRifaInput
+          label="Imagen de fondo"
+          ayuda="Va detrás de todo, oscurecida para que el texto se siga leyendo."
+          valor={imagenFondoUrl}
+          onChange={setImagenFondoUrl}
+          aspecto="ancho"
+        />
       </section>
 
       {/* Tema visual */}

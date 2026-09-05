@@ -1,10 +1,22 @@
 import { ImageResponse } from "next/og";
 
 import { getRifaPublica } from "@/actions/rifas";
-import { formatCOP, labelModoCifras } from "@/lib/rifa";
+import {
+  anchoNumeros,
+  formatCOP,
+  formatNumero,
+  labelModoCifras,
+  labelSorteoPropio,
+} from "@/lib/rifa";
 import { formatFechaCO } from "@/lib/fecha-co";
 import { labelCuentaPago } from "@/lib/pagos";
-import { getDecoracion, getTema, type DecoracionRifa, type TemaFlyer } from "@/lib/temas-rifa";
+import {
+  conAlfa,
+  getDecoracion,
+  getTema,
+  type DecoracionRifa,
+  type TemaFlyer,
+} from "@/lib/temas-rifa";
 
 /**
  * Adornos decorativos del flyer. Satori solo soporta flexbox y formas simples,
@@ -108,7 +120,7 @@ export async function GET(
   const disponibles = grilla.filter((c) => !c.ocupado).length;
   const vendidas = rifa.cantidad_numeros - disponibles;
   const pct = rifa.cantidad_numeros > 0 ? Math.round((vendidas / rifa.cantidad_numeros) * 100) : 0;
-  const ancho = String(rifa.cantidad_numeros - 1).length;
+  const ancho = anchoNumeros(rifa);
   // Hasta 3 premios (1°, 2°, 3°) para que el flyer siga legible.
   const premiosTop = [...premios].sort((a, b) => a.orden - b.orden).slice(0, 3);
   const fechaJuego =
@@ -119,6 +131,11 @@ export async function GET(
   const pago = res.data.pago;
   // Solo se embebe el QR si es una URL http(s) válida (satori la descarga).
   const qrOk = Boolean(pago?.qr_url && /^https?:\/\//i.test(pago.qr_url));
+  // Imágenes de la publicación: satori solo puede descargar http(s).
+  const fondoOk = Boolean(rifa.imagen_fondo_url && /^https?:\/\//i.test(rifa.imagen_fondo_url));
+  const fotoOk = Boolean(rifa.imagen_url && /^https?:\/\//i.test(rifa.imagen_url));
+  // La foto cede altura cuando además hay que pintar la grilla completa.
+  const fotoAlto = !mostrarGrilla ? 520 : rifa.cantidad_numeros <= 40 ? 420 : 260;
   const cuentaPago = pago?.cuenta_numero ?? pago?.nequi_llave ?? null;
   const pagoLinea = cuentaPago
     ? `Paga a ${labelCuentaPago(pago?.cuenta_tipo ?? (pago?.nequi_llave ? "nequi" : null))} ${cuentaPago}`
@@ -138,14 +155,56 @@ export async function GET(
           padding: 56, fontFamily: "sans-serif",
         }}
       >
+        {fondoOk && (
+          <div style={{ display: "flex", position: "absolute", left: 0, top: 0, width: 1080, height: 1920 }}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={rifa.imagen_fondo_url!} alt="" width={1080} height={1920} style={{ objectFit: "cover" }} />
+          </div>
+        )}
+        {/* Velo suave: la foto tiene que verse. El título del flyer siempre es de
+            color claro, así que un oscurecido leve basta para que se lea, y el
+            color del tema vuelve abajo, donde va el pie de pago. */}
+        {fondoOk && (
+          <div
+            style={{
+              display: "flex", position: "absolute", left: 0, top: 0, width: 1080, height: 1920,
+              background: `linear-gradient(180deg, rgba(0,0,0,0.34) 0%, ${conAlfa(f.bgBottom, 0.42)} 45%, ${conAlfa(f.bgBottom, 0.78)} 100%)`,
+            }}
+          />
+        )}
+
         {adornosFlyer(getDecoracion(rifa.decoracion), f)}
 
         {/* Título */}
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
-          <div style={{ fontSize: 82, fontWeight: 800, color: f.titulo, textAlign: "center", lineHeight: 1 }}>
+          <div
+            style={{
+              fontSize: 82, fontWeight: 800, color: f.titulo, textAlign: "center", lineHeight: 1,
+              textShadow: fondoOk ? "0 4px 18px rgba(0,0,0,0.55)" : "none",
+            }}
+          >
             {rifa.nombre}
           </div>
         </div>
+
+        {/* Foto del premio */}
+        {fotoOk && (
+          <div
+            style={{
+              display: "flex", marginTop: 28, borderRadius: 28, overflow: "hidden",
+              width: "100%", height: fotoAlto,
+            }}
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={rifa.imagen_url!}
+              alt=""
+              width={968}
+              height={fotoAlto}
+              style={{ objectFit: "cover" }}
+            />
+          </div>
+        )}
 
         {/* Banda fecha/valor */}
         <div
@@ -187,7 +246,7 @@ export async function GET(
                   textDecoration: c.ocupado ? "line-through" : "none",
                 }}
               >
-                {String(c.numero).padStart(ancho, "0")}
+                {formatNumero(c.numero, ancho)}
               </div>
             ))}
           </div>
@@ -207,6 +266,19 @@ export async function GET(
             }}
           >
             Gana con las {modoLabel} de la {rifa.loteria}
+          </div>
+        )}
+
+        {/* Cómo se juega (sorteo propio) */}
+        {rifa.tipo === "interna" && (
+          <div
+            style={{
+              display: "flex", justifyContent: "center", textAlign: "center",
+              color: f.titulo, fontSize: 34, fontWeight: 600, marginTop: 36,
+              padding: "16px 20px", border: "2px solid rgba(255,255,255,0.4)", borderRadius: 16,
+            }}
+          >
+            {labelSorteoPropio(rifa.sorteo_bolas || 1, rifa.sorteo_orden)}
           </div>
         )}
 

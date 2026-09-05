@@ -5,7 +5,7 @@ import { MessageCircle, Phone, Search, UserCheck, Users, X } from "lucide-react"
 
 import { BoletaModal } from "@/components/rifa/boleta-modal";
 import { Input } from "@/components/ui/input";
-import { formatCOP } from "@/lib/rifa";
+import { anchoNumeros, formatCOP } from "@/lib/rifa";
 import { waLink } from "@/lib/whatsapp";
 import type { Boleta, Rifa } from "@/types";
 
@@ -58,7 +58,7 @@ export function ParticipantesLista({
   // Ningún cambio de estado es de un solo toque: se abre el modal de la boleta.
   const [boletaSel, setBoletaSel] = useState<Boleta | null>(null);
 
-  const ancho = String(rifa.cantidad_numeros - 1).length;
+  const ancho = anchoNumeros(rifa);
 
   const responsables = useMemo<ResponsableResumen[]>(() => {
     const map = new Map<string, ResponsableResumen>();

@@ -306,6 +306,11 @@ export type ModoCifras = "primeras_dos" | "ultimas_dos" | "ambas";
 export type EstadoBoleta = "libre" | "reservado" | "pagado";
 /** Criterio de un premio de lotería. */
 export type CriterioPremio = "primeras_2" | "ultimas_2";
+/**
+ * En el sorteo propio, qué balota se lleva el premio mayor: la última que sale
+ * (lo habitual, deja la emoción para el final) o la primera.
+ */
+export type OrdenSorteo = "ultimo_mayor" | "primero_mayor";
 /** Estado de un cobro en el ledger. */
 export type EstadoCobro = "pendiente" | "pagado" | "anulado";
 
@@ -395,6 +400,11 @@ export interface Rifa {
   estado: EstadoRifa;
   precio_boleta: number;
   cantidad_numeros: number;
+  /**
+   * Primer número de la rifa: 0 (00–29) o 1 (01–30). Las de lotería siempre
+   * arrancan en 0 porque el número cruza con las cifras del resultado.
+   */
+  numero_inicial: 0 | 1;
   formato_cifras: 2 | 3;
   solo_pagadas_juegan: boolean;
   slug_publico: string;
@@ -402,6 +412,23 @@ export interface Rifa {
   tema: string;
   /** Motivo decorativo (floral, hojas, geométrico, confeti, ninguna). */
   decoracion: string;
+  /** Foto del premio: portada de la publicación. */
+  imagen_url: string | null;
+  /** Imagen de fondo de la publicación (se oscurece para que el texto se lea). */
+  imagen_fondo_url: string | null;
+  /** Sorteo propio: cuántas balotas se sacan. */
+  sorteo_bolas: number;
+  /** Sorteo propio: si el premio mayor es la última balota o la primera. */
+  sorteo_orden: OrdenSorteo;
+  /** Números en el orden real en que salieron (para repetir la animación). */
+  sorteo_secuencia: number[] | null;
+  /**
+   * Cuántas balotas ya cantó el organizador. El público solo puede ver esas:
+   * es lo que permite el live sin filtrar el resultado que falta.
+   */
+  sorteo_reveladas: number;
+  /** Cuándo se corrió el sorteo propio. */
+  sorteo_at: string | null;
   loteria: string | null;
   /** URL oficial de la lotería (resultados). */
   loteria_url: string | null;
@@ -478,6 +505,22 @@ export interface GanadorPublico {
   mensaje_felicitacion: string | null;
 }
 
+/**
+ * Una balota del sorteo propio, tal como se muestra (backoffice y público):
+ * el orden real de extracción y qué premio se llevó.
+ */
+export interface BolaSorteo {
+  /** Posición de extracción: 1 = la primera que salió. */
+  orden: number;
+  numero: number;
+  /** Premio que se llevó, o `null` si salió como suplente (sin premio). */
+  premio: string | null;
+  /** `true` en la balota del premio mayor. */
+  mayor: boolean;
+  /** Dueño del número (enmascarado en público); `null` si no estaba vendido. */
+  nombre: string | null;
+}
+
 /** Métricas financieras del dashboard de una rifa. */
 export interface DashboardRifa {
   total: number;
@@ -518,10 +561,15 @@ export interface RifaInput {
   tipo: TipoRifa;
   precio_boleta: number;
   cantidad_numeros: number;
+  numero_inicial?: 0 | 1;
   formato_cifras: 2 | 3;
   solo_pagadas_juegan: boolean;
   tema?: string;
   decoracion?: string;
+  imagen_url?: string | null;
+  imagen_fondo_url?: string | null;
+  sorteo_bolas?: number;
+  sorteo_orden?: OrdenSorteo;
   loteria?: string | null;
   loteria_url?: string | null;
   fecha_loteria?: string | null;

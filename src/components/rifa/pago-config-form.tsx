@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { TIPOS_CUENTA_PAGO } from "@/lib/pagos";
+import { prepararImagen } from "@/lib/imagen";
 import type { TenantPagoConfig } from "@/types";
 
 /** Datos de cobro del tenant (cuenta/Llave Bre-B/QR/WhatsApp). */
@@ -35,8 +36,10 @@ export function PagoConfigForm({ inicial }: { inicial: TenantPagoConfig | null }
     const file = e.target.files?.[0];
     if (!file) return;
     setSubiendo(true);
+    // Un QR no necesita más de 1200px y así no choca con el tope del body.
+    const listo = await prepararImagen(file, { ladoMax: 1200 });
     const fd = new FormData();
-    fd.append("file", file);
+    fd.append("file", listo);
     const r = await subirQrImagen(fd);
     setSubiendo(false);
     if (!r.success) {

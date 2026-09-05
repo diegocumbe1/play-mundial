@@ -655,6 +655,41 @@ tipos en `src/types/index.ts`; helpers en `src/lib/auth.ts`; `src/actions/rifas.
 `app/r/[slug]/**` (+ flyer); `app/superadmin/**`; `app/precios`; componentes en
 `src/components/rifa/**` y `src/components/superadmin/**`.
 
+# Sorteo propio, numeración e imágenes (2026-09-05)
+
+Migración `20260905000000_rifa_numeracion_imagenes_sorteo.sql`:
+
+- `numero_inicial` (0|1): la rifa puede ir `00–29` o `01–30` (talonario impreso).
+  Editable después de creada; al guardar se valida que ningún número vendido
+  quede fuera del nuevo rango. Las de lotería se fuerzan a 0 (el número cruza
+  con las cifras del resultado).
+- `imagen_url` (foto del premio) e `imagen_fondo_url` (fondo): opcionales, se
+  usan en `/r/[slug]`, el flyer y la vista previa del enlace. Bucket público
+  `rifa-imagenes`; si falta, `subirImagenRifa` lo crea y reintenta.
+- Sorteo propio: `sorteo_bolas` (1–10), `sorteo_orden` (`ultimo_mayor` por
+  defecto), `sorteo_secuencia` (jsonb, orden real de extracción) y `sorteo_at`.
+  `sortearRifaInterna` saca los números con `crypto.getRandomValues` entre las
+  boletas que juegan, reparte premios en reversa (la última balota se lleva el
+  mayor) y guarda la secuencia; `limpiarSorteo` la deshace mientras no se haya
+  publicado. La animación (`SorteoAnimado`) solo REPRODUCE esa secuencia: se ve
+  en el backoffice al sortear y en la pública una vez publicados los ganadores.
+  `SorteoDemo` reproduce lo mismo con números de ejemplo, como preview.
+- Backoffice: la grilla permite seleccionar varios números y registrarlos a un
+  mismo comprador (`registrarBoletasLote`).
+
+**Sorteo en vivo (migración `20260905010000_rifa_sorteo_reveladas.sql`).** El
+resultado se firma entero al pulsar *Sortear*, pero se canta a mano: el botón de
+`SorteoAnimado` en modo `manual` avanza balota por balota y cada una llama a
+`revelarBalotas`, que sube `sorteo_reveladas` (solo hacia arriba). `getRifaPublica`
+recorta la secuencia a esas balotas —las que faltan NO viajan al cliente— y marca
+`sorteoEnVivo`; mientras eso dure, la pública consulta cada 2 s y pinta el sorteo
+en modo `espectador` con los espacios vacíos de las que faltan. Publicados los
+ganadores, se envía la secuencia completa y queda el replay.
+
+Las imágenes se reducen en el navegador (`src/lib/imagen.ts`) antes de subirlas:
+el body de una Server Action tiene tope (`serverActions.bodySizeLimit`, 4 MB en
+`next.config.ts`) y una foto de celular lo pasaba con un 413.
+
 # Checklists
 
 ## Fase 0 · Cimientos

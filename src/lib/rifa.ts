@@ -4,6 +4,7 @@ import type {
   CriterioPremio,
   DashboardRifa,
   ModoCifras,
+  OrdenSorteo,
   Premio,
   Rifa,
 } from "@/types";
@@ -37,6 +38,52 @@ export function enmascararNombre(nombre: string): string {
     .join(" ");
 }
 
+/* -------------------------------------------------------------------------- */
+/* Numeración: la rifa puede ir 00–29 (desde 0) o 01–30 (desde 1)              */
+/* -------------------------------------------------------------------------- */
+
+/** Lo mínimo que hace falta para saber qué números tiene una rifa. */
+export type RangoRifa = Pick<Rifa, "cantidad_numeros"> & {
+  numero_inicial?: number | null;
+};
+
+/** Primer número de la rifa: 1 solo si se configuró así; si no, 0. */
+export function inicioNumeros(rifa: RangoRifa): number {
+  return rifa.numero_inicial === 1 ? 1 : 0;
+}
+
+/** Último número de la rifa (30 en una de 30 que empieza en 1). */
+export function ultimoNumero(rifa: RangoRifa): number {
+  return inicioNumeros(rifa) + rifa.cantidad_numeros - 1;
+}
+
+/** Dígitos con los que se pinta un número (30 → 2 → "07"). */
+export function anchoNumeros(rifa: RangoRifa): number {
+  return String(Math.max(0, ultimoNumero(rifa))).length;
+}
+
+/** Pinta un número con ceros a la izquierda: (7, 2) → "07". */
+export function formatNumero(numero: number, ancho: number): string {
+  return String(numero).padStart(ancho, "0");
+}
+
+/** Todos los números de la rifa, en orden. */
+export function numerosDeRifa(rifa: RangoRifa): number[] {
+  const inicio = inicioNumeros(rifa);
+  return Array.from({ length: rifa.cantidad_numeros }, (_, i) => inicio + i);
+}
+
+/** ¿El número cae dentro del rango vigente de la rifa? */
+export function numeroEnRango(rifa: RangoRifa, numero: number): boolean {
+  return numero >= inicioNumeros(rifa) && numero <= ultimoNumero(rifa);
+}
+
+/** Cómo se lee la numeración en pantalla: "01–30". */
+export function labelRango(rifa: RangoRifa): string {
+  const ancho = anchoNumeros(rifa);
+  return `${formatNumero(inicioNumeros(rifa), ancho)}–${formatNumero(ultimoNumero(rifa), ancho)}`;
+}
+
 /** Números tomados (reservados o pagados) de una rifa. */
 export function numerosTomados(boletas: Boleta[]): Set<number> {
   return new Set(
@@ -45,15 +92,16 @@ export function numerosTomados(boletas: Boleta[]): Set<number> {
 }
 
 /**
- * Construye la grilla PÚBLICA `0..cantidad-1`. Un número tomado (reservado O
- * pagado) se marca solo como `ocupado` — nunca se revela el estado real de pago.
+ * Construye la grilla PÚBLICA con el rango real de la rifa (desde 0 o desde 1).
+ * Un número tomado (reservado O pagado) se marca solo como `ocupado` — nunca se
+ * revela el estado real de pago.
  */
 export function construirGrillaPublica(
-  cantidad: number,
+  rifa: RangoRifa,
   boletas: Boleta[],
 ): BoletaPublica[] {
   const tomados = numerosTomados(boletas);
-  return Array.from({ length: cantidad }, (_, numero) => ({
+  return numerosDeRifa(rifa).map((numero) => ({
     numero,
     ocupado: tomados.has(numero),
   }));
@@ -135,6 +183,56 @@ export interface GanadorResuelto {
   numero: number;
   /** Boleta ganadora, o `null` si nadie compró ese número. */
   boleta_id: string | null;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Sorteo propio (tipo `interna`): balotas al azar, tipo baloto                */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Cómo se juega el sorteo propio, en palabras para el jugador:
+ * "Se sacan 3 balotas al azar; el premio mayor se lo lleva la última".
+ */
+export function labelSorteoPropio(bolas: number, orden: OrdenSorteo): string {
+  if (bolas <= 1) return "Se saca 1 balota al azar y ese número gana.";
+  const cual = orden === "ultimo_mayor" ? "la última" : "la primera";
+  return `Se sacan ${bolas} balotas al azar; el premio mayor se lo lleva ${cual} en salir.`;
+}
+
+/**
+ * Qué premio se lleva la balota `indice` (0-based) de un sorteo de `bolas`.
+ * Devuelve la POSICIÓN del premio (1 = premio mayor) o `null` si esa balota
+ * salió de más (suplente, sin premio asignado).
+ */
+export function posicionPremioDeBola(
+  indice: number,
+  bolas: number,
+  totalPremios: number,
+  orden: OrdenSorteo,
+): number | null {
+  const posicion = orden === "ultimo_mayor" ? bolas - indice : indice + 1;
+  return posicion >= 1 && posicion <= totalPremios ? posicion : null;
+}
+
+/**
+ * Saca `bolas` números distintos al azar de entre los candidatos (Fisher-Yates
+ * parcial). El `rng` es inyectable para poder probar el sorteo; en producción
+ * la Server Action pasa uno basado en `crypto`.
+ */
+export function sortearBolas(
+  candidatos: number[],
+  bolas: number,
+  rng: () => number = Math.random,
+): number[] {
+  const pool = [...candidatos];
+  const cuantas = Math.min(Math.max(0, Math.trunc(bolas)), pool.length);
+  const salida: number[] = [];
+  for (let i = 0; i < cuantas; i++) {
+    const j = i + Math.floor(rng() * (pool.length - i));
+    [pool[i], pool[j]] = [pool[j], pool[i]];
+    salida.push(pool[i]);
+  }
+  return salida;
 }
 
 /** Boletas elegibles para el sorteo (regla "no pagada no juega"). */

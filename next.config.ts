@@ -1,6 +1,14 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  experimental: {
+    // Las imágenes de la rifa (foto del premio, fondo) y el QR de pago se suben
+    // por Server Action, y el tope por defecto es 1 MB: una foto de celular lo
+    // pasa y Next responde 413 antes de llegar al código. El cliente ya las
+    // reduce (ver `src/lib/imagen.ts`); esto es solo el colchón. Se queda por
+    // debajo de los 4,5 MB que admite una función serverless en Vercel.
+    serverActions: { bodySizeLimit: "4mb" },
+  },
   images: {
     remotePatterns: [
       // Logos de equipos/banderas de API-Football.
