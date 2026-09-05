@@ -477,7 +477,7 @@ export function RifaForm({
                 <Input
                   value={p.descripcion}
                   onChange={(e) => setPremio(i, { descripcion: e.target.value })}
-                  placeholder="Un pollo, chorizos y papas / $1.000.000"
+                  placeholder=""
                 />
               </Field>
               <Field label="Tipo">
