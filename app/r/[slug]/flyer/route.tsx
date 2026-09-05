@@ -9,6 +9,7 @@ import {
   labelSorteoPropio,
 } from "@/lib/rifa";
 import { formatFechaCO } from "@/lib/fecha-co";
+import { imagenRenderizableEnFlyer } from "@/lib/imagen";
 import { labelCuentaPago } from "@/lib/pagos";
 import {
   conAlfa,
@@ -131,9 +132,10 @@ export async function GET(
   const pago = res.data.pago;
   // Solo se embebe el QR si es una URL http(s) válida (satori la descarga).
   const qrOk = Boolean(pago?.qr_url && /^https?:\/\//i.test(pago.qr_url));
-  // Imágenes de la publicación: satori solo puede descargar http(s).
-  const fondoOk = Boolean(rifa.imagen_fondo_url && /^https?:\/\//i.test(rifa.imagen_fondo_url));
-  const fotoOk = Boolean(rifa.imagen_url && /^https?:\/\//i.test(rifa.imagen_url));
+  // Imágenes de la publicación: satori solo descarga http(s) y no sabe dibujar
+  // WebP/AVIF (dejaría un hueco en blanco), así que esas se omiten.
+  const fondoOk = imagenRenderizableEnFlyer(rifa.imagen_fondo_url);
+  const fotoOk = imagenRenderizableEnFlyer(rifa.imagen_url);
   // La foto cede altura cuando además hay que pintar la grilla completa.
   const fotoAlto = !mostrarGrilla ? 520 : rifa.cantidad_numeros <= 40 ? 420 : 260;
   const cuentaPago = pago?.cuenta_numero ?? pago?.nequi_llave ?? null;
@@ -175,15 +177,33 @@ export async function GET(
 
         {adornosFlyer(getDecoracion(rifa.decoracion), f)}
 
-        {/* Título */}
+        {/* Título. Sobre una foto el texto se pierde contra el dibujo de la
+            imagen; satori no tiene backdrop-filter, así que el "desenfoque" se
+            simula con dos placas translúcidas superpuestas. */}
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
           <div
             style={{
-              fontSize: 82, fontWeight: 800, color: f.titulo, textAlign: "center", lineHeight: 1,
-              textShadow: fondoOk ? "0 4px 18px rgba(0,0,0,0.55)" : "none",
+              display: "flex", borderRadius: 48,
+              padding: fondoOk ? 14 : 0,
+              background: fondoOk ? "rgba(0,0,0,0.28)" : "transparent",
             }}
           >
-            {rifa.nombre}
+            <div
+              style={{
+                display: "flex", borderRadius: 36,
+                padding: fondoOk ? "20px 34px" : 0,
+                background: fondoOk ? "rgba(0,0,0,0.62)" : "transparent",
+              }}
+            >
+              <div
+                style={{
+                  fontSize: 82, fontWeight: 800, color: f.titulo, textAlign: "center", lineHeight: 1,
+                  textShadow: fondoOk ? "0 4px 18px rgba(0,0,0,0.65)" : "none",
+                }}
+              >
+                {rifa.nombre}
+              </div>
+            </div>
           </div>
         </div>
 
@@ -278,7 +298,7 @@ export async function GET(
               padding: "16px 20px", border: "2px solid rgba(255,255,255,0.4)", borderRadius: 16,
             }}
           >
-            {labelSorteoPropio(rifa.sorteo_bolas || 1, rifa.sorteo_orden)}
+            {labelSorteoPropio(rifa.sorteo_bolas || 1, rifa.sorteo_ganadores || 1, rifa.sorteo_orden)}
           </div>
         )}
 

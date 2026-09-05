@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { PlayCircle, Shuffle, X } from "lucide-react";
 
 import { SorteoAnimado } from "@/components/rifa/sorteo-animado";
-import { labelSorteoPropio, posicionPremioDeBola } from "@/lib/rifa";
+import { construirBolas, labelSorteoPropio, tieneRondaFinal } from "@/lib/rifa";
 import type { BolaSorteo, OrdenSorteo } from "@/types";
 
 /** Saca `cuantas` números distintos al azar dentro del rango (solo para la demo). */
@@ -27,6 +27,7 @@ function numerosDeEjemplo(cuantas: number, min: number, max: number): number[] {
  */
 export function SorteoDemo({
   bolas,
+  ganadores = 1,
   orden,
   premios,
   min,
@@ -34,8 +35,10 @@ export function SorteoDemo({
   ancho,
   className,
 }: {
-  /** Cuántas balotas se sacan (la demo cambia con este número). */
+  /** Balotas finalistas de la 1ª ronda (la demo cambia con este número). */
   bolas: number;
+  /** Ganadoras que salen de esas finalistas en la 2ª ronda. */
+  ganadores?: number;
   orden: OrdenSorteo;
   /** Descripción de los premios, del mayor al menor. */
   premios: string[];
@@ -49,23 +52,23 @@ export function SorteoDemo({
   const [tirada, setTirada] = useState(0);
 
   const cuantas = Math.min(10, Math.max(1, bolas));
+  const cuantasGanadoras = Math.min(cuantas, Math.max(1, ganadores));
   const clavePremios = premios.filter((p) => p.trim()).join("|");
 
   const demo = useMemo<BolaSorteo[]>(() => {
     const lista = clavePremios ? clavePremios.split("|") : ["Premio mayor"];
-    return numerosDeEjemplo(cuantas, min, max).map((numero, i) => {
-      const pos = posicionPremioDeBola(i, cuantas, lista.length, orden);
-      return {
-        orden: i + 1,
-        numero,
-        premio: pos ? lista[pos - 1] : null,
-        mayor: pos === 1,
-        nombre: null,
-      };
-    });
+    const finalistas = numerosDeEjemplo(cuantas, min, max);
+    // Misma mecánica del sorteo real: si hay ronda final, las ganadoras salen
+    // de entre las finalistas (no del total de números).
+    const finales = tieneRondaFinal(cuantas, cuantasGanadoras)
+      ? numerosDeEjemplo(cuantasGanadoras, 0, finalistas.length - 1).map(
+          (i) => finalistas[i],
+        )
+      : [];
+    return construirBolas({ finalistas, finales, premios: lista, orden });
     // `tirada` es justamente lo que fuerza a re-sortear la demo.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tirada, cuantas, orden, min, max, clavePremios]);
+  }, [tirada, cuantas, cuantasGanadoras, orden, min, max, clavePremios]);
 
   if (!abierto) {
     return (
@@ -96,7 +99,7 @@ export function SorteoDemo({
         <div>
           <p className="text-sm font-semibold">Simulación</p>
           <p className="text-xs text-[var(--rifa-muted,var(--muted-foreground))]">
-            {labelSorteoPropio(cuantas, orden)} Los números son de ejemplo: pulsa el
+            {labelSorteoPropio(cuantas, cuantasGanadoras, orden)} Los números son de ejemplo: pulsa el
             botón para sacar cada balota, igual que el día del sorteo.
           </p>
         </div>
@@ -119,6 +122,7 @@ export function SorteoDemo({
         min={min}
         max={max}
         modo="manual"
+        finalistas={tieneRondaFinal(cuantas, cuantasGanadoras) ? cuantas : 0}
       />
 
       <div className="mt-3 flex justify-center">

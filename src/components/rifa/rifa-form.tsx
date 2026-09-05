@@ -72,10 +72,21 @@ export function RifaForm({
   const [imagenUrl, setImagenUrl] = useState(rifa?.imagen_url ?? "");
   const [imagenFondoUrl, setImagenFondoUrl] = useState(rifa?.imagen_fondo_url ?? "");
   const [sorteoBolas, setSorteoBolas] = useState(String(rifa?.sorteo_bolas ?? 1));
+  const [sorteoGanadores, setSorteoGanadores] = useState(
+    String(rifa?.sorteo_ganadores ?? 1),
+  );
   const [sorteoOrden, setSorteoOrden] = useState<OrdenSorteo>(
     rifa?.sorteo_orden ?? "ultimo_mayor",
   );
+  const [mostrarSimulacion, setMostrarSimulacion] = useState(
+    rifa?.mostrar_simulacion ?? true,
+  );
   const [tenantId, setTenantId] = useState<string>("");
+
+  // Cuántas balotas salen en cada ronda (la final no puede pedir más de las que
+  // clasificaron).
+  const bolasNum = Math.min(10, Math.max(1, Number(sorteoBolas) || 1));
+  const ganadorasNum = Math.min(bolasNum, Math.max(1, Number(sorteoGanadores) || 1));
 
   // Rango resultante, para que el owner vea de una qué números tendrá la rifa.
   const cantidadNum = Number(cantidad) || 0;
@@ -119,8 +130,10 @@ export function RifaForm({
       decoracion,
       imagen_url: imagenUrl || null,
       imagen_fondo_url: imagenFondoUrl || null,
-      sorteo_bolas: Math.min(10, Math.max(1, Number(sorteoBolas) || 1)),
+      sorteo_bolas: bolasNum,
+      sorteo_ganadores: ganadorasNum,
       sorteo_orden: sorteoOrden,
+      mostrar_simulacion: mostrarSimulacion,
       loteria: tipo === "loteria" ? loteria.trim() || null : null,
       loteria_url: tipo === "loteria" ? loteriaUrl.trim() || null : null,
       fecha_loteria: tipo === "loteria" ? fechaLoteria || null : null,
@@ -255,38 +268,68 @@ export function RifaForm({
       {tipo === "interna" && (
         <section className="border-border grid gap-4 rounded-xl border p-4 sm:grid-cols-2">
           <p className="text-muted-foreground text-sm font-medium sm:col-span-2">Cómo se juega</p>
-          <Field label="Balotas que se sacan">
+          <Field label="Balotas finalistas (1ª ronda)">
             <Input
               inputMode="numeric"
               value={sorteoBolas}
               onChange={(e) => setSorteoBolas(e.target.value)}
-              placeholder="3"
+              placeholder="5"
             />
             <p className="text-muted-foreground mt-1 text-xs">
-              De 1 a 10. Si sacas más balotas que premios, las de más quedan como
-              suplentes.
+              De 1 a 10. Se sacan de entre todas las boletas que juegan.
             </p>
           </Field>
-          <Field label="El premio mayor lo gana…">
-            <Segmented
-              value={sorteoOrden}
-              onChange={(v) => setSorteoOrden(v as OrdenSorteo)}
-              options={[
-                { value: "ultimo_mayor", label: "La última balota" },
-                { value: "primero_mayor", label: "La primera" },
-              ]}
+          <Field label="Ganadoras que salen de esas (2ª ronda)">
+            <Input
+              inputMode="numeric"
+              value={sorteoGanadores}
+              onChange={(e) => setSorteoGanadores(e.target.value)}
+              placeholder="1"
             />
+            <p className="text-muted-foreground mt-1 text-xs">
+              Opcional: por defecto 1. Se revuelven solo las finalistas y de ahí sale la
+              ganadora. Si pones el mismo número que finalistas, no hay segunda ronda y
+              cada balota que sale ya lleva su premio.
+            </p>
           </Field>
+          {ganadorasNum > 1 && (
+            <Field label="El premio mayor lo gana…" className="sm:col-span-2">
+              <Segmented
+                value={sorteoOrden}
+                onChange={(v) => setSorteoOrden(v as OrdenSorteo)}
+                options={[
+                  { value: "ultimo_mayor", label: "La última balota" },
+                  { value: "primero_mayor", label: "La primera" },
+                ]}
+              />
+            </Field>
+          )}
           <p className="bg-muted/40 text-muted-foreground rounded-lg px-3 py-2 text-xs sm:col-span-2">
-            🎱 {labelSorteoPropio(Math.min(10, Math.max(1, Number(sorteoBolas) || 1)), sorteoOrden)}{" "}
+            🎱 {labelSorteoPropio(bolasNum, ganadorasNum, sorteoOrden)}{" "}
             Se sortea en vivo con una animación tipo baloto que queda guardada para que
             todos vean cómo salió.
           </p>
 
+          <Field label="¿Mostrar la simulación en el enlace público?" className="sm:col-span-2">
+            <Segmented
+              value={mostrarSimulacion ? "si" : "no"}
+              onChange={(v) => setMostrarSimulacion(v === "si")}
+              options={[
+                { value: "si", label: "Sí, que la vean" },
+                { value: "no", label: "No mostrarla" },
+              ]}
+            />
+            <p className="text-muted-foreground mt-1 text-xs">
+              Explica la mecánica, pero en algunas rifas el comprador cree que ese sorteo
+              es el de verdad. Aquí en el panel la tienes siempre.
+            </p>
+          </Field>
+
           {/* Preview: así se va a ver el día del sorteo */}
           <div className="sm:col-span-2">
             <SorteoDemo
-              bolas={Math.min(10, Math.max(1, Number(sorteoBolas) || 1))}
+              bolas={bolasNum}
+              ganadores={ganadorasNum}
               orden={sorteoOrden}
               premios={premios.map((p) =>
                 p.descripcion.trim() ||

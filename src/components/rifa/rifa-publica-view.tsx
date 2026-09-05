@@ -54,7 +54,17 @@ export function RifaPublicaView({
   // Se conserva para el mensaje de WhatsApp después de limpiar el formulario.
   const [nombreReservado, setNombreReservado] = useState("");
 
-  const { rifa, premios, grilla, pago, ganadores, sorteo, sorteoEnVivo, sorteoTotal } = data;
+  const {
+    rifa,
+    premios,
+    grilla,
+    pago,
+    ganadores,
+    sorteo,
+    sorteoEnVivo,
+    sorteoTotal,
+    sorteoFinalistas,
+  } = data;
   const cuentaPago = pago?.cuenta_numero ?? pago?.nequi_llave ?? null;
   const cuentaPagoLabel = labelCuentaPago(pago?.cuenta_tipo ?? (pago?.nequi_llave ? "nequi" : null));
   const tema = getTema(rifa.tema);
@@ -185,8 +195,19 @@ export function RifaPublicaView({
           </div>
         )}
 
-        {/* Hero: premio + promesa */}
-        <div className="mb-4 text-center">
+        {/* Hero: premio + promesa. Sobre la foto de fondo va sobre vidrio
+            esmerilado para que el texto no se pierda contra la imagen. */}
+        <div
+          className={
+            "mb-4 text-center " +
+            (rifa.imagen_fondo_url ? "rounded-2xl px-4 py-3 backdrop-blur-md" : "")
+          }
+          style={
+            rifa.imagen_fondo_url
+              ? { background: conAlfa(t.bg, claro ? 0.55 : 0.4) }
+              : undefined
+          }
+        >
           <p className="text-xs font-semibold uppercase tracking-wide text-[var(--rifa-accent)]">
             {rifa.tipo === "loteria" && rifa.loteria ? rifa.loteria : "Rifa"}
           </p>
@@ -296,11 +317,13 @@ export function RifaPublicaView({
             style={{ borderColor: t.line }}
           >
             <p>
-              🎱 <b style={{ color: t.text }}>{labelSorteoPropio(rifa.sorteo_bolas || 1, rifa.sorteo_orden)}</b>{" "}
+              🎱 <b style={{ color: t.text }}>{labelSorteoPropio(rifa.sorteo_bolas || 1, rifa.sorteo_ganadores || 1, rifa.sorteo_orden)}</b>{" "}
               El sorteo queda grabado y se puede ver aquí mismo.
             </p>
+            {rifa.mostrar_simulacion && (
             <SorteoDemo
               bolas={rifa.sorteo_bolas || 1}
+              ganadores={rifa.sorteo_ganadores || 1}
               orden={rifa.sorteo_orden}
               premios={premiosOrdenados.map((p) =>
                 p.tipo === "valor" && p.valor ? formatCOP(p.valor) : p.descripcion,
@@ -310,6 +333,7 @@ export function RifaPublicaView({
               ancho={ancho}
               className="w-full"
             />
+            )}
           </div>
         )}
 
@@ -352,7 +376,7 @@ export function RifaPublicaView({
               )}
             </p>
             <p className="mb-3 text-xs text-[var(--rifa-muted)]">
-              {labelSorteoPropio(sorteoTotal || (sorteo?.length ?? 1), rifa.sorteo_orden)}
+              {labelSorteoPropio(rifa.sorteo_bolas || 1, rifa.sorteo_ganadores || 1, rifa.sorteo_orden)}
               {sorteoEnVivo
                 ? " Las balotas van saliendo en este momento."
                 : formatFechaCO(rifa.sorteo_at, { conAnio: false })
@@ -367,6 +391,7 @@ export function RifaPublicaView({
               modo={sorteoEnVivo ? "espectador" : "auto"}
               reveladas={sorteo?.length ?? 0}
               total={sorteoTotal || undefined}
+              finalistas={sorteoFinalistas}
               autoPlay={false}
             />
           </div>

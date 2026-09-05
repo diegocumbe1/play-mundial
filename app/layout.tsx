@@ -7,6 +7,8 @@ import { BottomNav } from "@/components/bottom-nav";
 import { PullToRefresh } from "@/components/pull-to-refresh";
 import { Toaster } from "@/components/ui/sonner";
 import { getIdioma } from "@/lib/idioma-server";
+import { getMembership } from "@/lib/auth";
+import { tieneProductoHabilitado } from "@/lib/productos";
 import { SITE_URL } from "@/lib/site-url";
 
 // Cuerpo y UI: limpia, legible (fuente variable).
@@ -57,6 +59,15 @@ export default async function RootLayout({
 }>) {
   const idioma = await getIdioma();
 
+  // Torneos es un módulo por invitación: la navegación solo lo muestra a quien
+  // lo tenga habilitado (y al superadmin). El bloqueo de verdad está en las
+  // Server Actions; esto evita ofrecer una puerta que no abre.
+  const membership = await getMembership();
+  const torneos = membership
+    ? membership.rol === "superadmin" ||
+      (await tieneProductoHabilitado(membership.tenant_id, "torneos"))
+    : false;
+
   return (
     <html
       lang={idioma}
@@ -65,11 +76,12 @@ export default async function RootLayout({
       {/* Padding inferior en mobile para que la barra fija no tape el contenido. */}
       <body className="bg-polla-dark flex min-h-full flex-col pb-[calc(var(--bottom-nav-height)+env(safe-area-inset-bottom))] sm:pb-0">
         <PullToRefresh />
-        <BackofficeHeader />
+        <BackofficeHeader torneos={torneos} />
         {children}
         <BottomNav
           idioma={idioma}
           modo={process.env.POLLA_ACTIVA === "true" ? "polla" : "rifas"}
+          torneos={torneos}
         />
         <Toaster richColors position="top-center" theme="dark" />
       </body>

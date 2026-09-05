@@ -416,12 +416,22 @@ export interface Rifa {
   imagen_url: string | null;
   /** Imagen de fondo de la publicación (se oscurece para que el texto se lea). */
   imagen_fondo_url: string | null;
-  /** Sorteo propio: cuántas balotas se sacan. */
+  /** Sorteo propio, ronda 1: cuántas balotas salen como finalistas. */
   sorteo_bolas: number;
+  /**
+   * Sorteo propio, ronda 2: cuántas de las finalistas se sortean como
+   * ganadoras. Si es >= `sorteo_bolas` no hay segunda ronda y cada balota que
+   * sale ya lleva premio.
+   */
+  sorteo_ganadores: number;
+  /** Mostrar la simulación del sorteo en el enlace público. */
+  mostrar_simulacion: boolean;
   /** Sorteo propio: si el premio mayor es la última balota o la primera. */
   sorteo_orden: OrdenSorteo;
-  /** Números en el orden real en que salieron (para repetir la animación). */
+  /** Finalistas en el orden real en que salieron (ronda 1). */
   sorteo_secuencia: number[] | null;
+  /** Ganadoras en el orden real en que salieron (ronda 2). */
+  sorteo_finales: number[] | null;
   /**
    * Cuántas balotas ya cantó el organizador. El público solo puede ver esas:
    * es lo que permite el live sin filtrar el resultado que falta.
@@ -510,8 +520,10 @@ export interface GanadorPublico {
  * el orden real de extracción y qué premio se llevó.
  */
 export interface BolaSorteo {
-  /** Posición de extracción: 1 = la primera que salió. */
+  /** Posición de extracción dentro de su ronda: 1 = la primera que salió. */
   orden: number;
+  /** Ronda en la que salió: filtro de finalistas o sorteo del ganador. */
+  fase: "finalista" | "ganadora";
   numero: number;
   /** Premio que se llevó, o `null` si salió como suplente (sin premio). */
   premio: string | null;
@@ -569,7 +581,9 @@ export interface RifaInput {
   imagen_url?: string | null;
   imagen_fondo_url?: string | null;
   sorteo_bolas?: number;
+  sorteo_ganadores?: number;
   sorteo_orden?: OrdenSorteo;
+  mostrar_simulacion?: boolean;
   loteria?: string | null;
   loteria_url?: string | null;
   fecha_loteria?: string | null;

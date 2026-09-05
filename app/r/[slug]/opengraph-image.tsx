@@ -3,6 +3,7 @@ import { ImageResponse } from "next/og";
 import { getRifaPublica } from "@/actions/rifas";
 import { formatCOP, labelModoCifras, labelSorteoPropio } from "@/lib/rifa";
 import { formatFechaCO } from "@/lib/fecha-co";
+import { imagenRenderizableEnFlyer } from "@/lib/imagen";
 import { conAlfa, getTema } from "@/lib/temas-rifa";
 
 /**
@@ -67,13 +68,15 @@ export default async function Image({
       ? `Juega con las ${labelModoCifras(rifa.modo_cifras, rifa.formato_cifras)}${
           rifa.loteria ? ` de la ${rifa.loteria}` : ""
         }`
-      : labelSorteoPropio(rifa.sorteo_bolas || 1, rifa.sorteo_orden);
+      : labelSorteoPropio(rifa.sorteo_bolas || 1, rifa.sorteo_ganadores || 1, rifa.sorteo_orden);
 
-  // Una sola imagen remota (la del premio, o la de fondo): es lo que hace que
-  // el enlace se vea como la publicación. Se deja de lado si no es http(s) —
-  // satori no puede descargarla— y el resto del diseño no depende de ella.
-  const fondo = rifa.imagen_fondo_url ?? rifa.imagen_url;
-  const fondoOk = Boolean(fondo && /^https?:\/\//i.test(fondo));
+  // Una sola imagen remota, y manda la del PREMIO: en la vista previa del
+  // enlace es lo que hace clic (la de fondo entra solo si no hay foto). Se deja
+  // de lado si no es http(s) —satori no puede descargarla— y el resto del
+  // diseño no depende de ella.
+  const candidatas = [rifa.imagen_url, rifa.imagen_fondo_url];
+  const fondo = candidatas.find((u) => imagenRenderizableEnFlyer(u)) ?? null;
+  const fondoOk = Boolean(fondo);
 
   return new ImageResponse(
     (
@@ -89,13 +92,14 @@ export default async function Image({
             <img src={fondo!} alt="" width={1200} height={630} style={{ objectFit: "cover" }} />
           </div>
         )}
-        {/* El texto vive a la izquierda: ahí el velo es fuerte y hacia la derecha
-            se abre para que la foto se vea. */}
+        {/* El texto vive a la izquierda: ahí el velo del tema es fuerte. Hacia la
+            derecha se abre y termina en un oscurecido neutro, para que la foto
+            conserve sus colores en vez de teñirse del tema. */}
         {fondoOk && (
           <div
             style={{
               display: "flex", position: "absolute", left: 0, top: 0, width: 1200, height: 630,
-              background: `linear-gradient(90deg, ${conAlfa(f.bgTop, 0.88)} 0%, ${conAlfa(f.bgBottom, 0.55)} 55%, ${conAlfa(f.bgBottom, 0.3)} 100%)`,
+              background: `linear-gradient(90deg, ${conAlfa(f.bgTop, 0.9)} 0%, ${conAlfa(f.bgBottom, 0.5)} 45%, rgba(0,0,0,0.14) 100%)`,
             }}
           />
         )}

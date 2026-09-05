@@ -48,9 +48,12 @@ const ITEMS_BACKOFFICE: Item[] = [
 export function BottomNav({
   idioma = "es",
   modo = "polla",
+  torneos = false,
 }: {
   idioma?: Idioma;
   modo?: "polla" | "rifas";
+  /** Torneos es por invitación: se oculta a quien no lo tenga habilitado. */
+  torneos?: boolean;
 }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -63,7 +66,10 @@ export function BottomNav({
   // Modo rifas: nav solo en el backoffice (y nunca en el login).
   if (modo === "rifas" && (!esBackoffice || enLogin)) return null;
 
-  const items = modo === "rifas" ? ITEMS_BACKOFFICE : ITEMS_POLLA[idioma];
+  const items =
+    modo === "rifas"
+      ? ITEMS_BACKOFFICE.filter((i) => i.href !== "/admin/torneos" || torneos)
+      : ITEMS_POLLA[idioma];
 
   const esActivo = (href: string) =>
     href === "/"

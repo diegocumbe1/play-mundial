@@ -66,7 +66,7 @@ export default async function RifaDetallePage({
             rifa.loteria ? ` de la ${rifa.loteria}` : ""
           }`
         : null
-      : labelSorteoPropio(rifa.sorteo_bolas || 1, rifa.sorteo_orden),
+      : labelSorteoPropio(rifa.sorteo_bolas || 1, rifa.sorteo_ganadores || 1, rifa.sorteo_orden),
     fechaJuegoRifaTxt ? `Juega el ${fechaJuegoRifaTxt}` : null,
     `${formatCOP(rifa.precio_boleta)} por número`,
     `Quedan ${dash.libres} de ${rifa.cantidad_numeros}`,

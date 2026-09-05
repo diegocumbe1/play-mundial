@@ -67,10 +67,13 @@ export async function tieneProductoHabilitado(
 /**
  * Habilita los productos iniciales de un organizador recién creado. Se llama
  * al registrarse solo o cuando el superadmin le crea la cuenta.
+ *
+ * Por defecto solo RIFAS: torneos es un módulo por invitación que el superadmin
+ * activa desde /superadmin cuando el organizador lo necesita.
  */
 export async function habilitarProductosIniciales(
   tenantId: string,
-  productos: ProductoPlataforma[] = ["rifas", "torneos"],
+  productos: ProductoPlataforma[] = ["rifas"],
 ): Promise<void> {
   const svc = createServiceRoleClient();
   await svc.from("tenant_productos").upsert(

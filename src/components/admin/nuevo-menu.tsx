@@ -15,7 +15,14 @@ const OPCIONES = [
  * Selector de creación del backoffice. Sustituye al antiguo enlace "Nueva",
  * que asumía que el único producto era la rifa.
  */
-export function NuevoMenu({ className }: { className?: string }) {
+export function NuevoMenu({
+  className,
+  torneos = false,
+}: {
+  className?: string;
+  /** El módulo de torneos es por invitación: si no está, no se ofrece crear uno. */
+  torneos?: boolean;
+}) {
   const [abierto, setAbierto] = useState(false);
   const contenedor = useRef<HTMLDivElement>(null);
 
@@ -54,7 +61,7 @@ export function NuevoMenu({ className }: { className?: string }) {
           role="menu"
           className="border-border bg-background absolute right-0 top-full z-50 mt-1 w-44 overflow-hidden rounded-xl border shadow-lg"
         >
-          {OPCIONES.map((o) => {
+          {OPCIONES.filter((o) => o.href !== "/admin/torneos/nuevo" || torneos).map((o) => {
             const Icon = o.icon;
             return (
               <Link

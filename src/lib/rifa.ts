@@ -1,5 +1,6 @@
 import type {
   Boleta,
+  BolaSorteo,
   BoletaPublica,
   CriterioPremio,
   DashboardRifa,
@@ -189,12 +190,33 @@ export interface GanadorResuelto {
 /* Sorteo propio (tipo `interna`): balotas al azar, tipo baloto                */
 /* -------------------------------------------------------------------------- */
 
+/** ¿El sorteo tiene ronda final (se filtran finalistas y luego sale el ganador)? */
+export function tieneRondaFinal(bolas: number, ganadores: number): boolean {
+  return bolas > 1 && ganadores >= 1 && ganadores < bolas;
+}
+
 /**
- * Cómo se juega el sorteo propio, en palabras para el jugador:
- * "Se sacan 3 balotas al azar; el premio mayor se lo lleva la última".
+ * Cómo se juega el sorteo propio, en palabras para el jugador. Cubre los dos
+ * modos: una sola ronda ("se sacan 3 y el premio mayor es la última") y el de
+ * dos rondas ("se sacan 5 finalistas y de esas 5 sale 1 ganadora").
  */
-export function labelSorteoPropio(bolas: number, orden: OrdenSorteo): string {
+export function labelSorteoPropio(
+  bolas: number,
+  ganadores: number,
+  orden: OrdenSorteo,
+): string {
   if (bolas <= 1) return "Se saca 1 balota al azar y ese número gana.";
+
+  if (tieneRondaFinal(bolas, ganadores)) {
+    const final =
+      ganadores === 1
+        ? "se revuelven esas y sale 1: esa se lleva el premio mayor"
+        : `se revuelven esas y salen ${ganadores}, y el premio mayor se lo lleva ${
+            orden === "ultimo_mayor" ? "la última" : "la primera"
+          }`;
+    return `Se sacan ${bolas} balotas al azar como finalistas; ${final}.`;
+  }
+
   const cual = orden === "ultimo_mayor" ? "la última" : "la primera";
   return `Se sacan ${bolas} balotas al azar; el premio mayor se lo lleva ${cual} en salir.`;
 }
@@ -212,6 +234,59 @@ export function posicionPremioDeBola(
 ): number | null {
   const posicion = orden === "ultimo_mayor" ? bolas - indice : indice + 1;
   return posicion >= 1 && posicion <= totalPremios ? posicion : null;
+}
+
+/**
+ * Arma las balotas que se muestran (backoffice, público y simulación) a partir
+ * de las dos rondas. Es la única traducción de "números sorteados" a "qué se ve
+ * en pantalla", para que el panel, el live y el replay no se contradigan.
+ *
+ * Sin ronda final (`finales` vacío) cada balota que sale ya lleva su premio.
+ * Con ronda final, las de la primera quedan como finalistas sin premio y los
+ * premios se reparten entre las de la segunda.
+ */
+export function construirBolas({
+  finalistas,
+  finales = [],
+  premios,
+  orden,
+  nombre = () => null,
+}: {
+  finalistas: number[];
+  finales?: number[];
+  /** Descripciones de los premios, del mayor al menor. */
+  premios: string[];
+  orden: OrdenSorteo;
+  nombre?: (numero: number) => string | null;
+}): BolaSorteo[] {
+  const hayFinal = finales.length > 0;
+
+  const conPremio = (numeros: number[], fase: BolaSorteo["fase"]): BolaSorteo[] =>
+    numeros.map((numero, i) => {
+      const pos = posicionPremioDeBola(i, numeros.length, premios.length, orden);
+      return {
+        orden: i + 1,
+        fase,
+        numero,
+        premio: pos ? (premios[pos - 1] ?? null) : null,
+        mayor: pos === 1,
+        nombre: nombre(numero),
+      };
+    });
+
+  if (!hayFinal) return conPremio(finalistas, "ganadora");
+
+  return [
+    ...finalistas.map((numero, i) => ({
+      orden: i + 1,
+      fase: "finalista" as const,
+      numero,
+      premio: null,
+      mayor: false,
+      nombre: nombre(numero),
+    })),
+    ...conPremio(finales, "ganadora"),
+  ];
 }
 
 /**

@@ -15,6 +15,20 @@ const LADO_MAX = 1600;
 /** Por debajo de esto no vale la pena recomprimir. */
 const PESO_OK = 900_000;
 
+/**
+ * Formatos que sabe dibujar satori (el motor del flyer y de la vista previa del
+ * enlace). Un WebP o un AVIF se suben sin problema pero luego el flyer los deja
+ * en blanco, así que se convierten a JPEG antes de salir del navegador.
+ */
+const FORMATOS_RENDERIZABLES = ["image/jpeg", "image/png"];
+
+/** ¿Esta URL apunta a un formato que el flyer puede dibujar? */
+export function imagenRenderizableEnFlyer(url: string | null | undefined): boolean {
+  if (!url) return false;
+  if (!/^https?:\/\//i.test(url)) return false;
+  return !/\.(webp|avif|svg|heic|heif)(\?|#|$)/i.test(url);
+}
+
 export async function prepararImagen(
   file: File,
   { ladoMax = LADO_MAX, pesoOk = PESO_OK }: { ladoMax?: number; pesoOk?: number } = {},
@@ -23,10 +37,12 @@ export async function prepararImagen(
   // Los GIF pueden ser animados: recomprimirlos los dejaría en un solo cuadro.
   if (file.type === "image/gif") return file;
 
+  const convertir = !FORMATOS_RENDERIZABLES.includes(file.type);
+
   try {
     const bitmap = await createImageBitmap(file);
     const escala = Math.min(1, ladoMax / Math.max(bitmap.width, bitmap.height));
-    if (escala === 1 && file.size <= pesoOk) {
+    if (!convertir && escala === 1 && file.size <= pesoOk) {
       bitmap.close();
       return file;
     }
@@ -50,7 +66,9 @@ export async function prepararImagen(
     const blob = await new Promise<Blob | null>((resolve) =>
       canvas.toBlob(resolve, "image/jpeg", 0.82),
     );
-    if (!blob || blob.size >= file.size) return file;
+    // Al convertir formato se acepta aunque pese más: el WebP es más liviano
+    // que el JPEG, pero el flyer no lo puede dibujar.
+    if (!blob || (!convertir && blob.size >= file.size)) return file;
 
     const nombre = file.name.replace(/\.[^.]+$/, "") || "imagen";
     return new File([blob], `${nombre}.jpg`, { type: "image/jpeg" });

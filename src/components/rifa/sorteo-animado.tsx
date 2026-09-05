@@ -74,6 +74,7 @@ export function SorteoAnimado({
   autoPlay = true,
   reveladas = 0,
   total,
+  finalistas = 0,
   onRevelar,
   onFin,
 }: {
@@ -93,6 +94,11 @@ export function SorteoAnimado({
    * `bolas.length` (las que faltan se pintan como espacios vacíos).
    */
   total?: number;
+  /**
+   * Cuántas de las balotas son de la 1ª ronda (finalistas). Si es 0 —o igual al
+   * total— se pinta una sola tanda; si no, se separan las dos rondas.
+   */
+  finalistas?: number;
   /** En `manual`: se avisa cada vez que se canta una balota (índice 0-based). */
   onRevelar?: (indice: number) => void;
   onFin?: () => void;
@@ -182,6 +188,18 @@ export function SorteoAnimado({
   const ultimaCantada = termino ? bolas[bolas.length - 1] : actual;
   const enPantalla = girando || enEspera ? ruleta : (ultimaCantada?.numero ?? min);
 
+  // Rondas: la clasificatoria filtra finalistas, la final saca al ganador.
+  const corte = finalistas > 0 && finalistas < totalBolas ? finalistas : 0;
+  const dosRondas = corte > 0;
+
+  /** "la 2ª balota finalista" / "la balota ganadora", según en qué ronda va. */
+  function etiquetaPaso(indice: number): string {
+    if (!dosRondas) return `la balota ${indice + 1} de ${totalBolas}`;
+    return indice < corte
+      ? `la finalista ${indice + 1} de ${corte}`
+      : `la ganadora ${indice - corte + 1} de ${totalBolas - corte}`;
+  }
+
   /** El organizador canta la balota que está girando / pasa a la siguiente. */
   function avanzar() {
     setEstado((s) => {
@@ -242,9 +260,9 @@ export function SorteoAnimado({
         aria-live="polite"
       >
         {enEspera
-          ? `Listo para sacar la balota ${efectivo.paso + 1} de ${totalBolas}`
+          ? `Listo para sacar ${etiquetaPaso(efectivo.paso)}`
           : girando
-            ? `Sacando la balota ${efectivo.paso + 1} de ${totalBolas}…`
+            ? `Sacando ${etiquetaPaso(efectivo.paso)}…`
             : termino
               ? "¡Sorteo terminado!"
               : actual?.premio
@@ -268,20 +286,54 @@ export function SorteoAnimado({
           ) : efectivo.fase === "espera" ? (
             <>
               <Dices className="size-4" />
-              {efectivo.paso === 0 ? "GIRAR" : `Sacar balota ${efectivo.paso + 1}`}
+              {efectivo.paso === 0
+                ? "GIRAR"
+                : dosRondas && efectivo.paso === corte
+                  ? "Sortear el ganador"
+                  : `Sacar ${etiquetaPaso(efectivo.paso)}`}
             </>
           ) : (
             <>
               <ChevronRight className="size-4" />
-              {efectivo.paso + 1 < totalBolas ? "Siguiente balota" : "Cerrar el sorteo"}
+              {efectivo.paso + 1 < totalBolas
+                ? dosRondas && efectivo.paso + 1 === corte
+                  ? "Pasar a la ronda final"
+                  : "Siguiente balota"
+                : "Cerrar el sorteo"}
             </>
           )}
         </button>
       )}
 
-      {/* Balotas que ya salieron, en orden */}
-      <ol className="flex w-full flex-wrap justify-center gap-2">
-        {Array.from({ length: totalBolas }, (_, i) => {
+      {/* Balotas que ya salieron, en orden. Con dos rondas se separan para que
+          se entienda que las finalistas no ganan por sí solas. */}
+      {dosRondas ? (
+        <div className="flex w-full flex-col gap-3">
+          <Tanda titulo={`Finalistas (${corte})`}>{tramo(0, corte)}</Tanda>
+          <Tanda titulo={`Sorteo final (${totalBolas - corte})`}>
+            {tramo(corte, totalBolas)}
+          </Tanda>
+        </div>
+      ) : (
+        <ol className="flex w-full flex-wrap justify-center gap-2">{tramo(0, totalBolas)}</ol>
+      )}
+
+      {termino && !espectador && (
+        <button
+          type="button"
+          onClick={() => setEstado({ paso: 0, fase: manual ? "espera" : "girando" })}
+          className="inline-flex items-center gap-1.5 text-xs font-medium hover:underline"
+          style={{ color: C.accent }}
+        >
+          <RotateCcw className="size-3.5" /> Ver el sorteo otra vez
+        </button>
+      )}
+    </div>
+  );
+
+  function tramo(desde: number, hasta: number) {
+    return Array.from({ length: Math.max(0, hasta - desde) }, (_, k) => {
+          const i = desde + k;
           const b = bolas[i];
           const visible =
             !!b && (i < efectivo.paso || (i === efectivo.paso && !girando && !enEspera));
@@ -299,7 +351,11 @@ export function SorteoAnimado({
                 className="text-[10px] font-semibold uppercase tracking-wide"
                 style={{ color: C.muted }}
               >
-                {i + 1}ª balota
+                {dosRondas
+                  ? i < corte
+                    ? `Finalista ${i + 1}`
+                    : `Ganadora ${i - corte + 1}`
+                  : `${i + 1}ª balota`}
               </span>
               <span
                 key={visible ? "cantada" : "pendiente"}
@@ -336,19 +392,21 @@ export function SorteoAnimado({
               )}
             </li>
           );
-        })}
-      </ol>
+    });
+  }
+}
 
-      {termino && !espectador && (
-        <button
-          type="button"
-          onClick={() => setEstado({ paso: 0, fase: manual ? "espera" : "girando" })}
-          className="inline-flex items-center gap-1.5 text-xs font-medium hover:underline"
-          style={{ color: C.accent }}
-        >
-          <RotateCcw className="size-3.5" /> Ver el sorteo otra vez
-        </button>
-      )}
+/** Una ronda del sorteo, con su título. */
+function Tanda({ titulo, children }: { titulo: string; children: React.ReactNode }) {
+  return (
+    <div className="flex flex-col items-center gap-1.5">
+      <p
+        className="text-[10px] font-bold uppercase tracking-widest"
+        style={{ color: C.muted }}
+      >
+        {titulo}
+      </p>
+      <ol className="flex flex-wrap justify-center gap-2">{children}</ol>
     </div>
   );
 }

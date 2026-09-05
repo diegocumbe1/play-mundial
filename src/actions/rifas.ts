@@ -7,11 +7,13 @@ import { esSuperadmin, getMembership } from "@/lib/auth";
 import { resolverActivacion } from "@/lib/planes";
 import {
   boletasElegibles,
+  construirBolas,
   construirGrillaPublica,
   numeroEnRango,
   posicionPremioDeBola,
   resolverGanadores,
   sortearBolas,
+  tieneRondaFinal,
 } from "@/lib/rifa";
 import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
 import type {
@@ -71,7 +73,9 @@ const rifaSchema = z.object({
   imagen_url: z.string().trim().url("La imagen debe ser una URL").nullable().optional().or(z.literal("")),
   imagen_fondo_url: z.string().trim().url("La imagen debe ser una URL").nullable().optional().or(z.literal("")),
   sorteo_bolas: z.number().int().min(1).max(10).default(1),
+  sorteo_ganadores: z.number().int().min(1).max(10).default(1),
   sorteo_orden: z.enum(["ultimo_mayor", "primero_mayor"]).default("ultimo_mayor"),
+  mostrar_simulacion: z.boolean().default(true),
   loteria: z.string().trim().nullable().optional(),
   loteria_url: z.string().trim().nullable().optional(),
   fecha_loteria: z.string().trim().nullable().optional(),
@@ -103,7 +107,10 @@ function camposRifa(d: z.infer<typeof rifaSchema>) {
     imagen_url: d.imagen_url || null,
     imagen_fondo_url: d.imagen_fondo_url || null,
     sorteo_bolas: esLoteria ? 1 : d.sorteo_bolas,
+    // No se puede sortear más ganadoras que finalistas.
+    sorteo_ganadores: esLoteria ? 1 : Math.min(d.sorteo_ganadores, d.sorteo_bolas),
     sorteo_orden: d.sorteo_orden,
+    mostrar_simulacion: d.mostrar_simulacion,
     loteria: esLoteria ? (d.loteria ?? null) : null,
     loteria_url: esLoteria ? (d.loteria_url || null) : null,
     fecha_loteria: esLoteria ? (d.fecha_loteria ?? null) : null,
@@ -826,31 +833,37 @@ export async function sortearRifaInterna(
     };
   }
 
-  const cuantas = Math.min(rifa.sorteo_bolas || 1, elegibles.length);
   const porNumero = new Map(elegibles.map((b) => [b.numero, b]));
+
+  // Ronda 1 (clasificatoria): finalistas de entre todas las que juegan.
+  const cuantas = Math.min(rifa.sorteo_bolas || 1, elegibles.length);
   const secuencia = sortearBolas(
     elegibles.map((b) => b.numero),
     cuantas,
     rngSeguro,
   );
 
-  const bolas: BolaSorteo[] = secuencia.map((numero, i) => {
-    const pos = posicionPremioDeBola(i, cuantas, premios.length, rifa.sorteo_orden);
-    const premio = pos ? premios[pos - 1] : null;
-    return {
-      orden: i + 1,
-      numero,
-      premio: premio?.descripcion ?? null,
-      mayor: pos === 1,
-      nombre: porNumero.get(numero)?.comprador_nombre ?? null,
-    };
+  // Ronda 2 (final): se revuelven SOLO las finalistas y salen las ganadoras.
+  // Si se pidieron tantas ganadoras como finalistas, no hay segunda ronda.
+  const cuantasGanadoras = Math.min(rifa.sorteo_ganadores || 1, cuantas);
+  const finales = tieneRondaFinal(cuantas, cuantasGanadoras)
+    ? sortearBolas(secuencia, cuantasGanadoras, rngSeguro)
+    : [];
+
+  const premiados = finales.length > 0 ? finales : secuencia;
+  const bolas = construirBolas({
+    finalistas: secuencia,
+    finales,
+    premios: premios.map((p) => p.descripcion),
+    orden: rifa.sorteo_orden,
+    nombre: (n) => porNumero.get(n)?.comprador_nombre ?? null,
   });
 
   // El sorteo se puede repetir mientras no se publique: se reemplaza entero.
   await supabase.from("ganadores").delete().eq("rifa_id", rifaId);
-  const filas = secuencia
+  const filas = premiados
     .map((numero, i) => {
-      const pos = posicionPremioDeBola(i, cuantas, premios.length, rifa.sorteo_orden);
+      const pos = posicionPremioDeBola(i, premiados.length, premios.length, rifa.sorteo_orden);
       if (!pos) return null;
       return {
         rifa_id: rifaId,
@@ -872,6 +885,7 @@ export async function sortearRifaInterna(
     .update({
       estado: "sorteada",
       sorteo_secuencia: secuencia,
+      sorteo_finales: finales.length > 0 ? finales : null,
       sorteo_at: new Date().toISOString(),
       // Arranca sin cantar: el organizador revela balota por balota.
       sorteo_reveladas: 0,
@@ -898,13 +912,16 @@ export async function revelarBalotas(
   const supabase = await createClient();
   const { data: rifa } = await supabase
     .from("rifas")
-    .select("sorteo_secuencia, sorteo_reveladas, slug_publico")
+    .select("sorteo_secuencia, sorteo_finales, sorteo_reveladas, slug_publico")
     .eq("id", rifaId)
     .maybeSingle();
   if (!rifa) return { success: false, error: "Rifa no encontrada" };
 
-  const r = rifa as Pick<Rifa, "sorteo_secuencia" | "sorteo_reveladas" | "slug_publico">;
-  const total = r.sorteo_secuencia?.length ?? 0;
+  const r = rifa as Pick<
+    Rifa,
+    "sorteo_secuencia" | "sorteo_finales" | "sorteo_reveladas" | "slug_publico"
+  >;
+  const total = (r.sorteo_secuencia?.length ?? 0) + (r.sorteo_finales?.length ?? 0);
   if (total === 0) return { success: false, error: "Todavía no hay sorteo que cantar" };
 
   const reveladas = Math.min(total, Math.max(r.sorteo_reveladas ?? 0, Math.trunc(hasta)));
@@ -943,6 +960,7 @@ export async function limpiarSorteo(rifaId: string): Promise<ActionResult> {
     .update({
       estado: "cerrada",
       sorteo_secuencia: null,
+      sorteo_finales: null,
       sorteo_at: null,
       sorteo_reveladas: 0,
     })
@@ -991,8 +1009,10 @@ export interface RifaPublica {
     | "imagen_url"
     | "imagen_fondo_url"
     | "sorteo_bolas"
+    | "sorteo_ganadores"
     | "sorteo_orden"
     | "sorteo_at"
+    | "mostrar_simulacion"
     | "loteria"
     | "loteria_url"
     | "fecha_loteria"
@@ -1015,6 +1035,8 @@ export interface RifaPublica {
   sorteoEnVivo: boolean;
   /** Cuántas balotas tiene el sorteo completo (para pintar los espacios vacíos). */
   sorteoTotal: number;
+  /** Cuántas de esas son de la ronda clasificatoria (0 si hubo una sola ronda). */
+  sorteoFinalistas: number;
 }
 
 /** Datos públicos de una rifa por slug. NUNCA expone nombre/teléfono/estado real. */
@@ -1060,8 +1082,13 @@ export async function getRifaPublica(
 
   // Un solo viaje por los nombres de los números implicados (ganadores y balotas).
   const numerosSorteo = Array.isArray(r.sorteo_secuencia) ? r.sorteo_secuencia : [];
+  const numerosFinales = Array.isArray(r.sorteo_finales) ? r.sorteo_finales : [];
   const numerosInteres = [
-    ...new Set([...filasGanadores.map((g) => g.numero), ...numerosSorteo]),
+    ...new Set([
+      ...filasGanadores.map((g) => g.numero),
+      ...numerosSorteo,
+      ...numerosFinales,
+    ]),
   ];
   const nombrePorNumero = new Map<number, string>();
   if (numerosInteres.length > 0) {
@@ -1089,29 +1116,22 @@ export async function getRifaPublica(
   // replay). Antes de cantar la primera no se envía nada.
   const premiosOrdenados = [...((premios as Premio[]) ?? [])].sort((a, b) => a.orden - b.orden);
   const publicado = ganadores.length > 0;
+  const totalBolas = numerosSorteo.length + numerosFinales.length;
   const cantadas = publicado
-    ? numerosSorteo.length
-    : Math.min(r.sorteo_reveladas ?? 0, numerosSorteo.length);
+    ? totalBolas
+    : Math.min(r.sorteo_reveladas ?? 0, totalBolas);
 
-  const sorteo: BolaSorteo[] | null =
-    cantadas > 0
-      ? numerosSorteo.slice(0, cantadas).map((numero, i) => {
-          const pos = posicionPremioDeBola(
-            i,
-            numerosSorteo.length,
-            premiosOrdenados.length,
-            r.sorteo_orden,
-          );
-          return {
-            orden: i + 1,
-            numero,
-            premio: pos ? (premiosOrdenados[pos - 1]?.descripcion ?? null) : null,
-            mayor: pos === 1,
-            nombre: nombrePorNumero.get(numero) ?? null,
-          };
-        })
-      : null;
-  const sorteoEnVivo = numerosSorteo.length > 0 && !publicado && cantadas < numerosSorteo.length;
+  // Se recortan las DOS rondas al punto que ya cantó el organizador: las balotas
+  // que faltan no salen de aquí.
+  const todas = construirBolas({
+    finalistas: numerosSorteo,
+    finales: numerosFinales,
+    premios: premiosOrdenados.map((p) => p.descripcion),
+    orden: r.sorteo_orden,
+    nombre: (n) => nombrePorNumero.get(n) ?? null,
+  });
+  const sorteo: BolaSorteo[] | null = cantadas > 0 ? todas.slice(0, cantadas) : null;
+  const sorteoEnVivo = totalBolas > 0 && !publicado && cantadas < totalBolas;
 
   return {
     success: true,
@@ -1130,8 +1150,10 @@ export async function getRifaPublica(
         imagen_url: r.imagen_url,
         imagen_fondo_url: r.imagen_fondo_url,
         sorteo_bolas: r.sorteo_bolas,
+        sorteo_ganadores: r.sorteo_ganadores,
         sorteo_orden: r.sorteo_orden,
         sorteo_at: r.sorteo_at,
+        mostrar_simulacion: r.mostrar_simulacion,
         loteria: r.loteria,
         loteria_url: r.loteria_url,
         fecha_loteria: r.fecha_loteria,
@@ -1152,7 +1174,8 @@ export async function getRifaPublica(
       ganadores,
       sorteo,
       sorteoEnVivo,
-      sorteoTotal: numerosSorteo.length,
+      sorteoTotal: totalBolas,
+      sorteoFinalistas: numerosFinales.length > 0 ? numerosSorteo.length : 0,
     },
   };
 }

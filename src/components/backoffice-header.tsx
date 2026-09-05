@@ -15,21 +15,25 @@ const LINKS = [
   { href: "/precios", label: "Planes", icon: Settings },
 ] as const;
 
-/** Header desktop del backoffice. En mobile manda BottomNav. */
-export function BackofficeHeader() {
+/**
+ * Header desktop del backoffice. En mobile manda BottomNav.
+ *
+ * `torneos` llega del layout (servidor): torneos es un módulo por invitación y
+ * quien no lo tenga habilitado no debe verlo. Ocultarlo es solo cosmético — el
+ * bloqueo real vive en `accesoTorneos()` de las Server Actions.
+ */
+export function BackofficeHeader({ torneos = false }: { torneos?: boolean }) {
   const pathname = usePathname();
   const esBackoffice =
     pathname.startsWith("/admin") || pathname.startsWith("/superadmin");
 
   if (!esBackoffice || pathname.startsWith("/admin/login")) return null;
 
+  const visibles = LINKS.filter((l) => l.href !== "/admin/torneos" || torneos);
   const links =
     pathname.startsWith("/superadmin")
-      ? [
-          ...LINKS,
-          { href: "/superadmin", label: "Plataforma", icon: Settings },
-        ]
-      : LINKS;
+      ? [...visibles, { href: "/superadmin", label: "Plataforma", icon: Settings }]
+      : visibles;
 
   function activo(href: string) {
     if (href === "/admin") return pathname === "/admin";
@@ -87,7 +91,7 @@ export function BackofficeHeader() {
               </Link>
             );
           })}
-          <NuevoMenu />
+          <NuevoMenu torneos={torneos} />
         </nav>
 
         <LogoutButton />

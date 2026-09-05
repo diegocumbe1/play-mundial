@@ -39,11 +39,11 @@ import type { Boleta, BolaSorteo, Ganador, Premio, Rifa } from "@/types";
 import {
   anchoNumeros,
   boletasElegibles,
+  construirBolas,
   enmascararNombre,
   formatNumero,
   inicioNumeros,
   labelSorteoPropio,
-  posicionPremioDeBola,
   ultimoNumero,
 } from "@/lib/rifa";
 
@@ -75,26 +75,27 @@ export function SorteoPanel({
   const publicado = ganadores.some((g) => g.publicado);
   const juegan = boletasElegibles(rifa, boletas).length;
   const cantadas = rifa.sorteo_reveladas ?? 0;
+  // Corte entre la ronda clasificatoria y la final (0 si hubo una sola ronda).
+  const finalistas = (rifa.sorteo_finales?.length ?? 0) > 0
+    ? (rifa.sorteo_secuencia?.length ?? 0)
+    : 0;
 
   // Reconstruye las balotas del último sorteo guardado (incluidas las suplentes,
   // que no quedan en `ganadores`) para poder repetir la animación.
   const bolasGuardadas = useMemo<BolaSorteo[]>(() => {
-    const secuencia = rifa.sorteo_secuencia ?? [];
-    if (secuencia.length === 0) return [];
+    const finalistas = rifa.sorteo_secuencia ?? [];
+    if (finalistas.length === 0) return [];
     const ordenados = [...premios].sort((a, b) => a.orden - b.orden);
-    return secuencia.map((numero, i) => {
-      const pos = posicionPremioDeBola(i, secuencia.length, ordenados.length, rifa.sorteo_orden);
-      return {
-        orden: i + 1,
-        numero,
-        premio: pos ? (ordenados[pos - 1]?.descripcion ?? null) : null,
-        mayor: pos === 1,
-        nombre: porNumero.get(numero)?.comprador_nombre ?? null,
-      };
+    return construirBolas({
+      finalistas,
+      finales: rifa.sorteo_finales ?? [],
+      premios: ordenados.map((p) => p.descripcion),
+      orden: rifa.sorteo_orden,
+      nombre: (n) => porNumero.get(n)?.comprador_nombre ?? null,
     });
     // `porNumero` se recalcula en cada render junto con `boletas`.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rifa.sorteo_secuencia, rifa.sorteo_orden, premios, boletas]);
+  }, [rifa.sorteo_secuencia, rifa.sorteo_finales, rifa.sorteo_orden, premios, boletas]);
 
   const sorteoAMedias =
     bolasGuardadas.length > 0 && !publicado && cantadas < bolasGuardadas.length;
@@ -208,7 +209,7 @@ export function SorteoPanel({
               <Dices className="text-primary size-4" /> Sorteo en vivo
             </p>
             <p className="text-muted-foreground text-xs">
-              {labelSorteoPropio(rifa.sorteo_bolas || 1, rifa.sorteo_orden)} Juegan las{" "}
+              {labelSorteoPropio(rifa.sorteo_bolas || 1, rifa.sorteo_ganadores || 1, rifa.sorteo_orden)} Juegan las{" "}
               {rifa.solo_pagadas_juegan ? "boletas pagadas" : "boletas vendidas"}:{" "}
               <b>{juegan}</b> número(s).
             </p>
@@ -279,6 +280,7 @@ export function SorteoPanel({
                   ancho={ancho}
                   min={inicioNumeros(rifa)}
                   max={ultimoNumero(rifa)}
+                  finalistas={finalistas}
                   autoPlay={false}
                 />
               </div>
@@ -335,7 +337,7 @@ export function SorteoPanel({
               <Dices className="text-primary size-5" /> Sorteo de {rifa.nombre}
             </DialogTitle>
             <DialogDescription>
-              {labelSorteoPropio(enVivo?.length ?? 1, rifa.sorteo_orden)}{" "}
+              {labelSorteoPropio(rifa.sorteo_bolas || 1, rifa.sorteo_ganadores || 1, rifa.sorteo_orden)}{" "}
               {cantando
                 ? "Tú marcas el ritmo: cada balota se publica en la página pública apenas la cantas."
                 : "Repetición del sorteo guardado."}
@@ -349,6 +351,7 @@ export function SorteoPanel({
               max={ultimoNumero(rifa)}
               modo={cantando ? "manual" : "auto"}
               reveladas={cantando ? cantadas : 0}
+              finalistas={finalistas}
               onRevelar={cantando ? publicarAvance : undefined}
               onFin={cantando ? () => router.refresh() : undefined}
             />
