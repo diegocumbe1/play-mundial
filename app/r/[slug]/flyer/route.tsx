@@ -156,6 +156,10 @@ export async function GET(
     ? conTarjetas ? 420 : 520
     : rifa.cantidad_numeros <= 40 ? (conTarjetas ? 300 : 420) : 260;
   const anchoTarjeta = premiosTop.length === 2 ? 476 : 312;
+  // El 1° se destaca en dorado fijo, no con el acento del tema: en temas como
+  // azul o verde el acento es casi el color del fondo y el principal se perdía.
+  const ORO = "#FFC93C";
+  const ORO_INK = "#2A1F00";
   const fotoTarjeta = premiosTop.length === 2 ? 170 : 120;
   const cuentaPago = pago?.cuenta_numero ?? pago?.nequi_llave ?? null;
   const pagoLinea = cuentaPago
@@ -371,8 +375,8 @@ export async function GET(
                     style={{
                       display: "flex", flexDirection: "column", width: anchoTarjeta,
                       padding: 18, borderRadius: 26,
-                      background: i === 0 ? conAlfa(f.accent, 0.22) : "rgba(0,0,0,0.28)",
-                      border: `3px solid ${i === 0 ? f.accent : "rgba(255,255,255,0.45)"}`,
+                      background: i === 0 ? conAlfa(ORO, 0.16) : "rgba(0,0,0,0.28)",
+                      border: `3px solid ${i === 0 ? ORO : "rgba(255,255,255,0.35)"}`,
                     }}
                   >
                     {/* Puesto + cómo se gana */}
@@ -381,8 +385,8 @@ export async function GET(
                         style={{
                           display: "flex", alignItems: "center", justifyContent: "center",
                           width: 58, height: 58, borderRadius: 29, flexShrink: 0,
-                          background: i === 0 ? f.accent : f.card,
-                          color: i === 0 ? f.card : f.ink, fontSize: 30, fontWeight: 800,
+                          background: i === 0 ? ORO : f.card,
+                          color: i === 0 ? ORO_INK : f.ink, fontSize: 30, fontWeight: 800,
                         }}
                       >
                         {i + 1}°
@@ -392,8 +396,8 @@ export async function GET(
                           style={{
                             display: "flex", flexDirection: "column", flex: 1,
                             padding: "8px 12px", borderRadius: 14,
-                            background: i === 0 ? f.accent : f.card,
-                            color: i === 0 ? f.card : f.ink,
+                            background: i === 0 ? ORO : f.card,
+                            color: i === 0 ? ORO_INK : f.ink,
                           }}
                         >
                           <div style={{ display: "flex", fontSize: 20, fontWeight: 600 }}>

@@ -573,7 +573,6 @@ export async function registrarBoletaAdmin(
 ): Promise<ActionResult> {
   const acceso = await puedeTocarNumeros();
   if (!acceso.success) return acceso;
-  const membership = acceso.data;
 
   const parsed = registrarBoletaSchema.safeParse(input);
   if (!parsed.success) {
@@ -582,9 +581,19 @@ export async function registrarBoletaAdmin(
   const d = parsed.data;
 
   const supabase = await createClient();
+  // La boleta lleva el tenant de la RIFA, no el de quien la registra: el
+  // superadmin vende en rifas de otros organizadores (y el trigger
+  // `boletas_coherencia_tenant` rechaza cualquier otro).
+  const { data: rifa } = await supabase
+    .from("rifas")
+    .select("tenant_id")
+    .eq("id", d.rifa_id)
+    .maybeSingle();
+  if (!rifa) return { success: false, error: "Rifa no encontrada" };
+
   const { error } = await supabase.from("boletas").insert({
     rifa_id: d.rifa_id,
-    tenant_id: membership.tenant_id,
+    tenant_id: (rifa as { tenant_id: string }).tenant_id,
     numero: d.numero,
     estado: d.pagado ? "pagado" : "reservado",
     comprador_nombre: d.comprador_nombre,
@@ -619,7 +628,6 @@ export async function registrarBoletasLote(
 ): Promise<ActionResult<{ registrados: number[]; ocupados: number[] }>> {
   const acceso = await puedeTocarNumeros();
   if (!acceso.success) return acceso;
-  const membership = acceso.data;
 
   const parsed = registrarLoteSchema.safeParse(input);
   if (!parsed.success) {
@@ -630,7 +638,7 @@ export async function registrarBoletasLote(
   const supabase = await createClient();
   const { data: rifa } = await supabase
     .from("rifas")
-    .select("cantidad_numeros, numero_inicial")
+    .select("tenant_id, cantidad_numeros, numero_inicial")
     .eq("id", d.rifa_id)
     .maybeSingle();
   if (!rifa) return { success: false, error: "Rifa no encontrada" };
@@ -642,7 +650,8 @@ export async function registrarBoletasLote(
 
   const base = {
     rifa_id: d.rifa_id,
-    tenant_id: membership.tenant_id,
+    // El de la rifa, no el de quien registra (ver registrarBoletaAdmin).
+    tenant_id: (rifa as { tenant_id: string }).tenant_id,
     estado: d.pagado ? ("pagado" as const) : ("reservado" as const),
     comprador_nombre: d.comprador_nombre,
     comprador_telefono: d.comprador_telefono ?? null,
