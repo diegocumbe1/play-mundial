@@ -133,7 +133,10 @@ export async function GET(
   const fechaJuegoTxt = formatFechaCO(fechaJuego, { conAnio: false });
   const mostrarGrilla = rifa.cantidad_numeros <= 200;
   // Las tarjetas de premios piden ~330 px: la grilla se compacta para dejarles sitio.
-  const cell = rifa.cantidad_numeros <= 100 ? (conTarjetas ? 74 : 84) : conTarjetas ? 52 : 60;
+  const cell = rifa.cantidad_numeros <= 100 ? (conTarjetas ? 78 : 84) : conTarjetas ? 52 : 60;
+  // Con celdas más chicas cabrían 11 por fila: se fija a 10 para que lea 00–09, 10–19…
+  const anchoGrilla =
+    conTarjetas && rifa.cantidad_numeros <= 100 ? cell * 10 + 8 * 9 : undefined;
   const pago = res.data.pago;
   // Solo se embebe el QR si es una URL http(s) válida (satori la descarga).
   const qrOk = Boolean(pago?.qr_url && /^https?:\/\//i.test(pago.qr_url));
@@ -270,7 +273,12 @@ export async function GET(
 
         {/* Grilla (ocupado/libre — nunca revela pago) */}
         {mostrarGrilla ? (
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, justifyContent: "center", marginTop: conTarjetas ? 24 : 32 }}>
+          <div
+            style={{
+              display: "flex", flexWrap: "wrap", gap: 8, justifyContent: "center",
+              marginTop: conTarjetas ? 24 : 32, width: anchoGrilla, alignSelf: "center",
+            }}
+          >
             {grilla.map((c) => (
               <div
                 key={c.numero}
