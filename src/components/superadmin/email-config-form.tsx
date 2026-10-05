@@ -9,6 +9,7 @@ import { guardarEmailConfig, probarEmail, type EmailConfigVista } from "@/action
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { MARCA } from "@/lib/marca";
 
 /**
  * Correo saliente de la plataforma (Resend).
@@ -123,7 +124,7 @@ export function EmailConfigForm({ inicial }: { inicial: EmailConfigVista }) {
         <Input
           value={fromNombre}
           onChange={(e) => setFromNombre(e.target.value)}
-          placeholder="Play Mundial"
+          placeholder={MARCA.nombre}
         />
       </div>
       <div className="sm:col-span-2">

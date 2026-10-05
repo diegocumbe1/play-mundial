@@ -3,11 +3,12 @@
 import { useTransition } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Trophy } from "lucide-react";
+import { Ticket } from "lucide-react";
 
 import { cambiarIdiomaAction } from "@/actions/idioma";
 import { PageRefreshButton } from "@/components/page-refresh-button";
 import type { Idioma } from "@/lib/idioma";
+import { MARCA } from "@/lib/marca";
 import { cn } from "@/lib/utils";
 
 const LINKS: Record<Idioma, { href: string; label: string }[]> = {
@@ -54,9 +55,9 @@ export function SiteHeader({
       <header className="bg-polla-dark/80 border-polla-line/70 fixed inset-x-0 top-0 z-50 border-b pt-[env(safe-area-inset-top)] backdrop-blur-md sm:sticky sm:pt-0">
         <div className="mx-auto flex h-[var(--app-header-height)] max-w-5xl items-center justify-between gap-4 px-4 sm:h-auto sm:py-3">
           <Link href="/" className="flex min-w-0 items-center gap-2">
-            <Trophy className="text-polla-gold size-6 shrink-0" />
+            <Ticket className="text-polla-gold size-6 shrink-0" />
             <span className="font-heading text-polla-gold truncate text-xl leading-none tracking-wide sm:text-2xl">
-              Polla Mundial 2026
+              {MARCA.nombre}
             </span>
           </Link>
 

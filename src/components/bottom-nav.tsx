@@ -49,18 +49,23 @@ export function BottomNav({
   idioma = "es",
   modo = "polla",
   torneos = false,
+  sesion = false,
 }: {
   idioma?: Idioma;
   modo?: "polla" | "rifas";
   /** Torneos es por invitación: se oculta a quien no lo tenga habilitado. */
   torneos?: boolean;
+  /** Hay sesión: `/precios` forma parte del panel. */
+  sesion?: boolean;
 }) {
   const pathname = usePathname();
   const router = useRouter();
   const [, startTransition] = useTransition();
 
   const esBackoffice =
-    pathname.startsWith("/admin") || pathname.startsWith("/superadmin");
+    pathname.startsWith("/admin") ||
+    pathname.startsWith("/superadmin") ||
+    (sesion && pathname === "/precios");
   const enLogin = pathname.startsWith("/admin/login");
 
   // Modo rifas: nav solo en el backoffice (y nunca en el login).

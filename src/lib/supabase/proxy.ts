@@ -43,7 +43,15 @@ export async function updateSession(request: NextRequest) {
   // El Mundial (polla) ya terminó. Con POLLA_ACTIVA != "true" se ocultan sus
   // rutas de juego y se redirige a la portada (la vertical de rifas). No borra datos.
   const pollaActiva = process.env.POLLA_ACTIVA === "true";
-  const rutasPolla = ["/jugar", "/resultados", "/comunidad"];
+  // Todo lo que quedó del Mundial. `/terminos` NO va aquí: son los términos
+  // vigentes de la plataforma de rifas y tienen que seguir accesibles.
+  const rutasPolla = [
+    "/jugar",
+    "/resultados",
+    "/comunidad",
+    "/partidos",
+    "/equipos",
+  ];
   if (!pollaActiva && rutasPolla.some((r) => pathname.startsWith(r))) {
     const url = request.nextUrl.clone();
     url.pathname = "/";

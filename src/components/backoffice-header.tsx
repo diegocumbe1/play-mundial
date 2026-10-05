@@ -7,6 +7,7 @@ import { Home, LayoutGrid, Settings, Ticket, Trophy } from "lucide-react";
 import { LogoutButton } from "@/components/admin/logout-button";
 import { NuevoMenu } from "@/components/admin/nuevo-menu";
 import { SesionViva } from "@/components/admin/sesion-viva";
+import { MARCA } from "@/lib/marca";
 import { cn } from "@/lib/utils";
 
 const LINKS = [
@@ -23,10 +24,21 @@ const LINKS = [
  * quien no lo tenga habilitado no debe verlo. Ocultarlo es solo cosmético — el
  * bloqueo real vive en `accesoTorneos()` de las Server Actions.
  */
-export function BackofficeHeader({ torneos = false }: { torneos?: boolean }) {
+export function BackofficeHeader({
+  torneos = false,
+  sesion = false,
+}: {
+  torneos?: boolean;
+  /** Hay sesión iniciada: `/precios` es parte del panel y lleva su navegación. */
+  sesion?: boolean;
+}) {
   const pathname = usePathname();
+  // `/precios` es enlace del propio panel ("Planes"). Sin esto el organizador
+  // entraba y se quedaba sin forma de volver.
   const esBackoffice =
-    pathname.startsWith("/admin") || pathname.startsWith("/superadmin");
+    pathname.startsWith("/admin") ||
+    pathname.startsWith("/superadmin") ||
+    (sesion && pathname === "/precios");
 
   if (!esBackoffice || pathname.startsWith("/admin/login")) return null;
 
@@ -66,7 +78,7 @@ export function BackofficeHeader({ torneos = false }: { torneos?: boolean }) {
           <span className="bg-primary text-primary-foreground flex size-8 shrink-0 items-center justify-center rounded-full font-bold">
             P
           </span>
-          <span className="truncate text-sm font-bold">Play Mundial</span>
+          <span className="truncate text-sm font-bold">{MARCA.nombre}</span>
         </Link>
 
         <nav className="flex min-w-0 items-center gap-1 text-sm" aria-label="Menú del panel">

@@ -5,7 +5,7 @@ import { z } from "zod";
 
 import { emailVerificado, esSuperadmin, getMembership } from "@/lib/auth";
 import { EMAIL_VERIFICATION_REQUIRED } from "@/lib/errores";
-import { resolverActivacion } from "@/lib/planes";
+import { creditoCicloPro, resolverActivacion } from "@/lib/planes";
 import {
   boletasElegibles,
   construirBolas,
@@ -172,6 +172,7 @@ const premioSchema = z.object({
   cantidad_ganadores: z.number().int().min(1).default(1),
   criterio: z.enum(["primeras_2", "ultimas_2"]).nullable().optional(),
   orden: z.number().int().min(1).default(1),
+  imagen_url: z.string().trim().url().nullable().optional(),
 });
 
 // ---------------------------------------------------------------------------
@@ -346,6 +347,7 @@ export async function guardarPremios(
         cantidad_ganadores: p.cantidad_ganadores,
         criterio: p.criterio ?? null,
         orden: p.orden ?? i + 1,
+        imagen_url: p.imagen_url || null,
       })),
     );
     if (error) return { success: false, error: error.message };
@@ -428,6 +430,8 @@ export async function activarRifa(
     pendiente?: boolean;
     monto?: number;
     pago?: PlataformaPagoConfig | null;
+    /** Upsell: cuánto lleva pagado el ciclo y qué falta para PRO. */
+    upsell?: { pagado: number; precioPro: number; falta: number } | null;
   }>
 > {
   const membership = await requireMembership();
@@ -465,12 +469,23 @@ export async function activarRifa(
       .update({
         estado: "activa",
         cobro_tipo: resolucion.cobroTipo,
+        // Gratis y PRO no cuestan nada en esta activación: el snapshot es 0.
+        cobro_monto: 0,
         activada_at: new Date().toISOString(),
       })
       .eq("id", id);
     revalidatePath(`/admin/rifas/${id}`);
     await revalidarPublica(id);
     return { success: true, data: { activada: true } };
+  }
+
+  // Snapshot del precio cotizado: si el superadmin cambia la tarifa después, el
+  // cobro de esta rifa no se mueve.
+  if (resolucion.pendiente) {
+    await svc
+      .from("rifas")
+      .update({ cobro_monto: resolucion.monto, cobro_id: resolucion.cobroId ?? null })
+      .eq("id", id);
   }
 
   revalidatePath(`/admin/rifas/${id}`);
@@ -482,6 +497,8 @@ export async function activarRifa(
       pendiente: resolucion.pendiente,
       monto: resolucion.monto,
       pago: resolucion.pago,
+      // Solo tiene sentido ofrecer PRO cuando efectivamente hay que pagar.
+      upsell: resolucion.pendiente ? await creditoCicloPro(r.tenant_id) : null,
     },
   };
 }
@@ -1103,7 +1120,7 @@ export interface RifaPublica {
     | "formato_cifras"
     | "fecha_sorteo"
   >;
-  premios: Pick<Premio, "tipo" | "descripcion" | "valor" | "criterio" | "orden">[];
+  premios: Pick<Premio, "tipo" | "descripcion" | "valor" | "criterio" | "orden" | "imagen_url">[];
   grilla: BoletaPublica[];
   disponibles: number;
   pago: TenantPagoConfig | null;
@@ -1250,6 +1267,7 @@ export async function getRifaPublica(
         valor: p.valor,
         criterio: p.criterio,
         orden: p.orden,
+        imagen_url: p.imagen_url ?? null,
       })),
       grilla,
       disponibles: grilla.filter((c) => !c.ocupado).length,

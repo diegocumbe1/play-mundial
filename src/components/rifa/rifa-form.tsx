@@ -27,10 +27,18 @@ interface PremioDraft {
   valor: string;
   cantidad_ganadores: string;
   criterio: CriterioPremio | "";
+  imagen_url: string;
 }
 
 function premioVacio(): PremioDraft {
-  return { tipo: "valor", descripcion: "", valor: "", cantidad_ganadores: "1", criterio: "" };
+  return {
+    tipo: "valor",
+    descripcion: "",
+    valor: "",
+    cantidad_ganadores: "1",
+    criterio: "",
+    imagen_url: "",
+  };
 }
 
 /** Formulario de creación/edición de una rifa (con editor de premios). */
@@ -108,6 +116,7 @@ export function RifaForm({
           valor: p.valor != null ? String(p.valor) : "",
           cantidad_ganadores: String(p.cantidad_ganadores),
           criterio: p.criterio ?? "",
+          imagen_url: p.imagen_url ?? "",
         }))
       : [premioVacio()],
   );
@@ -154,6 +163,8 @@ export function RifaForm({
             ? ((premios.length > 1 ? p.criterio : "") || criterioPorDefecto)
             : null,
         orden: i + 1,
+        // Solo los productos llevan foto; al pasar a "Dinero" se descarta.
+        imagen_url: p.tipo === "producto" ? p.imagen_url || null : null,
       }));
 
     startTransition(async () => {
@@ -512,6 +523,20 @@ export function RifaForm({
                     ]}
                   />
                 </Field>
+              )}
+              {p.tipo === "producto" && (
+                <div className="sm:col-span-2">
+                  <ImagenRifaInput
+                    label="Foto del producto"
+                    ayuda={
+                      premios.length > 1
+                        ? "Sale en la tarjeta de este premio en el flyer y en el enlace público."
+                        : "Si la rifa no tiene foto de portada, se usa esta."
+                    }
+                    valor={p.imagen_url}
+                    onChange={(url) => setPremio(i, { imagen_url: url })}
+                  />
+                </div>
               )}
               {premios.length > 1 && (
                 <div className="sm:col-span-2">

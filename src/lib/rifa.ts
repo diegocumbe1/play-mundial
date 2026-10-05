@@ -8,6 +8,7 @@ import type {
   OrdenSorteo,
   Premio,
   Rifa,
+  TipoRifa,
 } from "@/types";
 
 /**
@@ -219,6 +220,38 @@ export function labelSorteoPropio(
 
   const cual = orden === "ultimo_mayor" ? "la última" : "la primera";
   return `Se sacan ${bolas} balotas al azar; el premio mayor se lo lleva ${cual} en salir.`;
+}
+
+/**
+ * Cómo se gana un premio puntual, partido en dos para la tarjeta del premio:
+ * `antes` va en letra normal y `destacado` en grande ("Gana con las" +
+ * "primeras 2 cifras"). En lotería sale del criterio del premio; en el sorteo
+ * propio, de qué balota se lo lleva según `sorteo_orden`. `null` si no aplica.
+ */
+export function comoSeGanaPremio(
+  rifa: {
+    tipo: TipoRifa;
+    formato_cifras: number;
+    sorteo_bolas: number;
+    sorteo_ganadores: number;
+    sorteo_orden: OrdenSorteo;
+  },
+  criterio: CriterioPremio | null,
+  posicion: number,
+): { antes: string; destacado: string } | null {
+  if (rifa.tipo === "loteria") {
+    if (!criterio) return null;
+    return { antes: "Gana con las", destacado: labelCriterioPremio(criterio, rifa.formato_cifras) };
+  }
+  const bolas = rifa.sorteo_bolas || 1;
+  const ganadores = rifa.sorteo_ganadores || 1;
+  const conPremio = tieneRondaFinal(bolas, ganadores) ? ganadores : bolas;
+  if (posicion > conPremio || conPremio <= 1) return null;
+  // Balota (1-based, en orden de salida) que se lleva este premio.
+  const balota = rifa.sorteo_orden === "ultimo_mayor" ? conPremio - posicion + 1 : posicion;
+  const cual =
+    balota === 1 ? "primera" : balota === conPremio ? "última" : `${balota}.ª`;
+  return { antes: "Gana la", destacado: `${cual} balota` };
 }
 
 /**

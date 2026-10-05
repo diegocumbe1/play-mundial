@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { Lock } from "lucide-react";
 
+import { MARCA } from "@/lib/marca";
+
 /** Footer con el enlace a términos y privacidad, y acceso discreto al admin. */
 export function SiteFooter() {
   return (
@@ -15,7 +17,7 @@ export function SiteFooter() {
           </Link>
         </p>
         <p className="flex items-center justify-center gap-3">
-          <span>Polla Mundial 2026</span>
+          <span>{MARCA.firma}</span>
           <span aria-hidden>·</span>
           <Link
             href="/admin"

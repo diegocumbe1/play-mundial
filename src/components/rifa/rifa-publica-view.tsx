@@ -19,10 +19,10 @@ import {
 } from "@/components/ui/dialog";
 import {
   anchoNumeros,
+  comoSeGanaPremio,
   formatCOP,
   formatNumero,
   inicioNumeros,
-  labelCriterioPremio,
   labelModoCifras,
   labelSorteoPropio,
   ultimoNumero,
@@ -141,6 +141,10 @@ export function RifaPublicaView({
     [premios],
   );
   const premioPrincipal = premiosOrdenados[0];
+  // Portada: la de la rifa o, si solo hay un premio, la foto de ese producto.
+  const portada =
+    rifa.imagen_url ??
+    (premiosOrdenados.length === 1 ? premiosOrdenados[0].imagen_url : null);
   // El mensaje es uno solo para toda la rifa: se toma del primer ganador que lo traiga.
   // El recordatorio de WhatsApp llega con `?n=17,18`: son los números de esa
   // persona. No hay dato personal en la URL —esos números ya se ven ocupados en
@@ -266,14 +270,14 @@ export function RifaPublicaView({
         )}
 
         {/* Foto del premio */}
-        {rifa.imagen_url && (
+        {portada && (
           <div
             className="mb-4 overflow-hidden rounded-2xl border"
             style={{ borderColor: t.line, background: t.surface }}
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src={rifa.imagen_url}
+              src={portada}
               alt={`Premio de la rifa ${rifa.nombre}`}
               className="max-h-80 w-full object-cover"
             />
@@ -306,7 +310,12 @@ export function RifaPublicaView({
           >
             {rifa.nombre}
           </h1>
-          {premioPrincipal && (
+          {premiosOrdenados.length > 1 ? (
+            <p className="mt-1 inline-flex items-center gap-1.5 text-sm">
+              <Trophy className="size-4 text-[var(--rifa-accent)]" />
+              <span className="font-semibold">{premiosOrdenados.length} premios</span>
+            </p>
+          ) : premioPrincipal && (
             <p className="mt-1 inline-flex items-center gap-1.5 text-sm">
               <Trophy className="size-4 text-[var(--rifa-accent)]" />
               <span className="font-semibold">
@@ -348,25 +357,52 @@ export function RifaPublicaView({
             <p className="mb-2 flex items-center gap-1.5 text-sm font-semibold">
               <Trophy className="size-4 text-[var(--rifa-accent)]" /> Premios
             </p>
-            <ul className="flex flex-col gap-1.5">
-              {premiosOrdenados.map((p, i) => (
-                <li key={i} className="flex items-baseline gap-2 text-sm">
-                  <span
-                    className="inline-flex size-6 shrink-0 items-center justify-center rounded-full text-[11px] font-bold"
-                    style={{ background: t.accent, color: t.accentInk }}
+            {/* Una tarjeta por premio: puesto, cómo se gana, foto y producto. */}
+            <ul className="grid grid-cols-2 gap-2">
+              {premiosOrdenados.map((p, i) => {
+                const gana = comoSeGanaPremio(rifa, p.criterio, i + 1);
+                return (
+                  <li
+                    key={i}
+                    className="flex flex-col overflow-hidden rounded-xl border p-2"
+                    style={{
+                      borderColor: i === 0 ? t.accent : t.line,
+                      background: i === 0 ? conAlfa(t.accent, 0.08) : undefined,
+                    }}
                   >
-                    {i + 1}°
-                  </span>
-                  <span className="font-medium">
-                    {p.tipo === "valor" && p.valor ? formatCOP(p.valor) : p.descripcion}
-                  </span>
-                  {p.criterio && (
-                    <span className="text-[11px] text-[var(--rifa-muted)]">
-                      ({labelCriterioPremio(p.criterio, rifa.formato_cifras)})
-                    </span>
-                  )}
-                </li>
-              ))}
+                    <div className="flex items-start gap-1.5">
+                      <span
+                        className="inline-flex size-6 shrink-0 items-center justify-center rounded-full text-[11px] font-bold"
+                        style={{ background: t.accent, color: t.accentInk }}
+                      >
+                        {i + 1}°
+                      </span>
+                      {gana && (
+                        <span className="text-[11px] leading-tight text-[var(--rifa-muted)]">
+                          {gana.antes}{" "}
+                          <b className="uppercase" style={{ color: t.text }}>
+                            {gana.destacado}
+                          </b>
+                        </span>
+                      )}
+                    </div>
+                    {p.imagen_url && (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={p.imagen_url}
+                        alt={p.descripcion}
+                        className="mt-2 aspect-square w-full rounded-lg bg-white object-contain"
+                      />
+                    )}
+                    <p className="mt-2 text-sm font-semibold leading-snug">
+                      {p.tipo === "valor" && p.valor ? formatCOP(p.valor) : p.descripcion}
+                    </p>
+                    {p.tipo === "valor" && !!p.valor && (
+                      <p className="text-[11px] text-[var(--rifa-muted)]">{p.descripcion}</p>
+                    )}
+                  </li>
+                );
+              })}
             </ul>
           </div>
         )}

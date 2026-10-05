@@ -28,6 +28,9 @@ export function ActivarRifaButton({ rifaId }: { rifaId: string }) {
   const [montoPendiente, setMontoPendiente] = useState<number | null>(null);
   const [enRevision, setEnRevision] = useState(false);
   const [pago, setPago] = useState<PlataformaPagoConfig | null>(null);
+  const [upsell, setUpsell] = useState<
+    { pagado: number; precioPro: number; falta: number } | null
+  >(null);
 
   function activar() {
     startTransition(async () => {
@@ -45,6 +48,7 @@ export function ActivarRifaButton({ rifaId }: { rifaId: string }) {
       } else {
         setMontoPendiente(r.data.monto ?? 0);
         setPago(r.data.pago ?? null);
+        setUpsell(r.data.upsell ?? null);
       }
     });
   }
@@ -96,6 +100,22 @@ export function ActivarRifaButton({ rifaId }: { rifaId: string }) {
               administrador la activará al confirmar el pago.
             </DialogDescription>
           </DialogHeader>
+          {/* Upsell: si con lo que ya pagó este mes casi le alcanza para PRO,
+              se le dice cuánto falta en vez de dejarlo pagando rifa por rifa.
+              El crédito es solo del ciclo: no queda saldo a favor. */}
+          {upsell && upsell.precioPro > 0 && upsell.pagado > 0 && upsell.falta > 0 && (
+            <div className="border-primary/40 bg-primary/5 rounded-xl border p-3 text-sm">
+              <p className="font-semibold">
+                Pásate a PRO por {formatCOP(upsell.falta)} más
+              </p>
+              <p className="text-muted-foreground mt-1 text-xs">
+                Este mes llevas {formatCOP(upsell.pagado)} en rifas sueltas y PRO cuesta{" "}
+                {formatCOP(upsell.precioPro)}. Te descontamos lo que ya pagaste en el
+                ciclo.
+              </p>
+            </div>
+          )}
+
           <PaymentDetails pago={pago} monto={montoPendiente ?? 0} />
           <DialogFooter>
             <Button

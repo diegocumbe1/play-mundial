@@ -389,11 +389,15 @@ export interface PlataformaConfig {
    * Cómo se cobra una rifa: `boleta` cobra el valor de un puesto de esa misma
    * rifa; `escalones` usa los precios fijos por tamaño (esquema anterior).
    */
-  cobro_rifa_modo: "boleta" | "escalones";
+  cobro_rifa_modo: "porcentaje" | "boleta" | "escalones";
+  /** Porcentaje del recaudo proyectado que se cobra (1.00 = 1%). */
+  cobro_rifa_pct: number;
   /** Piso del cobro por rifa (0 = sin mínimo). */
   cobro_rifa_min: number;
   /** Techo del cobro por rifa (0 = sin tope). */
   cobro_rifa_max: number;
+  /** Activaciones que cubre PRO en un ciclo mensual. */
+  pro_max_rifas_ciclo: number;
   precio_rifa_100: number;
   precio_rifa_500: number;
   precio_rifa_1000: number;
@@ -471,6 +475,10 @@ export interface Rifa {
   fecha_cierre: string | null;
   fecha_sorteo: string | null;
   cobro_tipo: PlanTenant | null;
+  /** Precio cotizado al activar (snapshot: no cambia si suben las tarifas). */
+  cobro_monto: number | null;
+  /** Cobro del ledger que cubre esta rifa. */
+  cobro_id: string | null;
   activada_at: string | null;
   created_at: string;
   updated_at: string;
@@ -486,6 +494,8 @@ export interface Premio {
   cantidad_ganadores: number;
   criterio: CriterioPremio | null;
   orden: number;
+  /** Foto del producto (se pinta en la tarjeta del premio: flyer y enlace público). */
+  imagen_url: string | null;
   created_at: string;
 }
 

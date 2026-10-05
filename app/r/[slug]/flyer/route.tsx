@@ -3,6 +3,7 @@ import { ImageResponse } from "next/og";
 import { getRifaPublica } from "@/actions/rifas";
 import {
   anchoNumeros,
+  comoSeGanaPremio,
   formatCOP,
   formatNumero,
   labelModoCifras,
@@ -124,20 +125,35 @@ export async function GET(
   const ancho = anchoNumeros(rifa);
   // Hasta 3 premios (1°, 2°, 3°) para que el flyer siga legible.
   const premiosTop = [...premios].sort((a, b) => a.orden - b.orden).slice(0, 3);
+  // Con 2 o más premios cada uno va en su tarjeta (foto + cómo se gana), como
+  // los flyers de "1° primeras cifras / 2° últimas cifras".
+  const conTarjetas = premiosTop.length > 1;
   const fechaJuego =
     rifa.tipo === "loteria" ? (rifa.fecha_loteria ?? rifa.fecha_sorteo) : rifa.fecha_sorteo;
   const fechaJuegoTxt = formatFechaCO(fechaJuego, { conAnio: false });
   const mostrarGrilla = rifa.cantidad_numeros <= 200;
-  const cell = rifa.cantidad_numeros <= 100 ? 84 : 60;
+  // Las tarjetas de premios piden ~330 px: la grilla se compacta para dejarles sitio.
+  const cell = rifa.cantidad_numeros <= 100 ? (conTarjetas ? 74 : 84) : conTarjetas ? 52 : 60;
   const pago = res.data.pago;
   // Solo se embebe el QR si es una URL http(s) válida (satori la descarga).
   const qrOk = Boolean(pago?.qr_url && /^https?:\/\//i.test(pago.qr_url));
   // Imágenes de la publicación: satori solo descarga http(s) y no sabe dibujar
   // WebP/AVIF (dejaría un hueco en blanco), así que esas se omiten.
   const fondoOk = imagenRenderizableEnFlyer(rifa.imagen_fondo_url);
-  const fotoOk = imagenRenderizableEnFlyer(rifa.imagen_url);
+  // Portada: la de la rifa o, si solo hay un premio, la foto de ese producto.
+  const portada =
+    rifa.imagen_url ?? (premiosTop.length === 1 ? premiosTop[0].imagen_url : null);
+  // Con tarjetas, la portada solo entra si la grilla es corta: los productos ya
+  // se ven en cada tarjeta.
+  const fotoOk =
+    imagenRenderizableEnFlyer(portada) &&
+    (!conTarjetas || !mostrarGrilla || rifa.cantidad_numeros <= 40);
   // La foto cede altura cuando además hay que pintar la grilla completa.
-  const fotoAlto = !mostrarGrilla ? 520 : rifa.cantidad_numeros <= 40 ? 420 : 260;
+  const fotoAlto = !mostrarGrilla
+    ? conTarjetas ? 420 : 520
+    : rifa.cantidad_numeros <= 40 ? (conTarjetas ? 300 : 420) : 260;
+  const anchoTarjeta = premiosTop.length === 2 ? 476 : 312;
+  const fotoTarjeta = premiosTop.length === 2 ? 170 : 120;
   const cuentaPago = pago?.cuenta_numero ?? pago?.nequi_llave ?? null;
   const pagoLinea = cuentaPago
     ? `Paga a ${labelCuentaPago(pago?.cuenta_tipo ?? (pago?.nequi_llave ? "nequi" : null))} ${cuentaPago}`
@@ -217,7 +233,7 @@ export async function GET(
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src={rifa.imagen_url!}
+              src={portada!}
               alt=""
               width={968}
               height={fotoAlto}
@@ -231,7 +247,8 @@ export async function GET(
           style={{
             display: "flex", justifyContent: "center", alignItems: "center",
             background: f.band, color: f.ink, borderRadius: 18,
-            padding: "22px 28px", marginTop: 36, fontSize: 40, fontWeight: 700,
+            padding: conTarjetas ? "18px 28px" : "22px 28px",
+            marginTop: conTarjetas ? 28 : 36, fontSize: 40, fontWeight: 700,
           }}
         >
           <span>
@@ -241,7 +258,7 @@ export async function GET(
         </div>
 
         {/* Escasez */}
-        <div style={{ display: "flex", flexDirection: "column", marginTop: 32 }}>
+        <div style={{ display: "flex", flexDirection: "column", marginTop: conTarjetas ? 24 : 32 }}>
           <div style={{ display: "flex", justifyContent: "space-between", color: f.titulo, fontSize: 34, fontWeight: 700 }}>
             <span>Quedan {disponibles} de {rifa.cantidad_numeros}</span>
             <span>{pct}% vendido</span>
@@ -253,7 +270,7 @@ export async function GET(
 
         {/* Grilla (ocupado/libre — nunca revela pago) */}
         {mostrarGrilla ? (
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, justifyContent: "center", marginTop: 32 }}>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, justifyContent: "center", marginTop: conTarjetas ? 24 : 32 }}>
             {grilla.map((c) => (
               <div
                 key={c.numero}
@@ -276,8 +293,8 @@ export async function GET(
           </div>
         )}
 
-        {/* Lotería */}
-        {rifa.tipo === "loteria" && rifa.loteria && (
+        {/* Lotería (con tarjetas, el criterio va en cada premio) */}
+        {!conTarjetas && rifa.tipo === "loteria" && rifa.loteria && (
           <div
             style={{
               display: "flex", justifyContent: "center", textAlign: "center",
@@ -290,7 +307,7 @@ export async function GET(
         )}
 
         {/* Cómo se juega (sorteo propio) */}
-        {rifa.tipo === "interna" && (
+        {!conTarjetas && rifa.tipo === "interna" && (
           <div
             style={{
               display: "flex", justifyContent: "center", textAlign: "center",
@@ -302,38 +319,134 @@ export async function GET(
           </div>
         )}
 
-        {/* Premios (hasta 3) */}
-        {premiosTop.length > 0 && (
+        {/* Un solo premio: en grande y centrado */}
+        {premiosTop.length === 1 && (
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", marginTop: 36 }}>
             <div style={{ display: "flex", color: f.titulo, fontSize: 32, fontWeight: 700 }}>
-              {premiosTop.length > 1 ? "PREMIOS" : "PREMIO"}
+              PREMIO
             </div>
-            {premiosTop.map((p, i) => (
-              <div
-                key={i}
-                style={{
-                  display: "flex", alignItems: "center", gap: 14, marginTop: 8,
-                  color: f.card,
-                  fontSize: premiosTop.length > 1 ? (i === 0 ? 52 : 40) : 66,
-                  fontWeight: 800, textAlign: "center",
-                }}
-              >
-                {premiosTop.length > 1 && (
-                  <span
+            <div
+              style={{
+                display: "flex", marginTop: 8, color: f.card,
+                fontSize: 66, fontWeight: 800, textAlign: "center",
+              }}
+            >
+              {premiosTop[0].tipo === "valor" && premiosTop[0].valor
+                ? formatCOP(premiosTop[0].valor)
+                : premiosTop[0].descripcion}
+            </div>
+          </div>
+        )}
+
+        {/* Varios premios: una tarjeta por premio */}
+        {conTarjetas && (
+          <div style={{ display: "flex", flexDirection: "column", marginTop: 28 }}>
+            <div
+              style={{
+                display: "flex", justifyContent: "center", color: f.titulo,
+                fontSize: 30, fontWeight: 700, letterSpacing: 2,
+              }}
+            >
+              {rifa.tipo === "loteria" && rifa.loteria
+                ? `PREMIOS · ${rifa.loteria.toUpperCase()}`
+                : "PREMIOS"}
+            </div>
+            <div style={{ display: "flex", gap: 16, marginTop: 14 }}>
+              {premiosTop.map((p, i) => {
+                const gana = comoSeGanaPremio(rifa, p.criterio, i + 1);
+                const fotoPremio = imagenRenderizableEnFlyer(p.imagen_url) ? p.imagen_url : null;
+                const titulo = p.tipo === "valor" && p.valor ? formatCOP(p.valor) : p.descripcion;
+                const subtitulo = p.tipo === "valor" && p.valor ? p.descripcion : null;
+                return (
+                  <div
+                    key={i}
                     style={{
-                      display: "flex", alignItems: "center", justifyContent: "center",
-                      width: 46, height: 46, borderRadius: 23,
-                      background: f.accent, color: f.card, fontSize: 24,
+                      display: "flex", flexDirection: "column", width: anchoTarjeta,
+                      padding: 18, borderRadius: 26,
+                      background: i === 0 ? conAlfa(f.accent, 0.22) : "rgba(0,0,0,0.28)",
+                      border: `3px solid ${i === 0 ? f.accent : "rgba(255,255,255,0.45)"}`,
                     }}
                   >
-                    {i + 1}°
-                  </span>
-                )}
-                <span>
-                  {p.tipo === "valor" && p.valor ? formatCOP(p.valor) : p.descripcion}
-                </span>
-              </div>
-            ))}
+                    {/* Puesto + cómo se gana */}
+                    <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                      <div
+                        style={{
+                          display: "flex", alignItems: "center", justifyContent: "center",
+                          width: 58, height: 58, borderRadius: 29, flexShrink: 0,
+                          background: i === 0 ? f.accent : f.card,
+                          color: i === 0 ? f.card : f.ink, fontSize: 30, fontWeight: 800,
+                        }}
+                      >
+                        {i + 1}°
+                      </div>
+                      {gana && (
+                        <div
+                          style={{
+                            display: "flex", flexDirection: "column", flex: 1,
+                            padding: "8px 12px", borderRadius: 14,
+                            background: i === 0 ? f.accent : f.card,
+                            color: i === 0 ? f.card : f.ink,
+                          }}
+                        >
+                          <div style={{ display: "flex", fontSize: 20, fontWeight: 600 }}>
+                            {gana.antes}
+                          </div>
+                          <div
+                            style={{
+                              display: "flex", lineHeight: 1.05, fontWeight: 800,
+                              fontSize: premiosTop.length === 2 ? 30 : 24,
+                            }}
+                          >
+                            {gana.destacado.toUpperCase()}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Foto + producto */}
+                    <div
+                      style={{
+                        display: "flex",
+                        flexDirection: premiosTop.length === 2 ? "row" : "column",
+                        alignItems: premiosTop.length === 2 ? "center" : "flex-start",
+                        gap: 14, marginTop: 14,
+                      }}
+                    >
+                      {fotoPremio && (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={fotoPremio}
+                          alt=""
+                          width={fotoTarjeta}
+                          height={fotoTarjeta}
+                          style={{ borderRadius: 18, objectFit: "cover", background: "#fff", flexShrink: 0 }}
+                        />
+                      )}
+                      <div style={{ display: "flex", flexDirection: "column", flex: 1 }}>
+                        <div
+                          style={{
+                            display: "flex", color: f.titulo, fontWeight: 800, lineHeight: 1.1,
+                            fontSize: premiosTop.length === 2 ? (fotoPremio ? 34 : 42) : 28,
+                          }}
+                        >
+                          {titulo}
+                        </div>
+                        {subtitulo && (
+                          <div
+                            style={{
+                              display: "flex", color: f.titulo, opacity: 0.85, marginTop: 4,
+                              fontSize: premiosTop.length === 2 ? 24 : 20,
+                            }}
+                          >
+                            {subtitulo}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         )}
 

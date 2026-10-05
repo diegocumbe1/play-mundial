@@ -99,13 +99,15 @@ export default async function AdminHubPage() {
           </>
         )}
 
-        {/* Polla Mundial — módulo inhabilitado (archivado) */}
-        <ModuloInhabilitado
-          superadmin={superadmin}
-          icon={<Trophy className="size-5" />}
-          titulo="Polla Mundial 2026"
-          texto="El Mundial terminó. Este módulo quedó archivado; los datos siguen guardados."
-        />
+        {/* Polla Mundial: módulo archivado. Solo lo ve el superadmin — a un
+            organizador de rifas no le dice nada y ensucia su panel. */}
+        {superadmin && (
+          <ModuloInhabilitado
+            icon={<Trophy className="size-5" />}
+            titulo="Polla Mundial 2026"
+            texto="El Mundial terminó. Este módulo quedó archivado; los datos siguen guardados."
+          />
+        )}
       </div>
     </div>
   );
@@ -139,13 +141,12 @@ function Modulo({
   );
 }
 
+/** Módulo archivado. Solo se renderiza para el superadmin (ver arriba). */
 function ModuloInhabilitado({
-  superadmin,
   icon,
   titulo,
   texto,
 }: {
-  superadmin: boolean;
   icon: React.ReactNode;
   titulo: string;
   texto: string;
@@ -160,11 +161,12 @@ function ModuloInhabilitado({
       </div>
       <p className="font-semibold">{titulo}</p>
       <p className="text-muted-foreground text-sm">{texto}</p>
-      {superadmin && (
-        <Link href="/admin/mundial" className="text-muted-foreground hover:text-foreground mt-1 text-xs underline">
-          Abrir de todos modos (solo superadmin)
-        </Link>
-      )}
+      <Link
+        href="/admin/mundial"
+        className="text-muted-foreground hover:text-foreground mt-1 text-xs underline"
+      >
+        Abrir de todos modos
+      </Link>
     </div>
   );
 }

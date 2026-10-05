@@ -74,7 +74,12 @@ export default async function Image({
   // enlace es lo que hace clic (la de fondo entra solo si no hay foto). Se deja
   // de lado si no es http(s) —satori no puede descargarla— y el resto del
   // diseño no depende de ella.
-  const candidatas = [rifa.imagen_url, rifa.imagen_fondo_url];
+  // Sin portada, la foto del primer producto premiado.
+  const candidatas = [
+    rifa.imagen_url,
+    premio?.imagen_url ?? null,
+    rifa.imagen_fondo_url,
+  ];
   const fondo = candidatas.find((u) => imagenRenderizableEnFlyer(u)) ?? null;
   const fondoOk = Boolean(fondo);
 

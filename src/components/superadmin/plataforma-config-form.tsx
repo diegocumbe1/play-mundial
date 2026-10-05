@@ -17,7 +17,9 @@ export function PlataformaConfigForm({ inicial }: { inicial: PlataformaConfig })
   const [pending, startTransition] = useTransition();
   const [f, setF] = useState({
     moneda: inicial.moneda,
-    cobro_rifa_modo: inicial.cobro_rifa_modo ?? "boleta",
+    cobro_rifa_modo: inicial.cobro_rifa_modo ?? "porcentaje",
+    cobro_rifa_pct: String(inicial.cobro_rifa_pct ?? 1),
+    pro_max_rifas_ciclo: String(inicial.pro_max_rifas_ciclo ?? 10),
     cobro_rifa_min: String(inicial.cobro_rifa_min ?? 0),
     cobro_rifa_max: String(inicial.cobro_rifa_max ?? 0),
     precio_rifa_100: String(inicial.precio_rifa_100),
@@ -44,7 +46,14 @@ export function PlataformaConfigForm({ inicial }: { inicial: PlataformaConfig })
     startTransition(async () => {
       const r = await guardarPlataformaConfig({
         moneda: f.moneda.trim() || "COP",
-        cobro_rifa_modo: f.cobro_rifa_modo === "escalones" ? "escalones" : "boleta",
+        cobro_rifa_modo:
+          f.cobro_rifa_modo === "escalones"
+            ? "escalones"
+            : f.cobro_rifa_modo === "boleta"
+              ? "boleta"
+              : "porcentaje",
+        cobro_rifa_pct: Number(f.cobro_rifa_pct) || 0,
+        pro_max_rifas_ciclo: Number(f.pro_max_rifas_ciclo) || 1,
         cobro_rifa_min: Number(f.cobro_rifa_min) || 0,
         cobro_rifa_max: Number(f.cobro_rifa_max) || 0,
         precio_rifa_100: Number(f.precio_rifa_100) || 0,
@@ -83,17 +92,20 @@ export function PlataformaConfigForm({ inicial }: { inicial: PlataformaConfig })
               onChange={(e) => set("cobro_rifa_modo", e.target.value)}
               className="border-input bg-background h-10 w-full rounded-lg border px-3 text-sm"
             >
+              <option value="porcentaje">% del recaudo proyectado</option>
               <option value="boleta">El valor de 1 boleta de la rifa</option>
               <option value="escalones">Precio fijo por tamaño</option>
             </select>
           </div>
+          <Campo label="% del recaudo" value={f.cobro_rifa_pct} onChange={(v) => set("cobro_rifa_pct", v)} />
           <CampoMoneda label="Mínimo por rifa (0 = sin mínimo)" value={f.cobro_rifa_min} onChange={(v) => set("cobro_rifa_min", v)} />
           <CampoMoneda label="Máximo por rifa (0 = sin tope)" value={f.cobro_rifa_max} onChange={(v) => set("cobro_rifa_max", v)} />
         </div>
         <p className="text-muted-foreground mt-2 text-xs">
-          Cobrar una boleta equivale a 100/N del recaudo: 1% en una rifa de 100 números,
-          3,3% en una de 30 y 0,1% en una de 1000. El mínimo y el máximo evitan los
-          extremos (una rifa de boleta muy barata o muy cara).
+          Con <b>% del recaudo</b> el cobro sube con el tamaño del negocio (números ×
+          precio), acotado por el mínimo y el máximo. La regla <b>1 boleta</b> equivale a
+          100/N del recaudo, así que no es monótona: una rifa que recauda el doble puede
+          pagar menos.
         </p>
       </div>
       <div>
@@ -108,6 +120,17 @@ export function PlataformaConfigForm({ inicial }: { inicial: PlataformaConfig })
           <CampoMoneda label="Rifa 501–1000 números" value={f.precio_rifa_1000} onChange={(v) => set("precio_rifa_1000", v)} />
           <CampoMoneda label="Suscripción / mes" value={f.precio_suscripcion_mes} onChange={(v) => set("precio_suscripcion_mes", v)} />
         </div>
+      </div>
+      <div>
+        <p className="mb-2 text-sm font-semibold">PRO (suscripción)</p>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <CampoMoneda label="Precio PRO / mes" value={f.precio_suscripcion_mes} onChange={(v) => set("precio_suscripcion_mes", v)} />
+          <Campo label="Rifas incluidas por ciclo" value={f.pro_max_rifas_ciclo} onChange={(v) => set("pro_max_rifas_ciclo", v)} />
+        </div>
+        <p className="text-muted-foreground mt-2 text-xs">
+          Pasado el tope, la rifa extra se cobra aparte en vez de bloquear al
+          organizador.
+        </p>
       </div>
       <div>
         <p className="mb-2 text-sm font-semibold">Rifas — capa gratuita</p>

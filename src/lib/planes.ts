@@ -64,8 +64,14 @@ const REGLAS: Record<ProductoPlataforma, ReglasProducto> = {
     cuotaTotal: (c) => c.free_rifas_total,
     cuotaMes: (c) => c.free_rifas_por_mes,
     precio: (c, n, precioBoleta) => {
+      // Regla vigente: un % del recaudo proyectado (números × precio), acotado.
+      // Es la única monótona: a más recaudo, más cobro.
+      if (c.cobro_rifa_modo === "porcentaje") {
+        const recaudo = Math.max(0, n) * Math.max(0, precioBoleta);
+        return acotar((recaudo * c.cobro_rifa_pct) / 100, c.cobro_rifa_min, c.cobro_rifa_max);
+      }
       // Modo "boleta": activar la rifa cuesta lo mismo que uno de sus puestos.
-      if (c.cobro_rifa_modo !== "escalones") {
+      if (c.cobro_rifa_modo === "boleta") {
         return acotar(precioBoleta, c.cobro_rifa_min, c.cobro_rifa_max);
       }
       return n <= 100 ? c.precio_rifa_100 : n <= 500 ? c.precio_rifa_500 : c.precio_rifa_1000;
@@ -93,9 +99,11 @@ const REGLAS: Record<ProductoPlataforma, ReglasProducto> = {
 /** Valores por defecto si aún no existe la fila de configuración. */
 const CONFIG_DEFAULT: PlataformaConfig = {
   moneda: "COP",
-  cobro_rifa_modo: "boleta",
-  cobro_rifa_min: 0,
-  cobro_rifa_max: 0,
+  cobro_rifa_modo: "porcentaje",
+  cobro_rifa_pct: 1,
+  cobro_rifa_min: 8000,
+  cobro_rifa_max: 29900,
+  pro_max_rifas_ciclo: 10,
   precio_rifa_100: 0,
   precio_rifa_500: 0,
   precio_rifa_1000: 0,
@@ -128,6 +136,8 @@ export interface ResolucionActivacion {
   pendiente: boolean;
   /** Monto del cobro pendiente. */
   monto: number;
+  /** Cobro pendiente creado (o reutilizado), para dejarlo anclado a la entidad. */
+  cobroId?: string | null;
   /** Datos de transferencia de la plataforma, para mostrarle al organizador. */
   pago: PlataformaPagoConfig | null;
 }
@@ -178,49 +188,130 @@ export async function resolverActivacion(params: {
     };
   }
 
-  // 1) Suscripción vigente: activa sin cobrar.
+  // 1) PRO (suscripción) vigente: cubre la activación hasta el tope del ciclo.
   const venceAt = (tenant as { suscripcion_vence_at: string | null } | null)
     ?.suscripcion_vence_at;
   if (venceAt && new Date(venceAt).getTime() > Date.now()) {
-    return { activada: true, cobroTipo: "suscripcion", pendiente: false, monto: 0, pago };
+    // El ciclo es el mes que termina en `suscripcion_vence_at`.
+    const desde = new Date(venceAt);
+    desde.setMonth(desde.getMonth() - 1);
+
+    const { data: cabe } = await svc.rpc("consumir_pro", {
+      p_tenant: tenantId,
+      p_rifa: entidadId,
+      p_max: config.pro_max_rifas_ciclo,
+      p_desde: desde.toISOString(),
+    });
+
+    if (cabe === true) {
+      return { activada: true, cobroTipo: "suscripcion", pendiente: false, monto: 0, pago };
+    }
+    // Tope alcanzado: no se bloquea al organizador, se le cobra esta rifa
+    // aparte (cae al paso 3).
   }
 
   // 2) Capa gratuita: el tamaño debe caber en el tope y quedar cuota libre.
+  // El conteo y el registro pasan por `consumir_free`, que resuelve todo en una
+  // sentencia con lock: dos activaciones simultáneas no gastan el mismo cupo, y
+  // borrar la rifa después ya no devuelve el beneficio.
   if (tamano <= reglas.maxGratis(config)) {
-    const { data: gratis } = await svc
-      .from(reglas.tabla)
-      .select(reglas.columnaActivacion)
-      .eq("tenant_id", tenantId)
-      .eq("cobro_tipo", "gratis");
+    const { data: cubierta } = await svc.rpc("consumir_free", {
+      p_tenant: tenantId,
+      p_rifa: entidadId,
+      p_producto: producto,
+      p_max_total: reglas.cuotaTotal(config),
+      p_max_mes: reglas.cuotaMes(config),
+    });
 
-    const usadas = (gratis as unknown as Record<string, string | null>[]) ?? [];
-    const ahora = new Date();
-    const esteMes = usadas.filter((fila) => {
-      const f = fila[reglas.columnaActivacion];
-      if (!f) return false;
-      const d = new Date(f);
-      return (
-        d.getFullYear() === ahora.getFullYear() && d.getMonth() === ahora.getMonth()
-      );
-    }).length;
-
-    if (usadas.length < reglas.cuotaTotal(config) && esteMes < reglas.cuotaMes(config)) {
+    if (cubierta === true) {
       return { activada: true, cobroTipo: "gratis", pendiente: false, monto: 0, pago };
     }
   }
 
   // 3) Requiere pago: cobro pendiente; la entidad sigue en borrador.
   const monto = reglas.precio(config, tamano, precioUnitario);
-  await svc.from("cobros").insert({
-    tenant_id: tenantId,
-    producto,
-    [reglas.columnaCobro]: entidadId,
-    tipo: "pago_rifa", // el ledger llama así a la modalidad "pago por unidad"
-    monto,
-    estado: "pendiente",
-  });
 
-  return { activada: false, cobroTipo: null, pendiente: true, monto, pago };
+  // Si ya había un cobro pendiente para esta entidad se reutiliza: repetir
+  // "Activar" no debe dejar cobros duplicados en el ledger.
+  const { data: existente } = await svc
+    .from("cobros")
+    .select("id, monto")
+    .eq(reglas.columnaCobro, entidadId)
+    .eq("estado", "pendiente")
+    .maybeSingle();
+
+  let cobroId = (existente as { id: string; monto: number } | null)?.id ?? null;
+  const montoFinal = (existente as { monto: number } | null)?.monto ?? monto;
+
+  if (!cobroId) {
+    const { data: creado } = await svc
+      .from("cobros")
+      .insert({
+        tenant_id: tenantId,
+        producto,
+        [reglas.columnaCobro]: entidadId,
+        tipo: "pago_rifa", // el ledger llama así a la modalidad "pago por unidad"
+        monto,
+        estado: "pendiente",
+      })
+      .select("id")
+      .single();
+    cobroId = (creado as { id: string } | null)?.id ?? null;
+  }
+
+  return {
+    activada: false,
+    cobroTipo: null,
+    pendiente: true,
+    monto: montoFinal,
+    cobroId,
+    pago,
+  };
+}
+
+/**
+ * Cuánto lleva pagado el tenant en activaciones sueltas durante el ciclo en
+ * curso. Es la base del upsell: si ya pagó $44.900 y PRO cuesta $59.900, se le
+ * ofrece por los $15.000 de diferencia.
+ *
+ * Se calcula al vuelo sobre el ledger: no crea saldo a favor, no es
+ * transferible y no sobrevive al ciclo.
+ */
+export async function creditoCicloPro(
+  tenantId: string,
+): Promise<{ pagado: number; precioPro: number; falta: number }> {
+  const svc = createServiceRoleClient();
+  const [{ data: cfg }, { data: tenant }] = await Promise.all([
+    svc.from("plataforma_config").select("*").limit(1).maybeSingle(),
+    svc.from("tenants").select("suscripcion_vence_at").eq("id", tenantId).maybeSingle(),
+  ]);
+  const config: PlataformaConfig = {
+    ...CONFIG_DEFAULT,
+    ...((cfg as Partial<PlataformaConfig> | null) ?? {}),
+  };
+
+  // Ciclo: el mes de la suscripción vigente, o el mes calendario si no hay.
+  const venceAt = (tenant as { suscripcion_vence_at: string | null } | null)?.suscripcion_vence_at;
+  let desde: Date;
+  if (venceAt && new Date(venceAt).getTime() > Date.now()) {
+    desde = new Date(venceAt);
+    desde.setMonth(desde.getMonth() - 1);
+  } else {
+    const hoy = new Date();
+    desde = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
+  }
+
+  const { data: cobros } = await svc
+    .from("cobros")
+    .select("monto")
+    .eq("tenant_id", tenantId)
+    .eq("tipo", "pago_rifa")
+    .eq("estado", "pagado")
+    .gte("pagado_at", desde.toISOString());
+
+  const pagado = ((cobros as { monto: number }[]) ?? []).reduce((a, c) => a + c.monto, 0);
+  const precioPro = config.precio_suscripcion_mes;
+  return { pagado, precioPro, falta: Math.max(0, precioPro - pagado) };
 }
 
 /** Precio del escalón que le corresponde a un tamaño (para mostrar en la UI). */

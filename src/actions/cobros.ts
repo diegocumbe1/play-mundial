@@ -146,7 +146,9 @@ export async function solicitarSuscripcion(): Promise<ActionResult<{ pago: Plata
 }
 
 const configSchema = z.object({
-  cobro_rifa_modo: z.enum(["boleta", "escalones"]).default("boleta"),
+  cobro_rifa_modo: z.enum(["porcentaje", "boleta", "escalones"]).default("porcentaje"),
+  cobro_rifa_pct: z.number().min(0).max(100).default(1),
+  pro_max_rifas_ciclo: z.number().int().min(1).max(100).default(10),
   cobro_rifa_min: z.number().int().min(0).default(0),
   cobro_rifa_max: z.number().int().min(0).default(0),
   moneda: z.string().trim().min(1).default("COP"),

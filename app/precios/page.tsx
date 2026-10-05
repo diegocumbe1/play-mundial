@@ -1,3 +1,5 @@
+import Link from "next/link";
+import { ArrowLeft } from "lucide-react";
 import { Check } from "lucide-react";
 
 import { getMembership } from "@/lib/auth";
@@ -11,6 +13,7 @@ export const dynamic = "force-dynamic";
 export default async function PreciosPage() {
   const [c, membership] = await Promise.all([getPlataformaConfig(), getMembership()]);
 
+  const porPorcentaje = c.cobro_rifa_modo === "porcentaje";
   const porBoleta = c.cobro_rifa_modo !== "escalones";
 
   // Ejemplos reales con la regla vigente. El porcentaje NO es fijo: cobrar una
@@ -19,6 +22,7 @@ export default async function PreciosPage() {
   const ejemplos = [
     { numeros: 30, boleta: 15000 },
     { numeros: 100, boleta: 15000 },
+    { numeros: 100, boleta: 30000 },
     { numeros: 500, boleta: 10000 },
   ].map((e) => {
     const costo = precioEscalon(c, "rifas", e.numeros, e.boleta);
@@ -38,14 +42,30 @@ export default async function PreciosPage() {
       precio: "$0",
       destacado: false,
       bullets: [
-        `${c.free_rifas_por_mes} rifa gratis al mes`,
-        `Hasta ${c.free_rifas_total} rifas gratis en total`,
+        `${c.free_rifas_total} rifas gratis en total (${c.free_rifas_por_mes} por mes)`,
+        "Se cuentan de por vida: no se renuevan",
         `Máximo ${c.free_max_numeros} números`,
         "Enlace público en tiempo real",
         "Flyer con marca de agua",
       ],
     },
-    porBoleta
+    porPorcentaje
+      ? {
+          id: "pago_rifa" as const,
+          nombre: "Pago por rifa",
+          precio: `${c.cobro_rifa_pct}%`,
+          sub: "de lo que recauda esa rifa",
+          destacado: true,
+          bullets: [
+            "Pagas solo la rifa que actives, cuando la actives",
+            c.cobro_rifa_min > 0 ? `Nunca menos de ${formatCOP(c.cobro_rifa_min)}` : "",
+            c.cobro_rifa_max > 0 ? `Nunca más de ${formatCOP(c.cobro_rifa_max)}` : "",
+            "El precio queda congelado al activar",
+            "Sin marca de agua",
+            "Pago por transferencia: se activa al confirmar",
+          ].filter(Boolean),
+        }
+      : porBoleta
       ? {
           id: "pago_rifa" as const,
           nombre: "Pago por rifa",
@@ -78,22 +98,32 @@ export default async function PreciosPage() {
         },
     {
       id: "suscripcion" as const,
-      nombre: "Suscripción",
+      nombre: "PRO",
       precio: c.precio_suscripcion_mes > 0 ? formatCOP(c.precio_suscripcion_mes) : "—",
       sub: "por mes",
       destacado: false,
       bullets: [
-        "Rifas ilimitadas todo el mes",
+        `Hasta ${c.pro_max_rifas_ciclo} rifas activadas por mes`,
+        "Si pasas el tope, pagas solo la rifa extra",
         "Sin marca de agua",
         "Export de imagen en alta",
         "Soporte prioritario",
-        "Pago mensual por transferencia",
       ],
     },
   ];
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-12">
+      {/* Con sesión manda el header del panel; sin ella, esta es la única
+          salida de la página. */}
+      {!membership && (
+        <Link
+          href="/"
+          className="text-muted-foreground hover:text-foreground mb-6 inline-flex items-center gap-1.5 text-sm"
+        >
+          <ArrowLeft className="size-4" /> Volver al inicio
+        </Link>
+      )}
       <header className="mb-10 text-center">
         <h1 className="text-3xl font-bold text-balance">Organiza tu rifa y cobra tú</h1>
         <p className="text-muted-foreground mx-auto mt-2 max-w-lg">
@@ -139,9 +169,19 @@ export default async function PreciosPage() {
         <section className="border-border mt-8 rounded-2xl border p-5">
           <p className="text-sm font-semibold">Cuánto te cuesta, en plata</p>
           <p className="text-muted-foreground mt-1 text-sm">
-            Activar una rifa cuesta lo mismo que uno de sus puestos. Sobre el recaudo
-            total eso es cerca del <b>1%</b> en una rifa de 100 números — y menos entre
-            más grande sea. Aquí está el cálculo exacto:
+            {porPorcentaje ? (
+              <>
+                Activar una rifa cuesta el <b>{c.cobro_rifa_pct}%</b> de lo que esa rifa
+                recauda si se vende completa, nunca menos de{" "}
+                <b>{formatCOP(c.cobro_rifa_min)}</b> ni más de{" "}
+                <b>{formatCOP(c.cobro_rifa_max)}</b>. Aquí está el cálculo exacto:
+              </>
+            ) : (
+              <>
+                Activar una rifa cuesta lo mismo que uno de sus puestos. Aquí está el
+                cálculo exacto:
+              </>
+            )}
           </p>
           <div className="mt-4 overflow-x-auto">
             <table className="w-full min-w-[420px] text-sm">
