@@ -54,6 +54,18 @@ export async function getMembership(): Promise<Membership | null> {
   return estado === "activo" || estado === "pendiente" ? membership : null;
 }
 
+/**
+ * ¿El usuario actual confirmó su correo?
+ *
+ * Es la puerta para tocar números de una rifa (registrar, apartar, pagar,
+ * liberar). El bloqueo REAL vive en un trigger de `boletas`: esto es solo para
+ * responder con un error entendible antes de llegar a la base.
+ */
+export async function emailVerificado(): Promise<boolean> {
+  const user = await getUser();
+  return Boolean(user?.email_confirmed_at);
+}
+
 /** ¿La cuenta del usuario ya fue aprobada por el superadmin? */
 export async function cuentaAprobada(): Promise<boolean> {
   const membership = await getMembership();

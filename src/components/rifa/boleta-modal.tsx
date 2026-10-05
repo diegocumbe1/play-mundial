@@ -26,6 +26,8 @@ import { formatCOP, formatNumero } from "@/lib/rifa";
 import { formatFechaCO } from "@/lib/fecha-co";
 import { urlPublicaRifa } from "@/lib/site-url";
 import { waLink } from "@/lib/whatsapp";
+import { VerificarEmailModal } from "@/components/rifa/verificar-email-modal";
+import { esErrorDeVerificacion } from "@/lib/errores";
 import type { Boleta, Rifa } from "@/types";
 
 /**
@@ -60,6 +62,7 @@ export function BoletaModal({
   const [responsable, setResponsable] = useState(boleta?.responsable_venta ?? "");
   const [confirmandoLiberar, setConfirmandoLiberar] = useState(false);
   const [editando, setEditando] = useState(false);
+  const [pidiendoVerificacion, setPidiendoVerificacion] = useState(false);
 
   function correr(
     accion: () => Promise<{ success: boolean; error?: string }>,
@@ -68,6 +71,12 @@ export function BoletaModal({
     startTransition(async () => {
       const r = await accion();
       if (!r.success) {
+        // Sin correo verificado no se puede tocar ningún número: en vez de un
+        // error técnico, se explica qué hacer.
+        if (esErrorDeVerificacion(r.error)) {
+          setPidiendoVerificacion(true);
+          return;
+        }
         toast.error(r.error);
         return;
       }
@@ -103,6 +112,8 @@ export function BoletaModal({
       : "";
 
   return (
+    <>
+    <VerificarEmailModal open={pidiendoVerificacion} onOpenChange={setPidiendoVerificacion} />
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent>
         <DialogHeader>
@@ -284,5 +295,6 @@ export function BoletaModal({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+    </>
   );
 }

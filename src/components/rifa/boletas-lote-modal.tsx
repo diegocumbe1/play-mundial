@@ -18,6 +18,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { formatCOP, formatNumero } from "@/lib/rifa";
+import { VerificarEmailModal } from "@/components/rifa/verificar-email-modal";
+import { esErrorDeVerificacion } from "@/lib/errores";
 
 /**
  * Registra VARIOS números a un mismo comprador de una sola vez (lo normal
@@ -47,6 +49,7 @@ export function BoletasLoteModal({
   const [nombre, setNombre] = useState("");
   const [telefono, setTelefono] = useState("");
   const [responsable, setResponsable] = useState("");
+  const [pidiendoVerificacion, setPidiendoVerificacion] = useState(false);
 
   const etiquetas = numeros.map((n) => formatNumero(n, ancho)).join(", ");
 
@@ -62,6 +65,10 @@ export function BoletasLoteModal({
         metodo_pago: pagado ? "efectivo" : null,
       });
       if (!r.success) {
+        if (esErrorDeVerificacion(r.error)) {
+          setPidiendoVerificacion(true);
+          return;
+        }
         toast.error(r.error);
         return;
       }
@@ -83,6 +90,8 @@ export function BoletasLoteModal({
   }
 
   return (
+    <>
+    <VerificarEmailModal open={pidiendoVerificacion} onOpenChange={setPidiendoVerificacion} />
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent>
         <DialogHeader>
@@ -140,5 +149,6 @@ export function BoletasLoteModal({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+    </>
   );
 }

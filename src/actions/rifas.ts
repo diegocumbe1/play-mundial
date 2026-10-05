@@ -3,7 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
-import { esSuperadmin, getMembership } from "@/lib/auth";
+import { emailVerificado, esSuperadmin, getMembership } from "@/lib/auth";
+import { EMAIL_VERIFICATION_REQUIRED } from "@/lib/errores";
 import { resolverActivacion } from "@/lib/planes";
 import {
   boletasElegibles,
@@ -56,6 +57,34 @@ function slugify(nombre: string): string {
 
 async function requireMembership(): Promise<Membership | null> {
   return getMembership();
+}
+
+/**
+ * Puerta común de TODO lo que cambia el estado de un número: registrar,
+ * apartar, marcar pagado, corregir datos o liberar. Sin correo verificado no
+ * se vende, sin importar el plan.
+ *
+ * Es la primera barrera, no la única: la definitiva es el trigger de `boletas`,
+ * porque la RLS del tenant permite escribir directo contra PostgREST.
+ */
+async function puedeTocarNumeros(): Promise<ActionResult<Membership>> {
+  const membership = await requireMembership();
+  if (!membership) return { success: false, error: "Sin sesión" };
+  if (membership.rol === "superadmin") return { success: true, data: membership };
+  if (!(await emailVerificado())) {
+    return { success: false, error: EMAIL_VERIFICATION_REQUIRED };
+  }
+  return { success: true, data: membership };
+}
+
+/**
+ * Traduce el error del trigger a nuestro código semántico. Si alguien llega a
+ * la base por otra vía, el mensaje que ve el usuario sigue siendo el correcto.
+ */
+function traducirErrorBoleta(mensaje: string): string {
+  return mensaje.includes(EMAIL_VERIFICATION_REQUIRED)
+    ? EMAIL_VERIFICATION_REQUIRED
+    : mensaje;
 }
 
 /**
@@ -525,8 +554,9 @@ const registrarBoletaSchema = z.object({
 export async function registrarBoletaAdmin(
   input: z.infer<typeof registrarBoletaSchema>,
 ): Promise<ActionResult> {
-  const membership = await requireMembership();
-  if (!membership) return { success: false, error: "Sin sesión" };
+  const acceso = await puedeTocarNumeros();
+  if (!acceso.success) return acceso;
+  const membership = acceso.data;
 
   const parsed = registrarBoletaSchema.safeParse(input);
   if (!parsed.success) {
@@ -549,7 +579,8 @@ export async function registrarBoletaAdmin(
   });
 
   if (error) {
-    const msg = error.code === "23505" ? "Ese número ya está tomado" : error.message;
+    const msg =
+      error.code === "23505" ? "Ese número ya está tomado" : traducirErrorBoleta(error.message);
     return { success: false, error: msg };
   }
   revalidatePath(`/admin/rifas/${d.rifa_id}`);
@@ -569,8 +600,9 @@ const registrarLoteSchema = registrarBoletaSchema
 export async function registrarBoletasLote(
   input: z.infer<typeof registrarLoteSchema>,
 ): Promise<ActionResult<{ registrados: number[]; ocupados: number[] }>> {
-  const membership = await requireMembership();
-  if (!membership) return { success: false, error: "Sin sesión" };
+  const acceso = await puedeTocarNumeros();
+  if (!acceso.success) return acceso;
+  const membership = acceso.data;
 
   const parsed = registrarLoteSchema.safeParse(input);
   if (!parsed.success) {
@@ -611,7 +643,7 @@ export async function registrarBoletasLote(
     const { error } = await supabase.from("boletas").insert({ ...base, numero });
     if (error) {
       if (error.code === "23505") ocupados.push(numero);
-      else return { success: false, error: error.message };
+      else return { success: false, error: traducirErrorBoleta(error.message) };
     } else {
       registrados.push(numero);
     }
@@ -641,8 +673,8 @@ export async function actualizarBoleta(
   boletaId: string,
   input: z.infer<typeof editarBoletaSchema>,
 ): Promise<ActionResult> {
-  const membership = await requireMembership();
-  if (!membership) return { success: false, error: "Sin sesión" };
+  const acceso = await puedeTocarNumeros();
+  if (!acceso.success) return acceso;
 
   const parsed = editarBoletaSchema.safeParse(input);
   if (!parsed.success) {
@@ -661,7 +693,7 @@ export async function actualizarBoleta(
     .select("rifa_id")
     .maybeSingle();
 
-  if (error) return { success: false, error: error.message };
+  if (error) return { success: false, error: traducirErrorBoleta(error.message) };
   if (data) {
     const rifaId = (data as { rifa_id: string }).rifa_id;
     revalidatePath(`/admin/rifas/${rifaId}`);
@@ -676,8 +708,8 @@ export async function marcarPagoBoleta(
   pagado: boolean,
   metodo: "efectivo" | "transferencia" | null = null,
 ): Promise<ActionResult> {
-  const membership = await requireMembership();
-  if (!membership) return { success: false, error: "Sin sesión" };
+  const acceso = await puedeTocarNumeros();
+  if (!acceso.success) return acceso;
 
   const supabase = await createClient();
   const { data, error } = await supabase
@@ -691,7 +723,7 @@ export async function marcarPagoBoleta(
     .select("rifa_id")
     .maybeSingle();
 
-  if (error) return { success: false, error: error.message };
+  if (error) return { success: false, error: traducirErrorBoleta(error.message) };
   if (data) {
     const rifaId = (data as { rifa_id: string }).rifa_id;
     revalidatePath(`/admin/rifas/${rifaId}`);
@@ -702,8 +734,8 @@ export async function marcarPagoBoleta(
 
 /** Libera un número (borra la boleta → vuelve a estar libre). */
 export async function liberarBoleta(boletaId: string): Promise<ActionResult> {
-  const membership = await requireMembership();
-  if (!membership) return { success: false, error: "Sin sesión" };
+  const acceso = await puedeTocarNumeros();
+  if (!acceso.success) return acceso;
 
   const supabase = await createClient();
   const { data } = await supabase
@@ -712,7 +744,7 @@ export async function liberarBoleta(boletaId: string): Promise<ActionResult> {
     .eq("id", boletaId)
     .maybeSingle();
   const { error } = await supabase.from("boletas").delete().eq("id", boletaId);
-  if (error) return { success: false, error: error.message };
+  if (error) return { success: false, error: traducirErrorBoleta(error.message) };
   if (data) {
     const rifaId = (data as { rifa_id: string }).rifa_id;
     revalidatePath(`/admin/rifas/${rifaId}`);
