@@ -42,7 +42,8 @@ export default async function RifaDetallePage({
   const { rifa, premios, boletas, ganadores } = res.data;
   const dash = calcularDashboard(rifa, boletas);
 
-  const pagoRes = await getMiPagoConfig();
+  // Los datos de cobro son los del dueño de la rifa: son los que ve el público.
+  const pagoRes = await getMiPagoConfig(rifa.tenant_id);
   const pago = pagoRes.success ? pagoRes.data : null;
   const pagoIncompleto = !(pago?.cuenta_numero ?? pago?.nequi_llave) && !pago?.llave && !pago?.qr_url;
 
@@ -173,7 +174,7 @@ export default async function RifaDetallePage({
         <p className="text-muted-foreground mb-3 text-xs">
           Se muestran a los compradores en la página pública y el flyer.
         </p>
-        <PagoConfigForm inicial={pago} />
+        <PagoConfigForm inicial={pago} tenantId={rifa.tenant_id} />
       </section>
     </div>
   );

@@ -371,15 +371,25 @@ export async function setPlanTenant(
   return { success: true, data: undefined };
 }
 
-/** Config de cobro del tenant del usuario actual. */
-export async function getMiPagoConfig(): Promise<ActionResult<TenantPagoConfig | null>> {
+/**
+ * Config de cobro de un tenant. Sin `tenantId`, la del usuario actual. Con
+ * `tenantId` ajeno solo pasa el superadmin (p. ej. una rifa reasignada a otro
+ * organizador: la página pública muestra los datos del dueño de la rifa).
+ */
+export async function getMiPagoConfig(
+  tenantId?: string,
+): Promise<ActionResult<TenantPagoConfig | null>> {
   const membership = await getMembership();
   if (!membership) return { success: false, error: "Sin sesión" };
-  const supabase = await createClient();
-  const { data } = await supabase
+  const destino = tenantId ?? membership.tenant_id;
+  if (destino !== membership.tenant_id && membership.rol !== "superadmin") {
+    return { success: false, error: "Sin acceso" };
+  }
+  const svc = createServiceRoleClient();
+  const { data } = await svc
     .from("tenant_pago_config")
     .select("*")
-    .eq("tenant_id", membership.tenant_id)
+    .eq("tenant_id", destino)
     .maybeSingle();
   return { success: true, data: (data as TenantPagoConfig | null) ?? null };
 }
@@ -395,12 +405,20 @@ const pagoConfigSchema = z.object({
   mensaje_qr: z.string().trim().nullable().optional(),
 });
 
-/** El owner guarda sus datos de cobro (upsert por tenant). Requiere cuenta o Bre-B. */
+/**
+ * El owner guarda sus datos de cobro (upsert por tenant). Requiere cuenta o
+ * Bre-B. El superadmin puede pasar `tenantId` para editar los de otro tenant.
+ */
 export async function guardarPagoConfig(
   input: z.infer<typeof pagoConfigSchema>,
+  tenantId?: string,
 ): Promise<ActionResult> {
   const membership = await getMembership();
   if (!membership) return { success: false, error: "Sin sesión" };
+  const destino = tenantId ?? membership.tenant_id;
+  if (destino !== membership.tenant_id && membership.rol !== "superadmin") {
+    return { success: false, error: "Sin acceso" };
+  }
 
   const parsed = pagoConfigSchema.safeParse(input);
   if (!parsed.success) {
@@ -415,9 +433,11 @@ export async function guardarPagoConfig(
     return { success: false, error: "Indica al menos un medio de pago: cuenta o Llave Bre-B" };
   }
 
-  const supabase = await createClient();
-  const { error } = await supabase.from("tenant_pago_config").upsert({
-    tenant_id: membership.tenant_id,
+  // Service role: el superadmin no es miembro del tenant ajeno (RLS lo
+  // bloquearía). El permiso ya se validó arriba.
+  const svc = createServiceRoleClient();
+  const { error } = await svc.from("tenant_pago_config").upsert({
+    tenant_id: destino,
     nequi_llave: cuentaTipo === "nequi" ? cuentaNumero : null,
     cuenta_tipo: cuentaTipo || null,
     cuenta_numero: cuentaNumero || null,

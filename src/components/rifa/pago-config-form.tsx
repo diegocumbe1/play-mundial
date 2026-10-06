@@ -14,7 +14,14 @@ import { prepararImagen } from "@/lib/imagen";
 import type { TenantPagoConfig } from "@/types";
 
 /** Datos de cobro del tenant (cuenta/Llave Bre-B/QR/WhatsApp). */
-export function PagoConfigForm({ inicial }: { inicial: TenantPagoConfig | null }) {
+export function PagoConfigForm({
+  inicial,
+  tenantId,
+}: {
+  inicial: TenantPagoConfig | null;
+  /** Tenant cuyos datos se editan; por defecto el del usuario actual. */
+  tenantId?: string;
+}) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [subiendo, setSubiendo] = useState(false);
@@ -68,7 +75,7 @@ export function PagoConfigForm({ inicial }: { inicial: TenantPagoConfig | null }
         titular: titular.trim() || null,
         whatsapp: whatsapp.trim() || null,
         qr_url: qr.trim() || null,
-      });
+      }, tenantId);
       if (!r.success) {
         toast.error(r.error);
         return;
