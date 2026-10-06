@@ -22,13 +22,13 @@ export async function generateMetadata({
   const res = await getRifa(slug);
   if (!res.success) return { title: "Rifa" };
 
-  const { rifa, disponibles } = res.data;
+  const { rifa } = res.data;
   const fechaJuego =
     rifa.tipo === "loteria" ? (rifa.fecha_loteria ?? rifa.fecha_sorteo) : rifa.fecha_sorteo;
   const fechaJuegoTxt = formatFechaCO(fechaJuego, { conAnio: false });
 
   // La vista previa se lee antes que la imagen: aquí va lo que decide la compra
-  // (cómo se gana, cuánto vale, cuánto queda).
+  // (cómo se gana, cuándo juega, cuánto vale).
   const partes = [
     rifa.tipo === "loteria" && rifa.modo_cifras
       ? `Juega con las ${labelModoCifras(rifa.modo_cifras, rifa.formato_cifras)}${
@@ -37,7 +37,6 @@ export async function generateMetadata({
       : null,
     fechaJuegoTxt ? `Juega el ${fechaJuegoTxt}` : null,
     `${formatCOP(rifa.precio_boleta)} por número`,
-    `Quedan ${disponibles} de ${rifa.cantidad_numeros}`,
   ].filter(Boolean);
   const descripcion = `${partes.join(" · ")}.`;
 

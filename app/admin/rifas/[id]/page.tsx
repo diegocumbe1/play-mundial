@@ -70,7 +70,6 @@ export default async function RifaDetallePage({
       : labelSorteoPropio(rifa.sorteo_bolas || 1, rifa.sorteo_ganadores || 1, rifa.sorteo_orden),
     fechaJuegoRifaTxt ? `Juega el ${fechaJuegoRifaTxt}` : null,
     `${formatCOP(rifa.precio_boleta)} por número`,
-    `Quedan ${dash.libres} de ${rifa.cantidad_numeros}`,
   ]
     .filter(Boolean)
     .join(" · ");

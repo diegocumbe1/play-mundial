@@ -50,10 +50,8 @@ export default async function Image({
     );
   }
 
-  const { rifa, premios, disponibles } = res.data;
+  const { rifa, premios } = res.data;
   const f = getTema(rifa.tema).flyer;
-  const vendidas = rifa.cantidad_numeros - disponibles;
-  const pct = rifa.cantidad_numeros > 0 ? Math.round((vendidas / rifa.cantidad_numeros) * 100) : 0;
   const premio = [...premios].sort((a, b) => a.orden - b.orden)[0];
   const premioTxt = premio
     ? premio.tipo === "valor" && premio.valor
@@ -142,34 +140,9 @@ export default async function Image({
             </div>
           )}
         </div>
-
-        {/* Derecha: escasez (el gancho que hace clic) */}
-        <div
-          style={{
-            display: "flex", flexDirection: "column", justifyContent: "center",
-            alignItems: "center", width: 380, background: f.card, color: f.ink,
-            borderRadius: 28, padding: 32,
-          }}
-        >
-          <div style={{ display: "flex", fontSize: 28, fontWeight: 700 }}>QUEDAN</div>
-          <div style={{ display: "flex", fontSize: 150, fontWeight: 800, lineHeight: 1 }}>
-            {disponibles}
-          </div>
-          <div style={{ display: "flex", fontSize: 30, fontWeight: 600 }}>
-            de {rifa.cantidad_numeros} números
-          </div>
-          <div
-            style={{
-              display: "flex", width: "100%", height: 16, marginTop: 26,
-              background: f.ocupBg, borderRadius: 8,
-            }}
-          >
-            <div style={{ display: "flex", width: `${pct}%`, background: f.accent, borderRadius: 8 }} />
-          </div>
-          <div style={{ display: "flex", marginTop: 12, fontSize: 26, fontWeight: 700 }}>
-            {pct}% vendido
-          </div>
-        </div>
+        {/* Derecha libre: ahí se ve la foto del premio. El conteo de números
+            disponibles no va en la vista previa (no aporta y con 0% vendido
+            espanta). */}
       </div>
     ),
     size,
