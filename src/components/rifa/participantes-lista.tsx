@@ -1,7 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Copy, MessageCircle, Phone, Search, UserCheck, Users, X } from "lucide-react";
+import { Clock, Copy, MessageCircle, Phone, Search, UserCheck, Users, X } from "lucide-react";
+import { Popover } from "@base-ui/react/popover";
 import { toast } from "sonner";
 
 import { BoletaModal } from "@/components/rifa/boleta-modal";
@@ -22,6 +23,24 @@ function normalizar(s: string): string {
     .replace(/[̀-ͯ]/g, "");
 }
 
+type Orden = "deuda" | "recientes" | "antiguos";
+
+const MESES_CORTOS = [
+  "ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic",
+];
+
+/**
+ * Fecha y hora de registro en hora de Colombia (UTC−5, sin horario de verano):
+ * "12 oct, 3:45 p. m.". Se arma a mano en vez de usar Intl porque Node y el
+ * navegador difieren en los espacios que meten y eso rompe la hidratación.
+ */
+function fmtRegistro(ms: number): string {
+  const d = new Date(ms - 5 * 60 * 60 * 1000);
+  const h = d.getUTCHours();
+  const min = String(d.getUTCMinutes()).padStart(2, "0");
+  return `${d.getUTCDate()} ${MESES_CORTOS[d.getUTCMonth()]}, ${h % 12 || 12}:${min} ${h < 12 ? "a. m." : "p. m."}`;
+}
+
 interface Persona {
   clave: string;
   nombre: string;
@@ -30,6 +49,46 @@ interface Persona {
   pagadas: number;
   pendientes: number;
   debe: number;
+  /** Primer y último registro (ms) entre sus boletas. */
+  primerRegistro: number;
+  ultimoRegistro: number;
+}
+
+/**
+ * Fecha/hora de registro detrás de un ícono para no gastar espacio en la
+ * tarjeta: en desktop se abre al pasar el mouse, en mobile con un toque.
+ */
+function RegistroInfo({ persona, ancho }: { persona: Persona; ancho: number }) {
+  const porFecha = persona.boletas
+    .slice()
+    .sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at));
+  return (
+    <Popover.Root>
+      <Popover.Trigger
+        openOnHover
+        delay={150}
+        aria-label="Ver fecha de registro"
+        className="hover:text-foreground inline-flex size-5 items-center justify-center rounded-md transition-colors"
+      >
+        <Clock className="size-3.5" />
+      </Popover.Trigger>
+      <Popover.Portal>
+        <Popover.Positioner side="top" sideOffset={6} className="z-50">
+          <Popover.Popup className="bg-popover text-popover-foreground ring-foreground/10 max-w-64 rounded-lg p-2.5 text-xs shadow-md ring-1">
+            <p className="mb-1 font-semibold">Registro</p>
+            <ul className="flex flex-col gap-0.5">
+              {porFecha.map((b) => (
+                <li key={b.id} className="flex justify-between gap-3 tabular-nums">
+                  <span className="font-bold">#{String(b.numero).padStart(ancho, "0")}</span>
+                  <span className="text-muted-foreground">{fmtRegistro(Date.parse(b.created_at))}</span>
+                </li>
+              ))}
+            </ul>
+          </Popover.Popup>
+        </Popover.Positioner>
+      </Popover.Portal>
+    </Popover.Root>
+  );
 }
 
 interface ResponsableResumen {
@@ -58,6 +117,7 @@ export function ParticipantesLista({
   const setFiltro = onFiltro ?? setFiltroLocal;
   const [busqueda, setBusqueda] = useState("");
   const [responsableFiltro, setResponsableFiltro] = useState("");
+  const [orden, setOrden] = useState<Orden>("deuda");
   // Ningún cambio de estado es de un solo toque: se abre el modal de la boleta.
   const [boletaSel, setBoletaSel] = useState<Boleta | null>(null);
 
@@ -105,17 +165,39 @@ export function ParticipantesLista({
       const nombre = b.comprador_nombre?.trim() || "Sin nombre";
       const telefono = b.comprador_telefono?.trim() || null;
       const clave = `${telefono ?? "sin-tel"}|${nombre.toLowerCase()}`;
+      // Las boletas se insertan al apartarse, así que created_at es el registro.
+      const t = Date.parse(b.created_at);
       const actual =
         map.get(clave) ??
-        { clave, nombre, telefono, boletas: [], pagadas: 0, pendientes: 0, debe: 0 };
+        {
+          clave,
+          nombre,
+          telefono,
+          boletas: [],
+          pagadas: 0,
+          pendientes: 0,
+          debe: 0,
+          primerRegistro: t,
+          ultimoRegistro: t,
+        };
       actual.boletas.push(b);
       if (b.estado === "pagado") actual.pagadas += 1;
       else actual.pendientes += 1;
       actual.debe = actual.pendientes * rifa.precio_boleta;
+      actual.primerRegistro = Math.min(actual.primerRegistro, t);
+      actual.ultimoRegistro = Math.max(actual.ultimoRegistro, t);
       map.set(clave, actual);
     }
-    return [...map.values()].sort((a, b) => b.pendientes - a.pendientes);
-  }, [boletasBase, rifa.precio_boleta]);
+    const lista = [...map.values()];
+    switch (orden) {
+      case "recientes":
+        return lista.sort((a, b) => b.ultimoRegistro - a.ultimoRegistro);
+      case "antiguos":
+        return lista.sort((a, b) => a.primerRegistro - b.primerRegistro);
+      default:
+        return lista.sort((a, b) => b.pendientes - a.pendientes);
+    }
+  }, [boletasBase, rifa.precio_boleta, orden]);
 
   const q = normalizar(busqueda.trim());
   const visibles = personas
@@ -179,97 +261,105 @@ export function ParticipantesLista({
         </div>
       </div>
 
-      {/* Buscador */}
-      {responsables.length > 0 && (
-        <div className="border-border bg-muted/20 rounded-xl border p-3">
-          <div className="grid gap-2 sm:grid-cols-[1fr_auto] sm:items-end">
-            <div>
-              <label className="text-muted-foreground mb-1.5 block text-xs font-medium">
-                Responsable de venta
-              </label>
-              <select
-                value={responsableFiltro}
-                onChange={(e) => setResponsableFiltro(e.target.value)}
-                className="border-input bg-background h-9 w-full rounded-lg border px-2 text-sm"
-              >
-                <option value="">Todos los responsables</option>
-                {responsables.map((r) => (
-                  <option key={normalizar(r.nombre)} value={normalizar(r.nombre)}>
-                    {r.nombre} ({r.boletas.length})
-                  </option>
-                ))}
-              </select>
-            </div>
-            {responsableFiltro && (
-              <button
-                type="button"
-                onClick={() => setResponsableFiltro("")}
-                className="text-muted-foreground hover:text-foreground h-9 rounded-lg px-2 text-xs"
-              >
-                Ver todos
-              </button>
-            )}
-          </div>
+      {/* Barra de filtros: apilada en mobile, en una sola fila desde sm. Los
+          selects se describen solos ("Todos los responsables", "Mayor deuda
+          primero"), así que no llevan etiqueta visible y no gastan alto. */}
+      <div className="flex flex-col gap-2 sm:flex-row">
+        {responsables.length > 0 && (
+          <select
+            value={responsableFiltro}
+            onChange={(e) => setResponsableFiltro(e.target.value)}
+            aria-label="Responsable de venta"
+            className="border-input bg-background h-9 rounded-lg border px-2 text-sm sm:w-52"
+          >
+            <option value="">Todos los responsables</option>
+            {responsables.map((r) => (
+              <option key={normalizar(r.nombre)} value={normalizar(r.nombre)}>
+                {r.nombre} ({r.boletas.length})
+              </option>
+            ))}
+          </select>
+        )}
 
-          {responsableActivo && (
-            <div className="mt-3">
-              <p className="text-muted-foreground text-xs">
-                <UserCheck className="mr-1 inline size-3.5" />
-                {responsableActivo.nombre}: {responsableActivo.boletas.length} número(s) ·{" "}
-                {responsableActivo.pagadas} pagado(s) · {responsableActivo.pendientes} por cobrar
-                {responsableActivo.porCobrar > 0 && (
-                  <> · <b className="text-foreground">{formatCOP(responsableActivo.porCobrar)}</b></>
-                )}
-              </p>
-              <div className="mt-2 flex max-h-20 flex-wrap gap-1.5 overflow-auto">
-                {responsableActivo.boletas
-                  .slice()
-                  .sort((a, b) => a.numero - b.numero)
-                  .map((b) => (
-                    <button
-                      key={b.id}
-                      type="button"
-                      onClick={() => setBoletaSel(b)}
-                      title={`${b.comprador_nombre ?? "Sin comprador"} · ${b.estado}`}
-                      className={
-                        "inline-flex items-center rounded-md px-2 py-0.5 text-xs font-bold tabular-nums " +
-                        (b.estado === "pagado"
-                          ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
-                          : "bg-amber-500/15 text-amber-700 dark:text-amber-300")
-                      }
-                    >
-                      {String(b.numero).padStart(ancho, "0")}
-                    </button>
-                  ))}
-              </div>
-            </div>
+        <div className="relative flex-1">
+          <Search className="text-muted-foreground pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2" />
+          <Input
+            value={busqueda}
+            onChange={(e) => setBusqueda(e.target.value)}
+            placeholder="Buscar por nombre, teléfono, número o responsable…"
+            className="pl-8 pr-8"
+            aria-label="Buscar participante"
+          />
+          {busqueda && (
+            <button
+              type="button"
+              onClick={() => setBusqueda("")}
+              aria-label="Limpiar búsqueda"
+              className="text-muted-foreground hover:text-foreground absolute right-2.5 top-1/2 -translate-y-1/2"
+            >
+              <X className="size-3.5" />
+            </button>
           )}
+        </div>
+
+        {/* Orden por fecha/hora de registro */}
+        <select
+          value={orden}
+          onChange={(e) => setOrden(e.target.value as Orden)}
+          aria-label="Ordenar participantes"
+          className="border-input bg-background h-9 rounded-lg border px-2 text-sm sm:w-56"
+        >
+          <option value="deuda">Mayor deuda primero</option>
+          <option value="antiguos">Registro más antiguo primero</option>
+          <option value="recientes">Registro más reciente primero</option>
+        </select>
+      </div>
+
+      {responsableActivo && (
+        <div className="border-border bg-muted/20 rounded-xl border p-3">
+          <div className="flex items-start justify-between gap-2">
+            <p className="text-muted-foreground text-xs">
+              <UserCheck className="mr-1 inline size-3.5" />
+              {responsableActivo.nombre}: {responsableActivo.boletas.length} número(s) ·{" "}
+              {responsableActivo.pagadas} pagado(s) · {responsableActivo.pendientes} por cobrar
+              {responsableActivo.porCobrar > 0 && (
+                <> · <b className="text-foreground">{formatCOP(responsableActivo.porCobrar)}</b></>
+              )}
+            </p>
+            <button
+              type="button"
+              onClick={() => setResponsableFiltro("")}
+              className="text-muted-foreground hover:text-foreground shrink-0 text-xs"
+            >
+              Ver todos
+            </button>
+          </div>
+          <div className="mt-2 flex max-h-20 flex-wrap gap-1.5 overflow-auto">
+            {responsableActivo.boletas
+              .slice()
+              .sort((a, b) => a.numero - b.numero)
+              .map((b) => (
+                <button
+                  key={b.id}
+                  type="button"
+                  onClick={() => setBoletaSel(b)}
+                  title={`${b.comprador_nombre ?? "Sin comprador"} · ${b.estado}`}
+                  className={
+                    "inline-flex items-center rounded-md px-2 py-0.5 text-xs font-bold tabular-nums " +
+                    (b.estado === "pagado"
+                      ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
+                      : "bg-amber-500/15 text-amber-700 dark:text-amber-300")
+                  }
+                >
+                  {String(b.numero).padStart(ancho, "0")}
+                </button>
+              ))}
+          </div>
         </div>
       )}
 
-      <div className="relative">
-        <Search className="text-muted-foreground pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2" />
-        <Input
-          value={busqueda}
-          onChange={(e) => setBusqueda(e.target.value)}
-          placeholder="Buscar por nombre, teléfono, número o responsable…"
-          className="pl-8 pr-8"
-          aria-label="Buscar participante"
-        />
-        {busqueda && (
-          <button
-            type="button"
-            onClick={() => setBusqueda("")}
-            aria-label="Limpiar búsqueda"
-            className="text-muted-foreground hover:text-foreground absolute right-2.5 top-1/2 -translate-y-1/2"
-          >
-            <X className="size-3.5" />
-          </button>
-        )}
-      </div>
-
       {/* Personas */}
-      <ul className="flex flex-col gap-2">
+      <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         {visibles.map((p) => {
           const urlPersona = urlPublicaRifa(
             rifa.slug_publico,
@@ -308,24 +398,29 @@ export function ParticipantesLista({
                   .join("\n");
 
           return (
-            <li key={p.clave} className="border-border rounded-xl border p-3">
-              <div className="flex flex-wrap items-start justify-between gap-2">
+            <li key={p.clave} className="border-border flex flex-col rounded-xl border p-3">
+              <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
-                  <p className="font-semibold">{p.nombre}</p>
-                  {p.telefono ? (
-                    <p className="text-muted-foreground inline-flex items-center gap-1 text-xs">
-                      <Phone className="size-3" /> {p.telefono}
-                    </p>
-                  ) : (
-                    <p className="text-muted-foreground text-xs">Sin teléfono</p>
-                  )}
+                  <p className="truncate font-semibold" title={p.nombre}>
+                    {p.nombre}
+                  </p>
+                  <div className="text-muted-foreground flex items-center gap-1.5 text-xs">
+                    {p.telefono ? (
+                      <span className="inline-flex items-center gap-1">
+                        <Phone className="size-3" /> {p.telefono}
+                      </span>
+                    ) : (
+                      <span>Sin teléfono</span>
+                    )}
+                    <RegistroInfo persona={p} ancho={ancho} />
+                  </div>
                 </div>
                 {p.pendientes > 0 ? (
-                  <span className="rounded-full bg-amber-500/15 px-2.5 py-1 text-xs font-semibold text-amber-600 dark:text-amber-400">
+                  <span className="shrink-0 whitespace-nowrap rounded-full bg-amber-500/15 px-2.5 py-1 text-xs font-semibold text-amber-600 dark:text-amber-400">
                     Debe {formatCOP(p.debe)}
                   </span>
                 ) : (
-                  <span className="rounded-full bg-emerald-500/15 px-2.5 py-1 text-xs font-semibold text-emerald-600 dark:text-emerald-400">
+                  <span className="shrink-0 rounded-full bg-emerald-500/15 px-2.5 py-1 text-xs font-semibold text-emerald-600 dark:text-emerald-400">
                     Pagó
                   </span>
                 )}
@@ -362,16 +457,18 @@ export function ParticipantesLista({
                 </div>
               )}
 
-              <div className="mt-2 flex flex-wrap items-center gap-3">
+              {/* mt-auto: las acciones quedan alineadas al fondo en cada fila de tarjetas. */}
+              <div className="mt-auto flex flex-wrap items-center gap-x-3 gap-y-1 pt-2">
                 {p.telefono && (
                   <a
                     href={waLink(p.telefono, mensaje)}
                     target="_blank"
                     rel="noreferrer"
+                    title={p.pendientes > 0 ? "Recordar el pago por WhatsApp" : "Escribir por WhatsApp"}
                     className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-600 hover:underline dark:text-emerald-400"
                   >
                     <MessageCircle className="size-3.5" />
-                    {p.pendientes > 0 ? "Recordar el pago por WhatsApp" : "Escribir por WhatsApp"}
+                    {p.pendientes > 0 ? "Recordar pago" : "WhatsApp"}
                   </a>
                 )}
                 {/* Sin teléfono guardado el recordatorio igual sirve: se copia

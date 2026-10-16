@@ -78,7 +78,7 @@ export default async function RifaDetallePage({
   const puedeEditar = !["sorteada", "pagada", "cancelada"].includes(rifa.estado);
 
   return (
-    <div className="mx-auto max-w-3xl px-4 py-8">
+    <div className="mx-auto max-w-3xl px-4 py-8 lg:max-w-5xl xl:max-w-7xl">
       <Link href="/admin/rifas" className="text-muted-foreground hover:text-foreground mb-4 inline-flex items-center gap-1.5 text-sm">
         <ArrowLeft className="size-4" /> Mis rifas
       </Link>

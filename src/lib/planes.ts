@@ -109,7 +109,7 @@ const CONFIG_DEFAULT: PlataformaConfig = {
   precio_rifa_1000: 0,
   precio_suscripcion_mes: 0,
   free_rifas_por_mes: 1,
-  free_rifas_total: 2,
+  free_rifas_total: 1,
   free_max_numeros: 100,
   precio_torneo_8: 0,
   precio_torneo_16: 0,

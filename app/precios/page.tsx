@@ -35,6 +35,16 @@ export default async function PreciosPage() {
     };
   });
 
+  // El cupo gratis es de por vida por cuenta. Con una sola rifa el límite
+  // mensual no aplica, así que el texto cambia en vez de pluralizar.
+  const unaGratis = c.free_rifas_total === 1;
+  const freeBullets = unaGratis
+    ? ["Tu primera rifa es gratis", "Una sola vez por cuenta: no se renueva"]
+    : [
+        `${c.free_rifas_total} rifas gratis en total (máx. ${c.free_rifas_por_mes} por mes)`,
+        "Se cuentan de por vida: no se renuevan",
+      ];
+
   const planes = [
     {
       id: "gratis" as const,
@@ -42,8 +52,7 @@ export default async function PreciosPage() {
       precio: "$0",
       destacado: false,
       bullets: [
-        `${c.free_rifas_total} rifas gratis en total (${c.free_rifas_por_mes} por mes)`,
-        "Se cuentan de por vida: no se renuevan",
+        ...freeBullets,
         `Máximo ${c.free_max_numeros} números`,
         "Enlace público en tiempo real",
         "Flyer con marca de agua",
@@ -212,8 +221,9 @@ export default async function PreciosPage() {
             </table>
           </div>
           <p className="text-muted-foreground mt-3 text-xs">
-            Tus primeras {c.free_rifas_total} rifas (hasta {c.free_max_numeros} números) no
-            pagan nada: la capa gratuita se aplica antes que cualquier cobro.
+            {unaGratis
+              ? `Tu primera rifa (hasta ${c.free_max_numeros} números) no paga nada; desde la segunda aplica este cobro.`
+              : `Tus primeras ${c.free_rifas_total} rifas (hasta ${c.free_max_numeros} números) no pagan nada: la capa gratuita se aplica antes que cualquier cobro.`}
           </p>
         </section>
       )}

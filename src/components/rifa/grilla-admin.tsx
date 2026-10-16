@@ -66,14 +66,16 @@ export function GrillaAdmin({
         )}
       </div>
 
-      {/* 10 columnas fijas (como un talonario): las 100 boletas caben en una vista. */}
-      <div className="grid grid-cols-10 gap-1 sm:gap-1.5">
+      {/* 10 columnas fijas (como un talonario): las 100 boletas caben en una vista.
+          Las celdas son cuadradas, así que en desktop se limita el ancho para que
+          la grilla no crezca de alto con la página ancha. */}
+      <div className="mx-auto grid max-w-3xl grid-cols-10 gap-1 sm:gap-1.5 lg:gap-2">
         {numeros.map((n) => {
           const b = porNumero.get(n);
           const estado = b?.estado ?? "libre";
           const elegido = seleccion.has(n);
           const base =
-            "tap-scale flex aspect-square w-full items-center justify-center rounded-md text-[10px] font-bold tabular-nums transition-colors sm:text-xs";
+            "tap-scale flex aspect-square w-full items-center justify-center rounded-md text-[10px] font-bold tabular-nums transition-colors sm:text-xs lg:rounded-lg lg:text-base";
           const cls = elegido
             ? "bg-primary text-primary-foreground ring-2 ring-primary"
             : estado === "pagado"
@@ -97,7 +99,7 @@ export function GrillaAdmin({
         })}
       </div>
 
-      <div className="text-muted-foreground mt-3 flex flex-wrap gap-4 text-xs">
+      <div className="text-muted-foreground mx-auto mt-3 flex max-w-3xl flex-wrap gap-4 text-xs">
         <span className="inline-flex items-center gap-1.5"><i className="bg-muted size-3 rounded" /> Libre</span>
         <span className="inline-flex items-center gap-1.5"><i className="size-3 rounded bg-amber-500/40" /> Apartado</span>
         <span className="inline-flex items-center gap-1.5"><i className="size-3 rounded bg-emerald-500/40" /> Pagado</span>

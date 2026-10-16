@@ -115,7 +115,7 @@ export function BoletaModal({
     <>
     <VerificarEmailModal open={pidiendoVerificacion} onOpenChange={setPidiendoVerificacion} />
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent>
+      <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Número {etiqueta}</DialogTitle>
           <DialogDescription>
@@ -185,7 +185,7 @@ export function BoletaModal({
           </p>
         )}
 
-        <DialogFooter>
+        <DialogFooter className="sm:flex-wrap">
           {!boleta ? (
             <>
               <Button
@@ -266,7 +266,13 @@ export function BoletaModal({
             </>
           ) : (
             <>
-              <Button variant="ghost" disabled={pending} onClick={() => setConfirmandoLiberar(true)}>
+              {/* Liberar va aparte, a la izquierda, lejos de las acciones de cobro. */}
+              <Button
+                variant="ghost"
+                disabled={pending}
+                onClick={() => setConfirmandoLiberar(true)}
+                className="text-destructive hover:text-destructive sm:mr-auto"
+              >
                 <Trash2 className="size-4" /> Liberar
               </Button>
               <Button variant="outline" disabled={pending} onClick={() => setEditando(true)}>

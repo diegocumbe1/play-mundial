@@ -41,7 +41,7 @@ export function RifasLanding() {
             </Link>
           </div>
           <p className="text-muted-foreground mt-3 text-xs">
-            Empieza gratis · 1 rifa al mes sin costo.
+            Empieza gratis · tu primera rifa no tiene costo.
           </p>
         </section>
 
