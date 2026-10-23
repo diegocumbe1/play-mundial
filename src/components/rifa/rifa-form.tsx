@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Trash2 } from "lucide-react";
+import { Calculator, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { actualizarRifa, crearRifa, guardarPremios } from "@/actions/rifas";
@@ -12,6 +12,8 @@ import { Label } from "@/components/ui/label";
 import { InputMoneda } from "@/components/rifa/input-moneda";
 import { ImagenRifaInput } from "@/components/rifa/imagen-rifa-input";
 import { SorteoDemo } from "@/components/rifa/sorteo-demo";
+import { CalculadoraGanancias } from "@/components/precios/calculadora-ganancias";
+import type { ConfigCobroRifa } from "@/lib/cobro-rifa";
 import {
   DECORACIONES,
   TEMAS,
@@ -47,12 +49,15 @@ export function RifaForm({
   premiosIniciales,
   esSuperadmin = false,
   tenants = [],
+  cobro,
 }: {
   rifa?: Rifa;
   premiosIniciales?: Premio[];
   /** Si el usuario es superadmin, puede delegar la rifa a otro organizador. */
   esSuperadmin?: boolean;
   tenants?: { id: string; nombre: string }[];
+  /** Regla de cobro vigente, para la calculadora de ganancias. */
+  cobro?: ConfigCobroRifa;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -64,7 +69,9 @@ export function RifaForm({
   const [precio, setPrecio] = useState(String(rifa?.precio_boleta ?? ""));
   const [cantidad, setCantidad] = useState(String(rifa?.cantidad_numeros ?? "100"));
   const [numeroInicial, setNumeroInicial] = useState<0 | 1>(rifa?.numero_inicial === 1 ? 1 : 0);
-  const [formato, setFormato] = useState<2 | 3>(rifa?.formato_cifras ?? 2);
+  const [formato, setFormato] = useState<2 | 3 | 4>(rifa?.formato_cifras ?? 2);
+  const [minCompra, setMinCompra] = useState(String(rifa?.min_numeros_compra ?? 1));
+  const [calculadora, setCalculadora] = useState(false);
   const [soloPagadas, setSoloPagadas] = useState(rifa?.solo_pagadas_juegan ?? true);
   const [loteria, setLoteria] = useState(rifa?.loteria ?? "");
   const [loteriaUrl, setLoteriaUrl] = useState(rifa?.loteria_url ?? "");
@@ -134,6 +141,7 @@ export function RifaForm({
       cantidad_numeros: Number(cantidad) || 0,
       numero_inicial: tipo === "loteria" ? (0 as const) : numeroInicial,
       formato_cifras: formato,
+      min_numeros_compra: Math.min(100, Math.max(1, Number(minCompra) || 1)),
       solo_pagadas_juegan: soloPagadas,
       tema,
       decoracion,
@@ -242,9 +250,39 @@ export function RifaForm({
         <Field label="Cantidad de números">
           <Input inputMode="numeric" value={cantidad} onChange={(e) => setCantidad(e.target.value)} placeholder="100" />
           <p className="text-muted-foreground mt-1 text-xs">
-            Hasta 1000 números. Esta rifa quedaría <b>{rangoTxt}</b>.
+            Hasta 10.000 números. Esta rifa quedaría <b>{rangoTxt}</b>.
           </p>
         </Field>
+        <Field label="Mínimo de números por compra">
+          <Input inputMode="numeric" value={minCompra} onChange={(e) => setMinCompra(e.target.value.replace(/\D/g, ""))} placeholder="1" />
+          <p className="text-muted-foreground mt-1 text-xs">
+            1 = sin mínimo. Con números baratos (p. ej. $1.500) pide 10: el comprador los
+            elige al azar, seguidos o a mano.
+          </p>
+        </Field>
+
+        {cobro && (
+          <div className="sm:col-span-2">
+            <Button type="button" variant="outline" size="sm" onClick={() => setCalculadora((v) => !v)}>
+              <Calculator className="size-3.5" />
+              {calculadora ? "Ocultar calculadora de ganancias" : "Calcular ganancias"}
+            </Button>
+            {calculadora && (
+              <div className="border-border mt-3 rounded-xl border p-4">
+                <CalculadoraGanancias
+                  config={cobro}
+                  cantidadInicial={cantidadNum || 100}
+                  preciosIniciales={Number(precio) > 0 ? [Number(precio)] : [1500, 1800]}
+                  onUsar={(n, p) => {
+                    setCantidad(String(n));
+                    setPrecio(String(p));
+                    toast.success(`Listo: ${n.toLocaleString("es-CO")} números a $${p.toLocaleString("es-CO")}`);
+                  }}
+                />
+              </div>
+            )}
+          </div>
+        )}
 
         {tipo === "interna" ? (
           <Field label="¿Desde qué número empieza?">
@@ -265,12 +303,19 @@ export function RifaForm({
           <Field label="Cifras del número">
             <Segmented
               value={String(formato)}
-              onChange={(v) => setFormato(Number(v) as 2 | 3)}
+              onChange={(v) => setFormato(Number(v) as 2 | 3 | 4)}
               options={[
                 { value: "2", label: "2 cifras (00–99)" },
                 { value: "3", label: "3 cifras (000–999)" },
+                { value: "4", label: "4 cifras (0000–9999)" },
               ]}
             />
+            {cantidadNum > 10 ** formato && (
+              <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
+                Con {formato} cifras solo existen {(10 ** formato).toLocaleString("es-CO")} números
+                posibles: sube las cifras o baja la cantidad.
+              </p>
+            )}
           </Field>
         )}
       </section>
@@ -518,8 +563,8 @@ export function RifaForm({
                     value={p.criterio || criterioPorDefecto}
                     onChange={(v) => setPremio(i, { criterio: v as CriterioPremio })}
                     options={[
-                      { value: "ultimas_2", label: "Últimas 2 cifras" },
-                      { value: "primeras_2", label: "Primeras 2 cifras" },
+                      { value: "ultimas_2", label: `Últimas ${formato} cifras` },
+                      { value: "primeras_2", label: `Primeras ${formato} cifras` },
                     ]}
                   />
                 </Field>

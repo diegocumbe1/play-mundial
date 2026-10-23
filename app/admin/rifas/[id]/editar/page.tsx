@@ -5,6 +5,8 @@ import { ArrowLeft } from "lucide-react";
 import { getRifa } from "@/actions/rifas";
 import { getMembership } from "@/lib/auth";
 import { RifaForm } from "@/components/rifa/rifa-form";
+import { configCobroRifa } from "@/lib/cobro-rifa";
+import { getPlataformaConfig } from "@/lib/tenant-config";
 
 export const dynamic = "force-dynamic";
 
@@ -19,7 +21,7 @@ export default async function EditarRifaPage({
     return <div className="mx-auto max-w-md p-8 text-center text-muted-foreground">Sin acceso.</div>;
   }
 
-  const res = await getRifa(id);
+  const [res, config] = await Promise.all([getRifa(id), getPlataformaConfig()]);
   if (!res.success) notFound();
 
   return (
@@ -28,7 +30,11 @@ export default async function EditarRifaPage({
         <ArrowLeft className="size-4" /> Volver a la rifa
       </Link>
       <h1 className="mb-6 text-2xl font-bold">Editar rifa</h1>
-      <RifaForm rifa={res.data.rifa} premiosIniciales={res.data.premios} />
+      <RifaForm
+        rifa={res.data.rifa}
+        premiosIniciales={res.data.premios}
+        cobro={configCobroRifa(config)}
+      />
     </div>
   );
 }

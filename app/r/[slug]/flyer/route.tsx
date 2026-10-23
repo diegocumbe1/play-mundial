@@ -4,6 +4,7 @@ import { getRifaPublica } from "@/actions/rifas";
 import {
   anchoNumeros,
   comoSeGanaPremio,
+  decodificarOcupados,
   formatCOP,
   formatNumero,
   labelModoCifras,
@@ -117,7 +118,8 @@ export async function GET(
     );
   }
 
-  const { rifa, premios, grilla } = res.data;
+  const { rifa, premios, ocupados } = res.data;
+  const grilla = decodificarOcupados(rifa, ocupados);
   const f = getTema(rifa.tema).flyer;
   const disponibles = grilla.filter((c) => !c.ocupado).length;
   const vendidas = rifa.cantidad_numeros - disponibles;

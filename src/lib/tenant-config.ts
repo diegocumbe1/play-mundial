@@ -32,11 +32,13 @@ export async function getPlataformaConfig(): Promise<PlataformaConfig> {
 
   const defaults: PlataformaConfig = {
     moneda: "COP",
-    // 1% del recaudo proyectado, entre $8.000 y $29.900.
+    // 1% del recaudo proyectado, desde $8.000; el tope sube con el tamaño.
     cobro_rifa_modo: "porcentaje",
     cobro_rifa_pct: 1,
     cobro_rifa_min: 8000,
     cobro_rifa_max: 29900,
+    cobro_rifa_max_5000: 79900,
+    cobro_rifa_max_10000: 149900,
     pro_max_rifas_ciclo: 10,
     precio_rifa_100: 0,
     precio_rifa_500: 0,

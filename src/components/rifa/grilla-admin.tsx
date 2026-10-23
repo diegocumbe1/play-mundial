@@ -1,12 +1,21 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { CheckSquare, Users, X } from "lucide-react";
 
 import { BoletaModal } from "@/components/rifa/boleta-modal";
 import { BoletasLoteModal } from "@/components/rifa/boletas-lote-modal";
+import { BloquesGrilla, bloqueDe, TAM_BLOQUE, UMBRAL_BLOQUES } from "@/components/rifa/bloques-grilla";
+import { EleccionRapida } from "@/components/rifa/eleccion-rapida";
 import { Button } from "@/components/ui/button";
-import { anchoNumeros, formatCOP, formatNumero, numerosDeRifa } from "@/lib/rifa";
+import {
+  anchoNumeros,
+  formatCOP,
+  formatNumero,
+  inicioNumeros,
+  numerosDeRifa,
+  ultimoNumero,
+} from "@/lib/rifa";
 import type { Boleta, Rifa } from "@/types";
 
 /** Grilla de números del backoffice: 3 estados y gestión por número. */
@@ -30,8 +39,36 @@ export function GrillaAdmin({
   }, [boletas]);
 
   const ancho = anchoNumeros(rifa);
-  const numeros = numerosDeRifa(rifa);
+  const numeros = useMemo(() => numerosDeRifa(rifa), [rifa]);
   const elegidos = [...seleccion].sort((a, b) => a - b);
+
+  // Rifas grandes: la grilla va por bloques de 100 (ver BloquesGrilla).
+  const inicio = inicioNumeros(rifa);
+  const grande = rifa.cantidad_numeros > UMBRAL_BLOQUES;
+  const [bloque, setBloque] = useState(inicio);
+  const libres = useMemo(() => numeros.filter((n) => !porNumero.has(n)), [numeros, porNumero]);
+  const libresAcum = useMemo(() => {
+    const acc = [0];
+    for (const n of numeros) acc.push(acc[acc.length - 1] + (porNumero.has(n) ? 0 : 1));
+    return acc;
+  }, [numeros, porNumero]);
+  const libresEn = useCallback(
+    (desde: number, hasta: number) => {
+      const a = Math.max(0, desde - inicio);
+      const b = Math.min(numeros.length, hasta - inicio + 1);
+      return b > a ? libresAcum[b] - libresAcum[a] : 0;
+    },
+    [libresAcum, numeros.length, inicio],
+  );
+  const visibles = grande
+    ? numeros.slice(bloque - inicio, bloque - inicio + TAM_BLOQUE)
+    : numeros;
+  const minimo = Math.min(Math.max(1, rifa.min_numeros_compra ?? 1), Math.max(1, libres.length));
+
+  function elegir(lista: number[]) {
+    setSeleccion(new Set(lista));
+    if (grande && lista.length > 0) setBloque(bloqueDe(lista[0], inicio));
+  }
 
   function alternar(n: number) {
     setSeleccion((prev) => {
@@ -66,11 +103,27 @@ export function GrillaAdmin({
         )}
       </div>
 
+      {multi && (
+        <EleccionRapida minimo={minimo} libres={libres} onElegir={elegir} tono="admin" />
+      )}
+
+      {grande && (
+        <BloquesGrilla
+          inicio={inicio}
+          ultimo={ultimoNumero(rifa)}
+          ancho={ancho}
+          bloque={bloque}
+          onBloque={setBloque}
+          libresEn={libresEn}
+          tono="admin"
+        />
+      )}
+
       {/* 10 columnas fijas (como un talonario): las 100 boletas caben en una vista.
           Las celdas son cuadradas, así que en desktop se limita el ancho para que
           la grilla no crezca de alto con la página ancha. */}
       <div className="mx-auto grid max-w-3xl grid-cols-10 gap-1 sm:gap-1.5 lg:gap-2">
-        {numeros.map((n) => {
+        {visibles.map((n) => {
           const b = porNumero.get(n);
           const estado = b?.estado ?? "libre";
           const elegido = seleccion.has(n);
@@ -115,6 +168,13 @@ export function GrillaAdmin({
             <p className="text-muted-foreground truncate text-xs tabular-nums">
               {elegidos.map((n) => formatNumero(n, ancho)).join(", ")}
             </p>
+            {/* Desde el panel no se bloquea (el organizador puede tener sus razones),
+                pero sí se avisa que la compra queda por debajo de su propia regla. */}
+            {elegidos.length < minimo && (
+              <p className="text-xs text-amber-600 dark:text-amber-400">
+                La rifa pide mínimo {minimo} por compra.
+              </p>
+            )}
           </div>
           <Button size="sm" onClick={() => setModalLote(true)}>
             <Users className="size-4" /> Asignar comprador

@@ -1,5 +1,6 @@
 import "server-only";
 
+import { cobroActivacionRifa } from "@/lib/cobro-rifa";
 import { createServiceRoleClient } from "@/lib/supabase/server";
 import type {
   PlanTenant,
@@ -47,14 +48,6 @@ interface ReglasProducto {
   precio: (c: PlataformaConfig, tamano: number, precioUnitario: number) => number;
 }
 
-/** Deja el cobro dentro del piso y el techo configurados (0 = desactivado). */
-function acotar(valor: number, min: number, max: number): number {
-  let v = Math.max(0, Math.round(valor));
-  if (min > 0) v = Math.max(v, min);
-  if (max > 0) v = Math.min(v, max);
-  return v;
-}
-
 const REGLAS: Record<ProductoPlataforma, ReglasProducto> = {
   rifas: {
     tabla: "rifas",
@@ -63,19 +56,8 @@ const REGLAS: Record<ProductoPlataforma, ReglasProducto> = {
     maxGratis: (c) => c.free_max_numeros,
     cuotaTotal: (c) => c.free_rifas_total,
     cuotaMes: (c) => c.free_rifas_por_mes,
-    precio: (c, n, precioBoleta) => {
-      // Regla vigente: un % del recaudo proyectado (números × precio), acotado.
-      // Es la única monótona: a más recaudo, más cobro.
-      if (c.cobro_rifa_modo === "porcentaje") {
-        const recaudo = Math.max(0, n) * Math.max(0, precioBoleta);
-        return acotar((recaudo * c.cobro_rifa_pct) / 100, c.cobro_rifa_min, c.cobro_rifa_max);
-      }
-      // Modo "boleta": activar la rifa cuesta lo mismo que uno de sus puestos.
-      if (c.cobro_rifa_modo === "boleta") {
-        return acotar(precioBoleta, c.cobro_rifa_min, c.cobro_rifa_max);
-      }
-      return n <= 100 ? c.precio_rifa_100 : n <= 500 ? c.precio_rifa_500 : c.precio_rifa_1000;
-    },
+    // La regla vive en `cobro-rifa.ts` para que la calculadora del cliente la comparta.
+    precio: cobroActivacionRifa,
   },
   torneos: {
     tabla: "torneos",
@@ -103,6 +85,8 @@ const CONFIG_DEFAULT: PlataformaConfig = {
   cobro_rifa_pct: 1,
   cobro_rifa_min: 8000,
   cobro_rifa_max: 29900,
+  cobro_rifa_max_5000: 79900,
+  cobro_rifa_max_10000: 149900,
   pro_max_rifas_ciclo: 10,
   precio_rifa_100: 0,
   precio_rifa_500: 0,

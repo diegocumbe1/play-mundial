@@ -151,6 +151,8 @@ const configSchema = z.object({
   pro_max_rifas_ciclo: z.number().int().min(1).max(100).default(10),
   cobro_rifa_min: z.number().int().min(0).default(0),
   cobro_rifa_max: z.number().int().min(0).default(0),
+  cobro_rifa_max_5000: z.number().int().min(0).default(0),
+  cobro_rifa_max_10000: z.number().int().min(0).default(0),
   moneda: z.string().trim().min(1).default("COP"),
   precio_rifa_100: z.number().int().min(0),
   precio_rifa_500: z.number().int().min(0),

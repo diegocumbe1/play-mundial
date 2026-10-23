@@ -394,8 +394,12 @@ export interface PlataformaConfig {
   cobro_rifa_pct: number;
   /** Piso del cobro por rifa (0 = sin mínimo). */
   cobro_rifa_min: number;
-  /** Techo del cobro por rifa (0 = sin tope). */
+  /** Techo del cobro por rifa de hasta 1.000 números (0 = sin tope). */
   cobro_rifa_max: number;
+  /** Techo para rifas de 1.001 a 5.000 números (0 = sin tope). */
+  cobro_rifa_max_5000: number;
+  /** Techo para rifas de más de 5.000 números (0 = sin tope). */
+  cobro_rifa_max_10000: number;
   /** Activaciones que cubre PRO en un ciclo mensual. */
   pro_max_rifas_ciclo: number;
   precio_rifa_100: number;
@@ -431,8 +435,10 @@ export interface Rifa {
    * arrancan en 0 porque el número cruza con las cifras del resultado.
    */
   numero_inicial: 0 | 1;
-  formato_cifras: 2 | 3;
+  formato_cifras: 2 | 3 | 4;
   solo_pagadas_juegan: boolean;
+  /** Cuántos números debe llevar como mínimo cada compra (1 = sin mínimo). */
+  min_numeros_compra: number;
   slug_publico: string;
   /** Preset de tema visual (ver src/lib/temas-rifa). */
   tema: string;
@@ -606,7 +612,8 @@ export interface RifaInput {
   precio_boleta: number;
   cantidad_numeros: number;
   numero_inicial?: 0 | 1;
-  formato_cifras: 2 | 3;
+  formato_cifras: 2 | 3 | 4;
+  min_numeros_compra?: number;
   solo_pagadas_juegan: boolean;
   tema?: string;
   decoracion?: string;

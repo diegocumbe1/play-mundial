@@ -22,6 +22,8 @@ export function PlataformaConfigForm({ inicial }: { inicial: PlataformaConfig })
     pro_max_rifas_ciclo: String(inicial.pro_max_rifas_ciclo ?? 10),
     cobro_rifa_min: String(inicial.cobro_rifa_min ?? 0),
     cobro_rifa_max: String(inicial.cobro_rifa_max ?? 0),
+    cobro_rifa_max_5000: String(inicial.cobro_rifa_max_5000 ?? 0),
+    cobro_rifa_max_10000: String(inicial.cobro_rifa_max_10000 ?? 0),
     precio_rifa_100: String(inicial.precio_rifa_100),
     precio_rifa_500: String(inicial.precio_rifa_500),
     precio_rifa_1000: String(inicial.precio_rifa_1000),
@@ -56,6 +58,8 @@ export function PlataformaConfigForm({ inicial }: { inicial: PlataformaConfig })
         pro_max_rifas_ciclo: Number(f.pro_max_rifas_ciclo) || 1,
         cobro_rifa_min: Number(f.cobro_rifa_min) || 0,
         cobro_rifa_max: Number(f.cobro_rifa_max) || 0,
+        cobro_rifa_max_5000: Number(f.cobro_rifa_max_5000) || 0,
+        cobro_rifa_max_10000: Number(f.cobro_rifa_max_10000) || 0,
         precio_rifa_100: Number(f.precio_rifa_100) || 0,
         precio_rifa_500: Number(f.precio_rifa_500) || 0,
         precio_rifa_1000: Number(f.precio_rifa_1000) || 0,
@@ -99,11 +103,13 @@ export function PlataformaConfigForm({ inicial }: { inicial: PlataformaConfig })
           </div>
           <Campo label="% del recaudo" value={f.cobro_rifa_pct} onChange={(v) => set("cobro_rifa_pct", v)} />
           <CampoMoneda label="Mínimo por rifa (0 = sin mínimo)" value={f.cobro_rifa_min} onChange={(v) => set("cobro_rifa_min", v)} />
-          <CampoMoneda label="Máximo por rifa (0 = sin tope)" value={f.cobro_rifa_max} onChange={(v) => set("cobro_rifa_max", v)} />
+          <CampoMoneda label="Máximo hasta 1.000 números (0 = sin tope)" value={f.cobro_rifa_max} onChange={(v) => set("cobro_rifa_max", v)} />
+          <CampoMoneda label="Máximo de 1.001 a 5.000 números" value={f.cobro_rifa_max_5000} onChange={(v) => set("cobro_rifa_max_5000", v)} />
+          <CampoMoneda label="Máximo de 5.001 a 10.000 números" value={f.cobro_rifa_max_10000} onChange={(v) => set("cobro_rifa_max_10000", v)} />
         </div>
         <p className="text-muted-foreground mt-2 text-xs">
           Con <b>% del recaudo</b> el cobro sube con el tamaño del negocio (números ×
-          precio), acotado por el mínimo y el máximo. La regla <b>1 boleta</b> equivale a
+          precio), acotado por el mínimo y el máximo del tamaño de la rifa. La regla <b>1 boleta</b> equivale a
           100/N del recaudo, así que no es monótona: una rifa que recauda el doble puede
           pagar menos.
         </p>

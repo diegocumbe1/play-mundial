@@ -4,6 +4,8 @@ import { ArrowLeft } from "lucide-react";
 import { esSuperadmin, getMembership } from "@/lib/auth";
 import { getTenants } from "@/actions/tenants";
 import { RifaForm } from "@/components/rifa/rifa-form";
+import { configCobroRifa } from "@/lib/cobro-rifa";
+import { getPlataformaConfig } from "@/lib/tenant-config";
 
 export const dynamic = "force-dynamic";
 
@@ -17,7 +19,7 @@ export default async function NuevaRifaPage() {
     );
   }
 
-  const superadmin = await esSuperadmin();
+  const [superadmin, config] = await Promise.all([esSuperadmin(), getPlataformaConfig()]);
   const tenantsRes = superadmin ? await getTenants() : null;
   const tenants = tenantsRes?.success
     ? tenantsRes.data.map((t) => ({ id: t.id, nombre: t.nombre }))
@@ -32,7 +34,7 @@ export default async function NuevaRifaPage() {
         <ArrowLeft className="size-4" /> Mis rifas
       </Link>
       <h1 className="mb-6 text-2xl font-bold">Nueva rifa</h1>
-      <RifaForm esSuperadmin={superadmin} tenants={tenants} />
+      <RifaForm esSuperadmin={superadmin} tenants={tenants} cobro={configCobroRifa(config)} />
     </div>
   );
 }

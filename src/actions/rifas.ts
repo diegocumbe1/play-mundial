@@ -1,6 +1,6 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, unstable_cache, updateTag } from "next/cache";
 import { z } from "zod";
 
 import { emailVerificado, esSuperadmin, getMembership } from "@/lib/auth";
@@ -9,7 +9,7 @@ import { creditoCicloPro, resolverActivacion } from "@/lib/planes";
 import {
   boletasElegibles,
   construirBolas,
-  construirGrillaPublica,
+  codificarOcupados,
   numeroEnRango,
   posicionPremioDeBola,
   resolverGanadores,
@@ -20,7 +20,6 @@ import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
 import type {
   ActionResult,
   Boleta,
-  BoletaPublica,
   BolaSorteo,
   Ganador,
   GanadorPublico,
@@ -101,7 +100,41 @@ async function revalidarPublica(rifaId: string): Promise<void> {
     .eq("id", rifaId)
     .maybeSingle();
   const slug = (data as { slug_publico: string } | null)?.slug_publico;
-  if (slug) revalidatePath(`/r/${slug}`);
+  if (slug) invalidarPublica(slug);
+}
+
+/** Etiqueta de la caché compartida del enlace público de una rifa. */
+function tagPublica(slug: string): string {
+  return `rifa-publica:${slug}`;
+}
+
+/**
+ * Invalida la página pública Y la caché de `getRifaPublica`. `updateTag` (no
+ * `revalidateTag`) expira al instante: quien acaba de reservar tiene que ver
+ * sus números ocupados en el siguiente sondeo, no una copia vieja.
+ */
+function invalidarPublica(slug: string): void {
+  revalidatePath(`/r/${slug}`);
+  updateTag(tagPublica(slug));
+}
+
+/**
+ * PostgREST corta cada respuesta en `max_rows` (1000) y una rifa puede tener
+ * hasta 10.000 números: las boletas se traen por páginas hasta agotarlas. La
+ * consulta debe ir ordenada para que las páginas no se pisen.
+ */
+const PAGINA_BOLETAS = 1000;
+async function traerTodas<T>(
+  pagina: (desde: number, hasta: number) => PromiseLike<{ data: unknown }>,
+): Promise<{ data: T[] }> {
+  const filas: T[] = [];
+  for (let desde = 0; ; desde += PAGINA_BOLETAS) {
+    const { data } = await pagina(desde, desde + PAGINA_BOLETAS - 1);
+    const lote = (data as T[] | null) ?? [];
+    filas.push(...lote);
+    if (lote.length < PAGINA_BOLETAS) break;
+  }
+  return { data: filas };
 }
 
 const rifaSchema = z.object({
@@ -109,10 +142,12 @@ const rifaSchema = z.object({
   descripcion: z.string().trim().nullable().optional(),
   tipo: z.enum(["interna", "loteria"]),
   precio_boleta: z.number().int().min(0),
-  cantidad_numeros: z.number().int().min(2).max(1000),
+  cantidad_numeros: z.number().int().min(2).max(10000, "El máximo es de 10.000 números"),
   /** 0 → 00–29; 1 → 01–30. Las de lotería se fuerzan a 0 más abajo. */
   numero_inicial: z.union([z.literal(0), z.literal(1)]).default(0),
-  formato_cifras: z.union([z.literal(2), z.literal(3)]),
+  formato_cifras: z.union([z.literal(2), z.literal(3), z.literal(4)]),
+  /** Cada compra debe llevar al menos estos números (1 = sin mínimo). */
+  min_numeros_compra: z.number().int().min(1).max(100).default(1),
   solo_pagadas_juegan: z.boolean().default(true),
   tema: z.enum(["rosa", "clasico", "esmeralda", "oceano", "durazno"]).default("rosa"),
   decoracion: z.enum(["ninguna", "floral", "hojas", "geometrico", "confeti"]).default("floral"),
@@ -147,6 +182,7 @@ function camposRifa(d: z.infer<typeof rifaSchema>) {
     cantidad_numeros: d.cantidad_numeros,
     numero_inicial: esLoteria ? 0 : d.numero_inicial,
     formato_cifras: d.formato_cifras,
+    min_numeros_compra: Math.min(d.min_numeros_compra, d.cantidad_numeros),
     solo_pagadas_juegan: d.solo_pagadas_juegan,
     tema: d.tema,
     decoracion: d.decoracion,
@@ -218,7 +254,9 @@ export async function getRifa(id: string): Promise<ActionResult<RifaDetalle>> {
   const [{ data: premios }, { data: boletas }, { data: ganadores }] =
     await Promise.all([
       supabase.from("premios").select("*").eq("rifa_id", id).order("orden"),
-      supabase.from("boletas").select("*").eq("rifa_id", id).order("numero"),
+      traerTodas<Boleta>((desde, hasta) =>
+        supabase.from("boletas").select("*").eq("rifa_id", id).order("numero").range(desde, hasta),
+      ),
       supabase.from("ganadores").select("*").eq("rifa_id", id),
     ]);
 
@@ -799,7 +837,9 @@ export async function ingresarResultadoLoteria(
 
   const [{ data: premios }, { data: boletas }] = await Promise.all([
     supabase.from("premios").select("*").eq("rifa_id", rifaId).order("orden"),
-    supabase.from("boletas").select("*").eq("rifa_id", rifaId),
+    traerTodas<Boleta>((desde, hasta) =>
+      supabase.from("boletas").select("*").eq("rifa_id", rifaId).order("numero").range(desde, hasta),
+    ),
   ]);
 
   const resueltos = resolverGanadores(
@@ -909,7 +949,9 @@ export async function sortearRifaInterna(
   const [{ data: premiosRow }, { data: boletasRow }, { count: publicados }] =
     await Promise.all([
       supabase.from("premios").select("*").eq("rifa_id", rifaId).order("orden"),
-      supabase.from("boletas").select("*").eq("rifa_id", rifaId),
+      traerTodas<Boleta>((desde, hasta) =>
+        supabase.from("boletas").select("*").eq("rifa_id", rifaId).order("numero").range(desde, hasta),
+      ),
       supabase
         .from("ganadores")
         .select("id", { count: "exact", head: true })
@@ -1042,7 +1084,7 @@ export async function revelarBalotas(
     .eq("id", rifaId);
   if (error) return { success: false, error: error.message };
 
-  revalidatePath(`/r/${r.slug_publico}`);
+  invalidarPublica(r.slug_publico);
   return { success: true, data: { reveladas } };
 }
 
@@ -1128,9 +1170,15 @@ export interface RifaPublica {
     | "modo_cifras"
     | "formato_cifras"
     | "fecha_sorteo"
+    | "min_numeros_compra"
   >;
   premios: Pick<Premio, "tipo" | "descripcion" | "valor" | "criterio" | "orden" | "imagen_url">[];
-  grilla: BoletaPublica[];
+  /**
+   * Números tomados como bitmap en base64 (bit i = número `inicio + i`). Con
+   * 10.000 números son ~1,7 KB, contra ~250 KB de la grilla como objetos; el
+   * cliente la arma con `decodificarOcupados`.
+   */
+  ocupados: string;
   disponibles: number;
   pago: TenantPagoConfig | null;
   ganadores: GanadorPublico[];
@@ -1152,6 +1200,17 @@ export interface RifaPublica {
 export async function getRifaPublica(
   slug: string,
 ): Promise<ActionResult<RifaPublica>> {
+  // Cada visitante sondea cada 8 s (2 s durante el sorteo): con cientos de
+  // personas mirando la misma rifa, sin caché serían cientos de lecturas de
+  // hasta 10.000 boletas por minuto. Se comparte una sola lectura por rifa
+  // durante unos segundos; toda mutación la expira al instante (invalidarPublica).
+  return unstable_cache(() => cargarRifaPublica(slug), ["rifa-publica", slug], {
+    revalidate: 5,
+    tags: [tagPublica(slug)],
+  })();
+}
+
+async function cargarRifaPublica(slug: string): Promise<ActionResult<RifaPublica>> {
   const svc = createServiceRoleClient();
   const { data: rifa } = await svc
     .from("rifas")
@@ -1168,7 +1227,16 @@ export async function getRifaPublica(
   const [{ data: premios }, { data: boletas }, { data: pago }, { data: gan }] =
     await Promise.all([
       svc.from("premios").select("*").eq("rifa_id", r.id).order("orden"),
-      svc.from("boletas").select("numero, estado").eq("rifa_id", r.id),
+      // Solo los tomados y solo el número: es lo único que el público necesita.
+      traerTodas<{ numero: number }>((desde, hasta) =>
+        svc
+          .from("boletas")
+          .select("numero")
+          .eq("rifa_id", r.id)
+          .neq("estado", "libre")
+          .order("numero")
+          .range(desde, hasta),
+      ),
       svc.from("tenant_pago_config").select("*").eq("tenant_id", r.tenant_id).maybeSingle(),
       svc
         .from("ganadores")
@@ -1177,10 +1245,8 @@ export async function getRifaPublica(
         .eq("publicado", true),
     ]);
 
-  const grilla = construirGrillaPublica(
-    r,
-    ((boletas as { numero: number; estado: string }[]) ?? []) as Boleta[],
-  );
+  const tomados = ((boletas as { numero: number }[]) ?? []).map((b) => b.numero);
+  const ocupados = codificarOcupados(r, tomados);
 
   // Ganadores públicos: número + nombre enmascarado (buscando la boleta del número).
   const premiosMap = new Map(
@@ -1269,6 +1335,7 @@ export async function getRifaPublica(
         modo_cifras: r.modo_cifras,
         formato_cifras: r.formato_cifras,
         fecha_sorteo: r.fecha_sorteo,
+        min_numeros_compra: r.min_numeros_compra ?? 1,
       },
       premios: ((premios as Premio[]) ?? []).map((p) => ({
         tipo: p.tipo,
@@ -1278,8 +1345,8 @@ export async function getRifaPublica(
         orden: p.orden,
         imagen_url: p.imagen_url ?? null,
       })),
-      grilla,
-      disponibles: grilla.filter((c) => !c.ocupado).length,
+      ocupados,
+      disponibles: r.cantidad_numeros - new Set(tomados).size,
       pago: (pago as TenantPagoConfig | null) ?? null,
       ganadores,
       sorteo,
@@ -1326,8 +1393,23 @@ export async function reservarNumeros(
     return { success: false, error: "Esta rifa no está recibiendo reservas" };
   }
 
-  const enRango = d.numeros.filter((n) => numeroEnRango(r, n));
+  const enRango = [...new Set(d.numeros)].filter((n) => numeroEnRango(r, n));
   if (enRango.length === 0) return { success: false, error: "Números fuera de rango" };
+
+  // Mínimo por compra. Si ya quedan menos libres que el mínimo, basta con
+  // llevarse todos los que quedan (si no, la rifa nunca se podría terminar).
+  const minimo = Math.max(1, r.min_numeros_compra ?? 1);
+  let exigido = minimo;
+  if (minimo > 1) {
+    const { count: tomados } = await svc
+      .from("boletas")
+      .select("id", { count: "exact", head: true })
+      .eq("rifa_id", r.id);
+    exigido = Math.min(minimo, Math.max(1, r.cantidad_numeros - (tomados ?? 0)));
+    if (enRango.length < exigido) {
+      return { success: false, error: `Cada compra debe llevar mínimo ${exigido} números` };
+    }
+  }
 
   const reservados: number[] = [];
   const ocupados: number[] = [];
@@ -1350,7 +1432,23 @@ export async function reservarNumeros(
     }
   }
 
-  revalidatePath(`/r/${d.slug}`);
+  // Alguien se llevó parte de los elegidos y lo que quedó no llega al mínimo:
+  // se sueltan los que sí entraron para no dejar una compra a medias.
+  if (reservados.length > 0 && reservados.length < exigido) {
+    await svc
+      .from("boletas")
+      .delete()
+      .eq("rifa_id", r.id)
+      .eq("estado", "reservado")
+      .in("numero", reservados);
+    invalidarPublica(d.slug);
+    return {
+      success: false,
+      error: `Algunos números se tomaron mientras elegías (${ocupados.join(", ")}). Elige otros para completar mínimo ${exigido}.`,
+    };
+  }
+
+  invalidarPublica(d.slug);
   if (reservados.length === 0) {
     return { success: false, error: "Los números elegidos ya están tomados" };
   }

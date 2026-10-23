@@ -109,6 +109,35 @@ export function construirGrillaPublica(
   }));
 }
 
+/**
+ * Empaqueta los números tomados en un bitmap base64 (bit i → `inicio + i`).
+ * Es lo que viaja en cada sondeo de la página pública: 10.000 números caben
+ * en ~1,7 KB. Ver `decodificarOcupados`.
+ */
+export function codificarOcupados(rifa: RangoRifa, tomados: number[]): string {
+  const inicio = inicioNumeros(rifa);
+  const bytes = new Uint8Array(Math.ceil(rifa.cantidad_numeros / 8));
+  for (const n of tomados) {
+    const i = n - inicio;
+    if (i >= 0 && i < rifa.cantidad_numeros) bytes[i >> 3] |= 1 << (i & 7);
+  }
+  let bin = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) {
+    bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  }
+  return btoa(bin);
+}
+
+/** Inverso de `codificarOcupados`: la grilla pública completa (ocupado/libre). */
+export function decodificarOcupados(rifa: RangoRifa, ocupados: string): BoletaPublica[] {
+  const bin = atob(ocupados);
+  const inicio = inicioNumeros(rifa);
+  return Array.from({ length: rifa.cantidad_numeros }, (_, i) => ({
+    numero: inicio + i,
+    ocupado: ((bin.charCodeAt(i >> 3) || 0) & (1 << (i & 7))) !== 0,
+  }));
+}
+
 /** Métricas financieras del dashboard de una rifa (para el admin del tenant). */
 export function calcularDashboard(
   rifa: Rifa,
@@ -341,6 +370,42 @@ export function sortearBolas(
     salida.push(pool[i]);
   }
   return salida;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Elección rápida de números (mínimo por compra en rifas grandes)             */
+/* -------------------------------------------------------------------------- */
+
+/** `cantidad` números libres al azar, en orden ascendente. */
+export function elegirAlAzar(
+  libres: number[],
+  cantidad: number,
+  rng: () => number = Math.random,
+): number[] {
+  return sortearBolas(libres, cantidad, rng).sort((a, b) => a - b);
+}
+
+/**
+ * `cantidad` números libres SEGUIDOS (p. ej. 4520–4529), en un tramo elegido
+ * al azar entre todos los que caben. `null` si no queda ningún tramo así.
+ */
+export function elegirSeguidos(
+  libres: number[],
+  cantidad: number,
+  rng: () => number = Math.random,
+): number[] | null {
+  const n = Math.max(1, Math.trunc(cantidad));
+  const orden = [...libres].sort((a, b) => a - b);
+  // Inicios válidos: el número abre una racha de al menos `n` consecutivos.
+  const inicios: number[] = [];
+  let racha = 0;
+  for (let i = orden.length - 1; i >= 0; i--) {
+    racha = i + 1 < orden.length && orden[i + 1] === orden[i] + 1 ? racha + 1 : 1;
+    if (racha >= n) inicios.push(orden[i]);
+  }
+  if (inicios.length === 0) return null;
+  const inicio = inicios[Math.floor(rng() * inicios.length)];
+  return Array.from({ length: n }, (_, i) => inicio + i);
 }
 
 /** Boletas elegibles para el sorteo (regla "no pagada no juega"). */

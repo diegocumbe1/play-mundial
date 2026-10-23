@@ -7,6 +7,8 @@ import { getPlataformaConfig } from "@/lib/tenant-config";
 import { formatCOP } from "@/lib/rifa";
 import { porcentajeDelRecaudo, precioEscalon } from "@/lib/planes";
 import { PlanActionButton } from "@/components/precios/plan-action-button";
+import { CalculadoraGanancias } from "@/components/precios/calculadora-ganancias";
+import { configCobroRifa } from "@/lib/cobro-rifa";
 
 export const dynamic = "force-dynamic";
 
@@ -24,6 +26,9 @@ export default async function PreciosPage() {
     { numeros: 100, boleta: 15000 },
     { numeros: 100, boleta: 30000 },
     { numeros: 500, boleta: 10000 },
+    { numeros: 5000, boleta: 2000 },
+    { numeros: 10000, boleta: 1500 },
+    { numeros: 10000, boleta: 2000 },
   ].map((e) => {
     const costo = precioEscalon(c, "rifas", e.numeros, e.boleta);
     const recaudo = e.numeros * e.boleta;
@@ -68,7 +73,9 @@ export default async function PreciosPage() {
           bullets: [
             "Pagas solo la rifa que actives, cuando la actives",
             c.cobro_rifa_min > 0 ? `Nunca menos de ${formatCOP(c.cobro_rifa_min)}` : "",
-            c.cobro_rifa_max > 0 ? `Nunca más de ${formatCOP(c.cobro_rifa_max)}` : "",
+            c.cobro_rifa_max > 0 ? `Tope de ${formatCOP(c.cobro_rifa_max)} hasta 1.000 números` : "",
+            c.cobro_rifa_max_5000 > 0 ? `Tope de ${formatCOP(c.cobro_rifa_max_5000)} hasta 5.000` : "",
+            c.cobro_rifa_max_10000 > 0 ? `Tope de ${formatCOP(c.cobro_rifa_max_10000)} hasta 10.000` : "",
             "El precio queda congelado al activar",
             "Sin marca de agua",
             "Pago por transferencia: se activa al confirmar",
@@ -182,8 +189,10 @@ export default async function PreciosPage() {
               <>
                 Activar una rifa cuesta el <b>{c.cobro_rifa_pct}%</b> de lo que esa rifa
                 recauda si se vende completa, nunca menos de{" "}
-                <b>{formatCOP(c.cobro_rifa_min)}</b> ni más de{" "}
-                <b>{formatCOP(c.cobro_rifa_max)}</b>. Aquí está el cálculo exacto:
+                <b>{formatCOP(c.cobro_rifa_min)}</b>. El tope depende del tamaño:{" "}
+                <b>{formatCOP(c.cobro_rifa_max)}</b> hasta 1.000 números,{" "}
+                <b>{formatCOP(c.cobro_rifa_max_5000)}</b> hasta 5.000 y{" "}
+                <b>{formatCOP(c.cobro_rifa_max_10000)}</b> hasta 10.000. Aquí está el cálculo exacto:
               </>
             ) : (
               <>
@@ -204,9 +213,9 @@ export default async function PreciosPage() {
               </thead>
               <tbody>
                 {ejemplos.map((e) => (
-                  <tr key={e.numeros} className="border-border/60 border-b last:border-0">
+                  <tr key={`${e.numeros}-${e.boleta}`} className="border-border/60 border-b last:border-0">
                     <td className="py-2">
-                      {e.numeros} números a {formatCOP(e.boleta)}
+                      {e.numeros.toLocaleString("es-CO")} números a {formatCOP(e.boleta)}
                     </td>
                     <td className="py-2 text-right tabular-nums">{formatCOP(e.recaudo)}</td>
                     <td className="py-2 text-right font-semibold tabular-nums">
@@ -227,6 +236,25 @@ export default async function PreciosPage() {
           </p>
         </section>
       )}
+
+      <section className="border-border mt-8 rounded-2xl border p-5">
+        <p className="text-sm font-semibold">Calculadora de ganancias</p>
+        <p className="text-muted-foreground mt-1 mb-4 text-sm">
+          ¿Aún no decides el precio? Compara varios, pon lo que te cuesta el premio y mira
+          cuánto te queda y cuánto debes vender para no perder.
+        </p>
+        <CalculadoraGanancias
+          config={configCobroRifa(c)}
+          cantidadInicial={10000}
+          preciosIniciales={[1500, 1600, 1700, 1800, 1900, 2000]}
+          costoPremioInicial={6200000}
+        />
+      </section>
+
+      <p className="text-muted-foreground mt-4 text-center text-xs">
+        Rifamos es una herramienta de gestión y organización: no organiza ni opera rifas. Los
+        permisos, impuestos y la entrega del premio son responsabilidad de quien crea la rifa.
+      </p>
 
       <p className="text-muted-foreground mt-8 text-center text-xs">
         Precios en {c.moneda}. El pago es anticipado; el administrador confirma y activa tu rifa.

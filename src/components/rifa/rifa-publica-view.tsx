@@ -20,6 +20,7 @@ import {
 import {
   anchoNumeros,
   comoSeGanaPremio,
+  decodificarOcupados,
   formatCOP,
   formatNumero,
   inicioNumeros,
@@ -34,6 +35,8 @@ import { waLink } from "@/lib/whatsapp";
 import { Decoracion } from "@/components/rifa/decoracion-rifa";
 import { SorteoAnimado } from "@/components/rifa/sorteo-animado";
 import { SorteoDemo } from "@/components/rifa/sorteo-demo";
+import { BloquesGrilla, bloqueDe, TAM_BLOQUE, UMBRAL_BLOQUES } from "@/components/rifa/bloques-grilla";
+import { EleccionRapida } from "@/components/rifa/eleccion-rapida";
 import { getOrCreateClienteId } from "@/lib/cliente-id";
 
 /** Vista pública de una rifa: embudo de reserva + grilla en vivo (ocupado/libre). */
@@ -58,7 +61,7 @@ export function RifaPublicaView({
   const {
     rifa,
     premios,
-    grilla,
+    ocupados,
     pago,
     ganadores,
     sorteo,
@@ -66,6 +69,8 @@ export function RifaPublicaView({
     sorteoTotal,
     sorteoFinalistas,
   } = data;
+  // La grilla llega empaquetada como bitmap (ver codificarOcupados) y se arma aquí.
+  const grilla = useMemo(() => decodificarOcupados(rifa, ocupados), [rifa, ocupados]);
   const cuentaPago = pago?.cuenta_numero ?? pago?.nequi_llave ?? null;
   const cuentaPagoLabel = labelCuentaPago(pago?.cuenta_tipo ?? (pago?.nequi_llave ? "nequi" : null));
   const tema = getTema(rifa.tema);
@@ -109,9 +114,12 @@ export function RifaPublicaView({
 
   // Durante el sorteo la página consulta cada 2s (así se ve balota a balota);
   // el resto del tiempo cada 8s, y siempre al volver a la pestaña o a la ventana
-  // (es lo que pasa cuando el organizador cambia algo y se pasa a mirar).
+  // (es lo que pasa cuando el organizador cambia algo y se pasa a mirar). Con la
+  // pestaña oculta no se consulta: nadie la está mirando.
   useEffect(() => {
-    const id = setInterval(refrescar, sorteoEnVivo ? 2000 : 8000);
+    const id = setInterval(() => {
+      if (document.visibilityState === "visible") refrescar();
+    }, sorteoEnVivo ? 2000 : 8000);
     const alVolver = () => {
       if (document.visibilityState === "visible") refrescar();
     };
@@ -162,6 +170,41 @@ export function RifaPublicaView({
       .sort((a, b) => a - b);
   }, [params, grilla]);
   const misOcupados = misNumeros.filter((n) => grilla.find((c) => c.numero === n)?.ocupado);
+
+  // Rifas grandes (p. ej. 10.000): la grilla se pinta por bloques de 100 y la
+  // compra puede exigir un mínimo de números.
+  const inicio = inicioNumeros(rifa);
+  const grande = rifa.cantidad_numeros > UMBRAL_BLOQUES;
+  const [bloque, setBloque] = useState(() =>
+    misNumeros.length > 0 ? bloqueDe(misNumeros[0], inicio) : inicio,
+  );
+  const libres = useMemo(() => grilla.filter((c) => !c.ocupado).map((c) => c.numero), [grilla]);
+  // Libres acumulados por posición: cada chip de bloque cuenta en O(1).
+  const libresAcum = useMemo(() => {
+    const acc = [0];
+    for (const c of grilla) acc.push(acc[acc.length - 1] + (c.ocupado ? 0 : 1));
+    return acc;
+  }, [grilla]);
+  const libresEn = useCallback(
+    (desde: number, hasta: number) => {
+      const a = Math.max(0, desde - inicio);
+      const b = Math.min(grilla.length, hasta - inicio + 1);
+      return b > a ? libresAcum[b] - libresAcum[a] : 0;
+    },
+    [libresAcum, grilla.length, inicio],
+  );
+  const visibles = grande
+    ? grilla.slice(bloque - inicio, bloque - inicio + TAM_BLOQUE)
+    : grilla;
+  const minimo = Math.max(1, rifa.min_numeros_compra ?? 1);
+  // Si quedan menos libres que el mínimo, basta con llevarse los que quedan.
+  const exigido = Math.min(minimo, Math.max(1, disponibles));
+  const faltan = Math.max(0, exigido - seleccion.size);
+
+  function elegir(numeros: number[]) {
+    setSeleccion(new Set(numeros));
+    if (grande && numeros.length > 0) setBloque(bloqueDe(numeros[0], inicio));
+  }
 
   const mensajeGanadores =
     ganadores.find((g) => g.mensaje_felicitacion?.trim())?.mensaje_felicitacion?.trim() ?? "";
@@ -525,10 +568,26 @@ export function RifaPublicaView({
           </div>
         )}
 
+        {abierta && (minimo > 1 || grande) && (
+          <EleccionRapida minimo={exigido} libres={libres} onElegir={elegir} tono="publica" />
+        )}
+
+        {grande && (
+          <BloquesGrilla
+            inicio={inicio}
+            ultimo={ultimoNumero(rifa)}
+            ancho={ancho}
+            bloque={bloque}
+            onBloque={setBloque}
+            libresEn={libresEn}
+            tono="publica"
+          />
+        )}
+
         {/* Grilla pública (ocupado/libre) */}
         {/* 10 columnas fijas: las 100 boletas caben en una sola vista. */}
         <div className="mb-2 grid grid-cols-10 gap-1">
-          {grilla.map((c) => {
+          {visibles.map((c) => {
             const sel = seleccion.has(c.numero);
             const mio = misNumeros.includes(c.numero);
             const base = "tap-scale flex aspect-square w-full items-center justify-center rounded-md text-[10px] font-bold tabular-nums transition-colors sm:text-xs";
@@ -567,11 +626,22 @@ export function RifaPublicaView({
         {/* Barra de reserva */}
         {abierta && seleccion.size > 0 && (
           <div className="sticky bottom-4 z-10 flex items-center justify-between gap-3 rounded-xl border p-3 shadow-lg" style={{ background: t.surface, borderColor: t.line }}>
-            <div>
+            <div className="min-w-0">
               <p className="text-sm font-semibold">{seleccion.size} número(s)</p>
-              <p className="text-xs text-[var(--rifa-muted)]">{formatCOP(total)}</p>
+              <p className="text-xs text-[var(--rifa-muted)]">
+                {faltan > 0 ? `Te faltan ${faltan} (mínimo ${exigido})` : formatCOP(total)}
+              </p>
+              {grande && (
+                <p className="truncate text-[11px] tabular-nums text-[var(--rifa-muted)]">
+                  {[...seleccion].sort((a, b) => a - b).map((n) => formatNumero(n, ancho)).join(", ")}
+                </p>
+              )}
             </div>
-            <Button onClick={() => setModal(true)} style={{ background: t.accent, color: t.accentInk }}>
+            <Button
+              onClick={() => setModal(true)}
+              disabled={faltan > 0}
+              style={{ background: t.accent, color: t.accentInk }}
+            >
               <Ticket className="size-4" /> Reservar
             </Button>
           </div>
