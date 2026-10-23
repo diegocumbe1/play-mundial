@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
 import { getRifaPublica } from "@/actions/rifas";
+import { RIFA_PAUSADA } from "@/lib/errores";
 import { RifaPublicaView } from "@/components/rifa/rifa-publica-view";
 import { formatCOP, labelModoCifras } from "@/lib/rifa";
 import { formatFechaCO } from "@/lib/fecha-co";
@@ -62,7 +63,26 @@ export default async function RifaPublicaPage({
 }) {
   const { slug } = await params;
   const res = await getRifa(slug);
-  if (!res.success) notFound();
+  if (!res.success) {
+    if (res.error === RIFA_PAUSADA) return <RifaPausada />;
+    notFound();
+  }
 
   return <RifaPublicaView slug={slug} initial={res.data} />;
+}
+
+/** El superadmin bloqueó al organizador: la rifa existe, pero queda en pausa. */
+function RifaPausada() {
+  return (
+    <main className="bg-background flex min-h-screen items-center justify-center px-4">
+      <div className="border-border max-w-sm rounded-2xl border p-6 text-center">
+        <p className="text-4xl">⏸️</p>
+        <h1 className="mt-3 text-lg font-bold">Rifa temporalmente en pausa</h1>
+        <p className="text-muted-foreground mt-2 text-sm">
+          Esta rifa no está recibiendo reservas por ahora. Si ya apartaste o pagaste
+          números, siguen a tu nombre: comunícate con el organizador.
+        </p>
+      </div>
+    </main>
+  );
 }

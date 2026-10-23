@@ -197,7 +197,7 @@ function descripcionAccion(accion: Accion) {
     suscripcion: "Agrega 1 mes de acceso. Si ya tiene suscripción vigente, se extiende desde su vencimiento actual.",
     gratis: "Quita el vencimiento de suscripción y vuelve al plan gratis. Úsalo para corregir activaciones hechas por error.",
     pago_rifa: "Quita el vencimiento de suscripción y deja al organizador pagando por cada rifa cuando corresponda.",
-    bloquear: "El organizador no podrá usar el panel hasta que lo reactives.",
-    reactivar: "El organizador recuperará acceso al panel con el plan que tenga configurado.",
+    bloquear: "El organizador no podrá usar el panel hasta que lo reactives, y sus rifas publicadas quedan en pausa: el enlace muestra \"Rifa temporalmente en pausa\" y no recibe reservas. Lo vendido no se pierde.",
+    reactivar: "El organizador recuperará acceso al panel con el plan que tenga configurado y sus rifas vuelven a estar públicas.",
   }[accion];
 }

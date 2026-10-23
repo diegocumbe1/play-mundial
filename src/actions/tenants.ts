@@ -1,9 +1,10 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, updateTag } from "next/cache";
 import { z } from "zod";
 
 import { esSuperadmin, getMembership } from "@/lib/auth";
+import { tagRifaPublica } from "@/lib/errores";
 import { habilitarProductosIniciales } from "@/lib/productos";
 import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
 import type {
@@ -260,6 +261,15 @@ export async function setEstadoTenant(
     })
     .eq("id", tenantId);
   if (error) return { success: false, error: error.message };
+
+  // Bloquear pausa sus rifas publicadas y reactivar las devuelve: los enlaces
+  // públicos tienen que enterarse ya, no cuando venza la caché.
+  const { data: rifas } = await svc.from("rifas").select("slug_publico").eq("tenant_id", tenantId);
+  for (const { slug_publico } of (rifas as { slug_publico: string }[]) ?? []) {
+    revalidatePath(`/r/${slug_publico}`);
+    updateTag(tagRifaPublica(slug_publico));
+  }
+
   revalidatePath("/superadmin");
   return { success: true, data: undefined };
 }

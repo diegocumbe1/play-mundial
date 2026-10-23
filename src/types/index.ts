@@ -439,6 +439,8 @@ export interface Rifa {
   solo_pagadas_juegan: boolean;
   /** Cuántos números debe llevar como mínimo cada compra (1 = sin mínimo). */
   min_numeros_compra: number;
+  /** Si está archivada: fuera de la lista principal y del enlace público. */
+  archivada_at: string | null;
   slug_publico: string;
   /** Preset de tema visual (ver src/lib/temas-rifa). */
   tema: string;

@@ -35,9 +35,16 @@ import { waLink } from "@/lib/whatsapp";
 import { Decoracion } from "@/components/rifa/decoracion-rifa";
 import { SorteoAnimado } from "@/components/rifa/sorteo-animado";
 import { SorteoDemo } from "@/components/rifa/sorteo-demo";
-import { BloquesGrilla, bloqueDe, TAM_BLOQUE, UMBRAL_BLOQUES } from "@/components/rifa/bloques-grilla";
+import {
+  BloquesGrilla,
+  bloqueDe,
+  BuscadorNumero,
+  TAM_BLOQUE,
+  UMBRAL_BLOQUES,
+} from "@/components/rifa/bloques-grilla";
 import { EleccionRapida } from "@/components/rifa/eleccion-rapida";
 import { getOrCreateClienteId } from "@/lib/cliente-id";
+import { RIFA_PAUSADA } from "@/lib/errores";
 
 /** Vista pública de una rifa: embudo de reserva + grilla en vivo (ocupado/libre). */
 export function RifaPublicaView({
@@ -110,6 +117,8 @@ export function RifaPublicaView({
   const refrescar = useCallback(async () => {
     const r = await getRifaPublica(slug);
     if (r.success) setData(r.data);
+    // La pusieron en pausa mientras la mirabas: recargar muestra el aviso.
+    else if (r.error === RIFA_PAUSADA) window.location.reload();
   }, [slug]);
 
   // Durante el sorteo la página consulta cada 2s (así se ve balota a balota);
@@ -201,6 +210,20 @@ export function RifaPublicaView({
   const exigido = Math.min(minimo, Math.max(1, disponibles));
   const faltan = Math.max(0, exigido - seleccion.size);
 
+  // Número buscado: queda marcado en la grilla y a la vista.
+  const [buscado, setBuscado] = useState<number | null>(null);
+  useEffect(() => {
+    if (buscado == null) return;
+    document.getElementById(`num-${buscado}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [buscado, bloque]);
+
+  function buscar(n: number) {
+    setBuscado(n);
+    const ocupado = grilla[n - inicio]?.ocupado;
+    if (ocupado) toast.message(`El ${formatNumero(n, ancho)} ya está ocupado. Prueba otro.`);
+    else if (abierta) toast.message(`El ${formatNumero(n, ancho)} está libre: tócalo para elegirlo.`);
+  }
+
   function elegir(numeros: number[]) {
     setSeleccion(new Set(numeros));
     if (grande && numeros.length > 0) setBloque(bloqueDe(numeros[0], inicio));
@@ -220,6 +243,10 @@ export function RifaPublicaView({
         consentimiento: true,
       });
       if (!r.success) {
+        if (r.error === RIFA_PAUSADA) {
+          window.location.reload();
+          return;
+        }
         toast.error(r.error);
         await refrescar();
         return;
@@ -588,7 +615,7 @@ export function RifaPublicaView({
           <EleccionRapida minimo={exigido} libres={libres} onElegir={elegir} tono="publica" />
         )}
 
-        {grande && (
+        {grande ? (
           <BloquesGrilla
             inicio={inicio}
             ultimo={ultimoNumero(rifa)}
@@ -597,6 +624,16 @@ export function RifaPublicaView({
             onBloque={setBloque}
             libresEn={libresEn}
             tono="publica"
+            onBuscar={buscar}
+          />
+        ) : (
+          <BuscadorNumero
+            inicio={inicio}
+            ultimo={ultimoNumero(rifa)}
+            ancho={ancho}
+            tono="publica"
+            onBuscar={buscar}
+            className="mb-3"
           />
         )}
 
@@ -606,6 +643,7 @@ export function RifaPublicaView({
           {visibles.map((c) => {
             const sel = seleccion.has(c.numero);
             const mio = misNumeros.includes(c.numero);
+            const esBuscado = c.numero === buscado;
             const base = "tap-scale flex aspect-square w-full items-center justify-center rounded-md text-[10px] font-bold tabular-nums transition-colors sm:text-xs";
             const cls = mio && c.ocupado
               ? "bg-[var(--rifa-accent)] text-[var(--rifa-accent-ink)] ring-2 ring-[var(--rifa-accent)]"
@@ -617,10 +655,13 @@ export function RifaPublicaView({
             return (
               <button
                 key={c.numero}
+                id={`num-${c.numero}`}
                 type="button"
                 disabled={c.ocupado || !abierta}
                 onClick={() => toggle(c.numero)}
-                className={`${base} ${cls}`}
+                className={`${base} ${cls} ${
+                  esBuscado ? "relative z-[1] scale-110 ring-2 ring-[var(--rifa-accent)] ring-offset-2 ring-offset-[var(--rifa-surface)] animate-pulse" : ""
+                }`}
               >
                 {formatNumero(c.numero, ancho)}
               </button>

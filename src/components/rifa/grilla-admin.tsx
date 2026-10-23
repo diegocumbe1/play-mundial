@@ -1,11 +1,17 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { CheckSquare, Users, X } from "lucide-react";
 
 import { BoletaModal } from "@/components/rifa/boleta-modal";
 import { BoletasLoteModal } from "@/components/rifa/boletas-lote-modal";
-import { BloquesGrilla, bloqueDe, TAM_BLOQUE, UMBRAL_BLOQUES } from "@/components/rifa/bloques-grilla";
+import {
+  BloquesGrilla,
+  bloqueDe,
+  BuscadorNumero,
+  TAM_BLOQUE,
+  UMBRAL_BLOQUES,
+} from "@/components/rifa/bloques-grilla";
 import { EleccionRapida } from "@/components/rifa/eleccion-rapida";
 import { Button } from "@/components/ui/button";
 import {
@@ -65,6 +71,13 @@ export function GrillaAdmin({
     : numeros;
   const minimo = Math.min(Math.max(1, rifa.min_numeros_compra ?? 1), Math.max(1, libres.length));
 
+  // Número buscado: queda marcado en la grilla y a la vista.
+  const [buscado, setBuscado] = useState<number | null>(null);
+  useEffect(() => {
+    if (buscado == null) return;
+    document.getElementById(`num-${buscado}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [buscado, bloque]);
+
   function elegir(lista: number[]) {
     setSeleccion(new Set(lista));
     if (grande && lista.length > 0) setBloque(bloqueDe(lista[0], inicio));
@@ -107,7 +120,7 @@ export function GrillaAdmin({
         <EleccionRapida minimo={minimo} libres={libres} onElegir={elegir} tono="admin" />
       )}
 
-      {grande && (
+      {grande ? (
         <BloquesGrilla
           inicio={inicio}
           ultimo={ultimoNumero(rifa)}
@@ -116,6 +129,16 @@ export function GrillaAdmin({
           onBloque={setBloque}
           libresEn={libresEn}
           tono="admin"
+          onBuscar={setBuscado}
+        />
+      ) : (
+        <BuscadorNumero
+          inicio={inicio}
+          ultimo={ultimoNumero(rifa)}
+          ancho={ancho}
+          tono="admin"
+          onBuscar={setBuscado}
+          className="mx-auto mb-3 max-w-3xl"
         />
       )}
 
@@ -141,10 +164,13 @@ export function GrillaAdmin({
           return (
             <button
               key={n}
+              id={`num-${n}`}
               type="button"
               disabled={bloqueado}
               onClick={() => (multi ? alternar(n) : setAbierto(n))}
-              className={`${base} ${cls} ${bloqueado ? "opacity-40" : ""}`}
+              className={`${base} ${cls} ${bloqueado ? "opacity-40" : ""} ${
+                n === buscado ? "ring-primary ring-offset-background relative z-[1] scale-110 animate-pulse ring-2 ring-offset-2" : ""
+              }`}
             >
               {formatNumero(n, ancho)}
             </button>

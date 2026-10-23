@@ -42,6 +42,7 @@ export function BloquesGrilla({
   onBloque,
   libresEn,
   tono,
+  onBuscar,
 }: {
   inicio: number;
   ultimo: number;
@@ -52,9 +53,10 @@ export function BloquesGrilla({
   /** Libres entre `desde` y `hasta` (inclusive). */
   libresEn: (desde: number, hasta: number) => number;
   tono: keyof typeof TONOS;
+  /** Número que se buscó: el padre lo resalta en la grilla. */
+  onBuscar?: (numero: number) => void;
 }) {
   const t = TONOS[tono];
-  const [buscar, setBuscar] = useState("");
 
   // Primer nivel: tramos de 1.000 solo si hay más de 10 bloques.
   const tamMillar = TAM_BLOQUE * 10;
@@ -69,12 +71,6 @@ export function BloquesGrilla({
   const rango = (desde: number, tam: number) =>
     `${formatNumero(desde, ancho)}–${formatNumero(Math.min(ultimo, desde + tam - 1), ancho)}`;
 
-  function ir() {
-    const n = Number(buscar.trim());
-    if (!Number.isInteger(n) || n < inicio || n > ultimo) return;
-    onBloque(bloqueDe(n, inicio));
-  }
-
   const chip = (activo: boolean) =>
     `tap-scale flex flex-col items-center rounded-md px-1 py-1.5 text-[11px] font-semibold tabular-nums transition-colors ${
       activo ? t.activo : t.normal
@@ -82,24 +78,16 @@ export function BloquesGrilla({
 
   return (
     <div className="mb-3 flex flex-col gap-2">
-      <form
-        className="flex gap-2"
-        onSubmit={(e) => {
-          e.preventDefault();
-          ir();
+      <BuscadorNumero
+        inicio={inicio}
+        ultimo={ultimo}
+        ancho={ancho}
+        tono={tono}
+        onBuscar={(n) => {
+          onBloque(bloqueDe(n, inicio));
+          onBuscar?.(n);
         }}
-      >
-        <input
-          inputMode="numeric"
-          value={buscar}
-          onChange={(e) => setBuscar(e.target.value.replace(/\D/g, ""))}
-          placeholder={`Busca un número (${formatNumero(inicio, ancho)}–${formatNumero(ultimo, ancho)})`}
-          className={`h-9 min-w-0 flex-1 rounded-lg border px-3 text-sm ${t.input}`}
-        />
-        <button type="submit" className={`rounded-lg px-3 text-sm font-semibold ${t.activo}`}>
-          Ir
-        </button>
-      </form>
+      />
 
       {millares.length > 1 && (
         <div className="grid grid-cols-5 gap-1 sm:grid-cols-10">
@@ -136,6 +124,69 @@ export function BloquesGrilla({
           </button>
         ))}
       </div>
+    </div>
+  );
+}
+
+/**
+ * Buscador de un número de la rifa. Va en todas las rifas: en las grandes
+ * salta al bloque, y en todas el padre resalta la casilla encontrada.
+ */
+export function BuscadorNumero({
+  inicio,
+  ultimo,
+  ancho,
+  tono,
+  onBuscar,
+  className = "",
+}: {
+  inicio: number;
+  ultimo: number;
+  ancho: number;
+  tono: keyof typeof TONOS;
+  onBuscar: (numero: number) => void;
+  className?: string;
+}) {
+  const t = TONOS[tono];
+  const [buscar, setBuscar] = useState("");
+  const [fuera, setFuera] = useState(false);
+
+  function ir() {
+    const n = Number(buscar.trim());
+    const valido = buscar.trim() !== "" && Number.isInteger(n) && n >= inicio && n <= ultimo;
+    setFuera(!valido);
+    if (valido) onBuscar(n);
+  }
+
+  return (
+    <div className={className}>
+      <form
+        className="flex gap-2"
+        onSubmit={(e) => {
+          e.preventDefault();
+          ir();
+        }}
+      >
+        <input
+          inputMode="numeric"
+          value={buscar}
+          onChange={(e) => {
+            setBuscar(e.target.value.replace(/\D/g, ""));
+            setFuera(false);
+          }}
+          placeholder={`Busca un número (${formatNumero(inicio, ancho)}–${formatNumero(ultimo, ancho)})`}
+          className={`h-9 min-w-0 flex-1 rounded-lg border px-3 text-sm ${t.input}`}
+        />
+        <button type="submit" className={`rounded-lg px-3 text-sm font-semibold ${t.activo}`}>
+          Buscar
+        </button>
+      </form>
+      {fuera && (
+        <p className={`mt-1 text-xs ${t.sub}`}>
+          Ese número no existe en esta rifa: va de {formatNumero(inicio, ancho)} a{" "}
+          {formatNumero(ultimo, ancho)}.
+        </p>
+      )}
     </div>
   );
 }

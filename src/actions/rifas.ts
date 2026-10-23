@@ -4,7 +4,12 @@ import { revalidatePath, unstable_cache, updateTag } from "next/cache";
 import { z } from "zod";
 
 import { emailVerificado, esSuperadmin, getMembership } from "@/lib/auth";
-import { EMAIL_VERIFICATION_REQUIRED } from "@/lib/errores";
+import {
+  EMAIL_VERIFICATION_REQUIRED,
+  ESTADOS_TENANT_BLOQUEADO,
+  RIFA_PAUSADA,
+  tagRifaPublica,
+} from "@/lib/errores";
 import { creditoCicloPro, resolverActivacion } from "@/lib/planes";
 import {
   boletasElegibles,
@@ -103,11 +108,6 @@ async function revalidarPublica(rifaId: string): Promise<void> {
   if (slug) invalidarPublica(slug);
 }
 
-/** Etiqueta de la caché compartida del enlace público de una rifa. */
-function tagPublica(slug: string): string {
-  return `rifa-publica:${slug}`;
-}
-
 /**
  * Invalida la página pública Y la caché de `getRifaPublica`. `updateTag` (no
  * `revalidateTag`) expira al instante: quien acaba de reservar tiene que ver
@@ -115,7 +115,20 @@ function tagPublica(slug: string): string {
  */
 function invalidarPublica(slug: string): void {
   revalidatePath(`/r/${slug}`);
-  updateTag(tagPublica(slug));
+  updateTag(tagRifaPublica(slug));
+}
+
+/**
+ * ¿El superadmin bloqueó al dueño de la rifa? Entonces sus rifas ya publicadas
+ * quedan en pausa: no se ven ni reciben reservas hasta que lo reactive.
+ */
+async function organizadorBloqueado(
+  svc: ReturnType<typeof createServiceRoleClient>,
+  tenantId: string,
+): Promise<boolean> {
+  const { data } = await svc.from("tenants").select("estado").eq("id", tenantId).maybeSingle();
+  const estado = (data as { estado: string } | null)?.estado;
+  return (ESTADOS_TENANT_BLOQUEADO as readonly string[]).includes(estado ?? "");
 }
 
 /**
@@ -571,6 +584,72 @@ export async function reasignarRifa(
   if (errBoletas) return { success: false, error: errBoletas.message };
 
   revalidatePath(`/admin/rifas/${rifaId}`);
+  revalidatePath("/admin/rifas");
+  return { success: true, data: undefined };
+}
+
+/**
+ * Archiva o restaura una rifa. Archivada sale de la lista principal y del
+ * enlace público, pero conserva todo; al restaurar vuelve tal como estaba.
+ */
+export async function archivarRifa(rifaId: string, archivar: boolean): Promise<ActionResult> {
+  const membership = await requireMembership();
+  if (!membership) return { success: false, error: "Sin sesión" };
+
+  // Con el cliente del usuario: la RLS garantiza que la rifa sea suya.
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("rifas")
+    .update({ archivada_at: archivar ? new Date().toISOString() : null })
+    .eq("id", rifaId)
+    .select("slug_publico")
+    .maybeSingle();
+  if (error) return { success: false, error: error.message };
+  if (!data) return { success: false, error: "Rifa no encontrada" };
+
+  invalidarPublica((data as { slug_publico: string }).slug_publico);
+  revalidatePath("/admin/rifas");
+  revalidatePath(`/admin/rifas/${rifaId}`);
+  return { success: true, data: undefined };
+}
+
+/**
+ * Borra una rifa PARA SIEMPRE con sus números, premios y ganadores. Solo desde
+ * archivadas y escribiendo el nombre exacto: es irreversible y puede llevarse
+ * ventas reales. El cobro que tuviera queda en el historial (sin la rifa); si
+ * estaba pendiente se anula para que nadie active una rifa que ya no existe.
+ */
+export async function eliminarRifa(rifaId: string, confirmacion: string): Promise<ActionResult> {
+  const membership = await requireMembership();
+  if (!membership) return { success: false, error: "Sin sesión" };
+
+  const supabase = await createClient();
+  const { data: rifa } = await supabase
+    .from("rifas")
+    .select("id, nombre, slug_publico, archivada_at")
+    .eq("id", rifaId)
+    .maybeSingle();
+  if (!rifa) return { success: false, error: "Rifa no encontrada" };
+  const r = rifa as { id: string; nombre: string; slug_publico: string; archivada_at: string | null };
+  if (!r.archivada_at) {
+    return { success: false, error: "Primero archiva la rifa; solo se borran rifas archivadas" };
+  }
+  if (confirmacion.trim() !== r.nombre.trim()) {
+    return { success: false, error: "Escribe el nombre exacto de la rifa para confirmar" };
+  }
+
+  // Los cobros solo los toca el superadmin por RLS: se anula con service role,
+  // y solo el de ESTA rifa (ya se comprobó arriba que es del usuario).
+  await createServiceRoleClient()
+    .from("cobros")
+    .update({ estado: "anulado" })
+    .eq("rifa_id", r.id)
+    .eq("estado", "pendiente");
+
+  const { error } = await supabase.from("rifas").delete().eq("id", r.id);
+  if (error) return { success: false, error: error.message };
+
+  invalidarPublica(r.slug_publico);
   revalidatePath("/admin/rifas");
   return { success: true, data: undefined };
 }
@@ -1211,7 +1290,7 @@ export async function getRifaPublica(
   // durante unos segundos; toda mutación la expira al instante (invalidarPublica).
   return unstable_cache(() => cargarRifaPublica(slug), ["rifa-publica", slug], {
     revalidate: 5,
-    tags: [tagPublica(slug)],
+    tags: [tagRifaPublica(slug)],
   })();
 }
 
@@ -1225,8 +1304,11 @@ async function cargarRifaPublica(slug: string): Promise<ActionResult<RifaPublica
 
   if (!rifa) return { success: false, error: "Rifa no encontrada" };
   const r = rifa as Rifa;
-  if (r.estado === "borrador" || r.estado === "cancelada") {
+  if (r.estado === "borrador" || r.estado === "cancelada" || r.archivada_at) {
     return { success: false, error: "Esta rifa no está disponible" };
+  }
+  if (await organizadorBloqueado(svc, r.tenant_id)) {
+    return { success: false, error: RIFA_PAUSADA };
   }
 
   const [{ data: premios }, { data: boletas }, { data: pago }, { data: gan }] =
@@ -1394,8 +1476,11 @@ export async function reservarNumeros(
     .maybeSingle();
   if (!rifa) return { success: false, error: "Rifa no encontrada" };
   const r = rifa as Rifa;
-  if (r.estado !== "activa") {
+  if (r.estado !== "activa" || r.archivada_at) {
     return { success: false, error: "Esta rifa no está recibiendo reservas" };
+  }
+  if (await organizadorBloqueado(svc, r.tenant_id)) {
+    return { success: false, error: RIFA_PAUSADA };
   }
 
   const enRango = [...new Set(d.numeros)].filter((n) => numeroEnRango(r, n));

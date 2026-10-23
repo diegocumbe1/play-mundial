@@ -15,6 +15,7 @@ import {
 import { formatFechaCO } from "@/lib/fecha-co";
 import { buttonVariants } from "@/components/ui/button";
 import { EstadoRifaBadge } from "@/components/rifa/estado-rifa-badge";
+import { AccionesRifa } from "@/components/rifa/acciones-rifa";
 import { GrillaAdmin } from "@/components/rifa/grilla-admin";
 import { PanelFinanciero } from "@/components/rifa/panel-financiero";
 import { SorteoPanel } from "@/components/rifa/sorteo-panel";
@@ -82,6 +83,15 @@ export default async function RifaDetallePage({
       <Link href="/admin/rifas" className="text-muted-foreground hover:text-foreground mb-4 inline-flex items-center gap-1.5 text-sm">
         <ArrowLeft className="size-4" /> Mis rifas
       </Link>
+
+      {rifa.archivada_at && (
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3">
+          <p className="text-sm text-amber-700 dark:text-amber-300">
+            📦 Esta rifa está <b>archivada</b>: no se ve en el enlace público ni recibe reservas.
+          </p>
+          <AccionesRifa rifa={rifa} />
+        </div>
+      )}
 
       <header className="mb-6 flex flex-wrap items-start justify-between gap-3">
         <div>
