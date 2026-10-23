@@ -196,7 +196,12 @@ function camposRifa(d: z.infer<typeof rifaSchema>) {
     loteria: esLoteria ? (d.loteria ?? null) : null,
     loteria_url: esLoteria ? (d.loteria_url || null) : null,
     fecha_loteria: esLoteria ? (d.fecha_loteria ?? null) : null,
-    modo_cifras: esLoteria ? (d.modo_cifras ?? null) : null,
+    // Con 4 cifras primeras y últimas son el mismo número: solo vale "últimas".
+    modo_cifras: esLoteria
+      ? d.formato_cifras === 4
+        ? "ultimas_dos"
+        : (d.modo_cifras ?? null)
+      : null,
     fecha_sorteo: d.fecha_sorteo ?? null,
   };
 }

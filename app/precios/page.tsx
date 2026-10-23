@@ -237,19 +237,22 @@ export default async function PreciosPage() {
         </section>
       )}
 
-      <section className="border-border mt-8 rounded-2xl border p-5">
-        <p className="text-sm font-semibold">Calculadora de ganancias</p>
-        <p className="text-muted-foreground mt-1 mb-4 text-sm">
-          ¿Aún no decides el precio? Compara varios, pon lo que te cuesta el premio y mira
-          cuánto te queda y cuánto debes vender para no perder.
-        </p>
-        <CalculadoraGanancias
-          config={configCobroRifa(c)}
-          cantidadInicial={10000}
-          preciosIniciales={[1500, 1600, 1700, 1800, 1900, 2000]}
-          costoPremioInicial={6200000}
-        />
-      </section>
+      {/* Solo con sesión: es una herramienta del organizador, no del comprador. */}
+      {membership && (
+        <section className="border-border mt-8 rounded-2xl border p-5">
+          <p className="text-sm font-semibold">Calculadora de ganancias</p>
+          <p className="text-muted-foreground mt-1 mb-4 text-sm">
+            ¿Aún no decides el precio? Compara varios, pon lo que te cuesta el premio y mira
+            cuánto te queda y cuánto debes vender para no perder.
+          </p>
+          <CalculadoraGanancias
+            config={configCobroRifa(c)}
+            cantidadInicial={10000}
+            preciosIniciales={[1500, 1600, 1700, 1800, 1900, 2000]}
+            costoPremioInicial={6200000}
+          />
+        </section>
+      )}
 
       <p className="text-muted-foreground mt-4 text-center text-xs">
         Rifamos es una herramienta de gestión y organización: no organiza ni opera rifas. Los

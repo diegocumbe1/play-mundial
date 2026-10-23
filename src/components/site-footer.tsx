@@ -8,7 +8,14 @@ export function SiteFooter() {
   return (
     <footer className="border-polla-line/70 mt-16 border-t">
       <div className="text-polla-muted mx-auto max-w-3xl space-y-3 px-4 py-8 text-center text-xs">
-        <p>
+        <p className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1">
+          <Link
+            href="/como-funciona"
+            className="hover:text-polla-gold font-medium underline underline-offset-4"
+          >
+            Cómo funciona el sorteo
+          </Link>
+          <span aria-hidden>·</span>
           <Link
             href="/terminos"
             className="hover:text-polla-gold font-medium underline underline-offset-4"

@@ -470,7 +470,15 @@ export function RifaPublicaView({
                   Ver resultados
                 </a>
               </>
-            )}
+            )}{" "}
+            <a
+              href="/como-funciona#loteria"
+              target="_blank"
+              rel="noreferrer"
+              className="font-medium underline text-[var(--rifa-accent)]"
+            >
+              ¿Cómo funciona?
+            </a>
           </p>
         )}
 
@@ -482,7 +490,15 @@ export function RifaPublicaView({
           >
             <p>
               🎱 <b style={{ color: t.text }}>{labelSorteoPropio(rifa.sorteo_bolas || 1, rifa.sorteo_ganadores || 1, rifa.sorteo_orden)}</b>{" "}
-              El sorteo queda grabado y se puede ver aquí mismo.
+              El sorteo queda grabado y se puede ver aquí mismo.{" "}
+              <a
+                href="/como-funciona#sorteo-propio"
+                target="_blank"
+                rel="noreferrer"
+                className="font-medium underline text-[var(--rifa-accent)]"
+              >
+                ¿Cómo funciona?
+              </a>
             </p>
             {rifa.mostrar_simulacion && (
             <SorteoDemo

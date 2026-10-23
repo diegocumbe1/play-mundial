@@ -168,7 +168,7 @@ export function RifaForm({
         cantidad_ganadores: Number(p.cantidad_ganadores) || 1,
         criterio:
           tipo === "loteria"
-            ? ((premios.length > 1 ? p.criterio : "") || criterioPorDefecto)
+            ? ((premios.length > 1 && formato !== 4 ? p.criterio : "") || criterioPorDefecto)
             : null,
         orden: i + 1,
         // Solo los productos llevan foto; al pasar a "Dinero" se descarta.
@@ -303,7 +303,12 @@ export function RifaForm({
           <Field label="Cifras del número">
             <Segmented
               value={String(formato)}
-              onChange={(v) => setFormato(Number(v) as 2 | 3 | 4)}
+              onChange={(v) => {
+                const f = Number(v) as 2 | 3 | 4;
+                setFormato(f);
+                // Con 4 cifras las primeras y las últimas son el mismo número.
+                if (f === 4 && modoCifras !== "ultimas_dos") setModoCifras("ultimas_dos");
+              }}
               options={[
                 { value: "2", label: "2 cifras (00–99)" },
                 { value: "3", label: "3 cifras (000–999)" },
@@ -423,12 +428,23 @@ export function RifaForm({
             <Segmented
               value={modoCifras ?? "ultimas_dos"}
               onChange={(v) => setModoCifras(v as typeof modoCifras)}
-              options={[
-                { value: "ultimas_dos", label: "Últimas cifras" },
-                { value: "primeras_dos", label: "Primeras cifras" },
-                { value: "ambas", label: "Ambas" },
-              ]}
+              options={
+                formato === 4
+                  ? [{ value: "ultimas_dos", label: "Las 4 cifras del premio mayor" }]
+                  : [
+                      { value: "ultimas_dos", label: "Últimas cifras" },
+                      { value: "primeras_dos", label: "Primeras cifras" },
+                      { value: "ambas", label: "Ambas" },
+                    ]
+              }
             />
+            {formato === 4 && (
+              <p className="text-muted-foreground mt-1 text-xs">
+                Con 4 cifras el número ganador es el resultado completo de la lotería (ej.
+                4521), así que no hay primeras y últimas por separado. Escribe en la
+                descripción qué pasa si ese número no se vendió.
+              </p>
+            )}
           </Field>
         </section>
       )}
@@ -557,7 +573,7 @@ export function RifaForm({
               )}
               {/* Con un solo premio se hereda "Se gana con…" de la rifa (no se repite).
                   Al haber varios, sí se elige por premio. */}
-              {tipo === "loteria" && premios.length > 1 && (
+              {tipo === "loteria" && premios.length > 1 && formato !== 4 && (
                 <Field label="Gana con" className="sm:col-span-2">
                   <Segmented
                     value={p.criterio || criterioPorDefecto}

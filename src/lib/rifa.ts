@@ -179,6 +179,8 @@ export function labelModoCifras(
   modo: ModoCifras,
   formatoCifras: number,
 ): string {
+  // Con 4 cifras el número es el resultado completo: no hay primeras/últimas.
+  if (formatoCifras >= 4) return `${formatoCifras} cifras del premio mayor`;
   if (modo === "primeras_dos") return `primeras ${formatoCifras} cifras`;
   if (modo === "ambas") return `primeras o últimas ${formatoCifras} cifras`;
   return `últimas ${formatoCifras} cifras`;
@@ -189,6 +191,7 @@ export function labelCriterioPremio(
   criterio: CriterioPremio,
   formatoCifras: number,
 ): string {
+  if (formatoCifras >= 4) return `${formatoCifras} cifras del premio mayor`;
   return criterio === "primeras_2"
     ? `primeras ${formatoCifras} cifras`
     : `últimas ${formatoCifras} cifras`;
