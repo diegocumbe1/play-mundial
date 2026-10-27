@@ -11,7 +11,7 @@ import { anchoNumeros, formatCOP } from "@/lib/rifa";
 import { formatFechaCO } from "@/lib/fecha-co";
 import { urlPublicaRifa } from "@/lib/site-url";
 import { waLink } from "@/lib/whatsapp";
-import type { Boleta, Rifa } from "@/types";
+import type { Boleta, MetodoPago, Rifa } from "@/types";
 
 export type Filtro = "todas" | "deben" | "pagadas";
 
@@ -24,6 +24,11 @@ function normalizar(s: string): string {
 }
 
 type Orden = "deuda" | "recientes" | "antiguos";
+
+/** Medio de una boleta pagada; las viejas sin medio cuentan como transferencia. */
+function medioDe(b: Boleta): MetodoPago {
+  return b.metodo_pago ?? "transferencia";
+}
 
 const MESES_CORTOS = [
   "ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic",
@@ -39,6 +44,13 @@ function fmtRegistro(ms: number): string {
   const h = d.getUTCHours();
   const min = String(d.getUTCMinutes()).padStart(2, "0");
   return `${d.getUTCDate()} ${MESES_CORTOS[d.getUTCMonth()]}, ${h % 12 || 12}:${min} ${h < 12 ? "a. m." : "p. m."}`;
+}
+
+/** "Efectivo", "Transf." o "Mixto" según cómo pagó sus números. */
+function etiquetaMedio(boletas: Boleta[]): string {
+  const medios = new Set(boletas.filter((b) => b.estado === "pagado").map(medioDe));
+  if (medios.size > 1) return "Mixto";
+  return medios.has("efectivo") ? "Efectivo" : "Transf.";
 }
 
 interface Persona {
@@ -118,6 +130,7 @@ export function ParticipantesLista({
   const [busqueda, setBusqueda] = useState("");
   const [responsableFiltro, setResponsableFiltro] = useState("");
   const [orden, setOrden] = useState<Orden>("deuda");
+  const [medioFiltro, setMedioFiltro] = useState<MetodoPago | "">("");
   // Ningún cambio de estado es de un solo toque: se abre el modal de la boleta.
   const [boletaSel, setBoletaSel] = useState<Boleta | null>(null);
 
@@ -204,6 +217,12 @@ export function ParticipantesLista({
     .filter((p) =>
       filtro === "deben" ? p.pendientes > 0 : filtro === "pagadas" ? p.pendientes === 0 : true,
     )
+    // Por medio: quien pagó al menos un número con ese medio.
+    .filter(
+      (p) =>
+        !medioFiltro ||
+        p.boletas.some((b) => b.estado === "pagado" && medioDe(b) === medioFiltro),
+    )
     .filter((p) => {
       if (!q) return true;
       // Busca por nombre, teléfono o cualquiera de sus números.
@@ -218,6 +237,10 @@ export function ParticipantesLista({
     });
 
   const totalDeben = personas.reduce((s, p) => s + p.debe, 0);
+  // Cuántos números y cuánta plata entraron por cada medio (con el responsable aplicado).
+  const porMedio = (m: MetodoPago) =>
+    boletasBase.filter((b) => b.estado === "pagado" && medioDe(b) === m).length;
+  const pagadasMedio = medioFiltro ? porMedio(medioFiltro) : 0;
   const conDeuda = personas.filter((p) => p.pendientes > 0).length;
 
   if (personas.length === 0) {
@@ -236,6 +259,12 @@ export function ParticipantesLista({
           <Users className="mr-1 inline size-3.5" />
           {personas.length} persona(s) · {conDeuda} con pago pendiente
           {totalDeben > 0 && <> · faltan <b className="text-foreground">{formatCOP(totalDeben)}</b></>}
+          {medioFiltro && (
+            <>
+              {" "}· {pagadasMedio} número(s) en {medioFiltro}:{" "}
+              <b className="text-foreground">{formatCOP(pagadasMedio * rifa.precio_boleta)}</b>
+            </>
+          )}
         </p>
         <div className="border-border inline-flex gap-1 rounded-lg border p-1">
           {([
@@ -280,6 +309,17 @@ export function ParticipantesLista({
             ))}
           </select>
         )}
+
+        <select
+          value={medioFiltro}
+          onChange={(e) => setMedioFiltro(e.target.value as MetodoPago | "")}
+          aria-label="Medio de pago"
+          className="border-input bg-background h-9 rounded-lg border px-2 text-sm sm:w-48"
+        >
+          <option value="">Todos los medios</option>
+          <option value="transferencia">Transferencia ({porMedio("transferencia")})</option>
+          <option value="efectivo">Efectivo ({porMedio("efectivo")})</option>
+        </select>
 
         <div className="relative flex-1">
           <Search className="text-muted-foreground pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2" />
@@ -420,8 +460,8 @@ export function ParticipantesLista({
                     Debe {formatCOP(p.debe)}
                   </span>
                 ) : (
-                  <span className="shrink-0 rounded-full bg-emerald-500/15 px-2.5 py-1 text-xs font-semibold text-emerald-600 dark:text-emerald-400">
-                    Pagó
+                  <span className="shrink-0 whitespace-nowrap rounded-full bg-emerald-500/15 px-2.5 py-1 text-xs font-semibold text-emerald-600 dark:text-emerald-400">
+                    Pagó · {etiquetaMedio(p.boletas)}
                   </span>
                 )}
               </div>
@@ -433,7 +473,11 @@ export function ParticipantesLista({
                     key={b.id}
                     type="button"
                     onClick={() => setBoletaSel(b)}
-                    title="Ver / cambiar estado"
+                    title={
+                      b.estado === "pagado"
+                        ? `Pagado en ${medioDe(b)} · ver / cambiar`
+                        : "Ver / cambiar estado"
+                    }
                     className={
                       "tap-scale inline-flex items-center rounded-md px-2 py-0.5 text-xs font-bold tabular-nums transition-opacity hover:opacity-80 " +
                       (b.estado === "pagado"

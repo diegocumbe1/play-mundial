@@ -19,7 +19,9 @@ import {
 } from "@/components/ui/dialog";
 import { formatCOP, formatNumero } from "@/lib/rifa";
 import { VerificarEmailModal } from "@/components/rifa/verificar-email-modal";
+import { Campo, Segmentado } from "@/components/torneo/campos";
 import { esErrorDeVerificacion } from "@/lib/errores";
+import type { MetodoPago } from "@/types";
 
 /**
  * Registra VARIOS números a un mismo comprador de una sola vez (lo normal
@@ -49,6 +51,7 @@ export function BoletasLoteModal({
   const [nombre, setNombre] = useState("");
   const [telefono, setTelefono] = useState("");
   const [responsable, setResponsable] = useState("");
+  const [metodo, setMetodo] = useState<MetodoPago>("transferencia");
   const [pidiendoVerificacion, setPidiendoVerificacion] = useState(false);
 
   const etiquetas = numeros.map((n) => formatNumero(n, ancho)).join(", ");
@@ -62,7 +65,7 @@ export function BoletasLoteModal({
         comprador_telefono: telefono.trim() || null,
         responsable_venta: responsable.trim() || null,
         pagado,
-        metodo_pago: pagado ? "efectivo" : null,
+        metodo_pago: pagado ? metodo : null,
       });
       if (!r.success) {
         if (esErrorDeVerificacion(r.error)) {
@@ -133,6 +136,16 @@ export function BoletasLoteModal({
               placeholder="Nombre de quien vendió"
             />
           </div>
+          <Campo label="Si ya pagó, ¿cómo?">
+            <Segmentado
+              value={metodo}
+              onChange={(v) => setMetodo(v as MetodoPago)}
+              options={[
+                { value: "transferencia", label: "Transferencia" },
+                { value: "efectivo", label: "Efectivo" },
+              ]}
+            />
+          </Campo>
         </div>
 
         <DialogFooter>

@@ -40,8 +40,8 @@ export default async function RifaDetallePage({
 
   const res = await getRifa(id);
   if (!res.success) notFound();
-  const { rifa, premios, boletas, ganadores } = res.data;
-  const dash = calcularDashboard(rifa, boletas);
+  const { rifa, premios, boletas, ganadores, movimientos } = res.data;
+  const dash = calcularDashboard(rifa, boletas, movimientos);
 
   // Los datos de cobro son los del dueño de la rifa: son los que ve el público.
   const pagoRes = await getMiPagoConfig(rifa.tenant_id);
@@ -145,7 +145,7 @@ export default async function RifaDetallePage({
           </section>
 
           {/* Dashboard financiero + participantes (indicadores accionables) */}
-          <PanelFinanciero rifa={rifa} boletas={boletas} dash={dash} />
+          <PanelFinanciero rifa={rifa} boletas={boletas} dash={dash} movimientos={movimientos} />
         </>
       )}
 

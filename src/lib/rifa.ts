@@ -5,6 +5,7 @@ import type {
   CriterioPremio,
   DashboardRifa,
   ModoCifras,
+  MovimientoRifa,
   OrdenSorteo,
   Premio,
   Rifa,
@@ -142,9 +143,13 @@ export function decodificarOcupados(rifa: RangoRifa, ocupados: string): BoletaPu
 export function calcularDashboard(
   rifa: Rifa,
   boletas: Boleta[],
+  movimientos: MovimientoRifa[] = [],
 ): DashboardRifa {
   const total = rifa.cantidad_numeros;
   const pagadas = boletas.filter((b) => b.estado === "pagado").length;
+  const pagadasEfectivo = boletas.filter(
+    (b) => b.estado === "pagado" && b.metodo_pago === "efectivo",
+  ).length;
   const pendientes = boletas.filter((b) => b.estado === "reservado").length;
   const vendidas = pagadas + pendientes;
   const libres = Math.max(0, total - vendidas);
@@ -156,7 +161,22 @@ export function calcularDashboard(
     esperadoTotal > 0 ? Math.round((recaudado / esperadoTotal) * 100) : 0;
   const pctVendido = total > 0 ? Math.round((vendidas / total) * 100) : 0;
 
+  // Sin medio registrado (boletas viejas) se asume transferencia, el medio por defecto.
+  const recaudadoEfectivo = pagadasEfectivo * rifa.precio_boleta;
+  const recaudadoTransferencia = recaudado - recaudadoEfectivo;
+  const salidas = (metodo: MovimientoRifa["metodo"]) =>
+    movimientos.filter((m) => m.metodo === metodo).reduce((s, m) => s + m.monto, 0);
+  const salidasEfectivo = salidas("efectivo");
+  const salidasTransferencia = salidas("transferencia");
+
   return {
+    recaudadoEfectivo,
+    recaudadoTransferencia,
+    salidasEfectivo,
+    salidasTransferencia,
+    saldo: recaudado - salidasEfectivo - salidasTransferencia,
+    saldoEfectivo: recaudadoEfectivo - salidasEfectivo,
+    saldoTransferencia: recaudadoTransferencia - salidasTransferencia,
     total,
     vendidas,
     pagadas,

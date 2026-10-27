@@ -29,6 +29,7 @@ import type {
   Ganador,
   GanadorPublico,
   Membership,
+  MovimientoRifa,
   Premio,
   PlataformaPagoConfig,
   Rifa,
@@ -252,9 +253,10 @@ export interface RifaDetalle {
   premios: Premio[];
   boletas: Boleta[];
   ganadores: Ganador[];
+  movimientos: MovimientoRifa[];
 }
 
-/** Rifa + premios + boletas + ganadores (con datos sensibles: solo owner). */
+/** Rifa + premios + boletas + ganadores + movimientos de caja (con datos sensibles: solo owner). */
 export async function getRifa(id: string): Promise<ActionResult<RifaDetalle>> {
   const membership = await requireMembership();
   if (!membership) return { success: false, error: "Sin sesión" };
@@ -269,13 +271,18 @@ export async function getRifa(id: string): Promise<ActionResult<RifaDetalle>> {
   if (error) return { success: false, error: error.message };
   if (!rifa) return { success: false, error: "Rifa no encontrada" };
 
-  const [{ data: premios }, { data: boletas }, { data: ganadores }] =
+  const [{ data: premios }, { data: boletas }, { data: ganadores }, { data: movimientos }] =
     await Promise.all([
       supabase.from("premios").select("*").eq("rifa_id", id).order("orden"),
       traerTodas<Boleta>((desde, hasta) =>
         supabase.from("boletas").select("*").eq("rifa_id", id).order("numero").range(desde, hasta),
       ),
       supabase.from("ganadores").select("*").eq("rifa_id", id),
+      supabase
+        .from("movimientos_rifa")
+        .select("*")
+        .eq("rifa_id", id)
+        .order("created_at", { ascending: false }),
     ]);
 
   return {
@@ -285,8 +292,75 @@ export async function getRifa(id: string): Promise<ActionResult<RifaDetalle>> {
       premios: (premios as Premio[]) ?? [],
       boletas: (boletas as Boleta[]) ?? [],
       ganadores: (ganadores as Ganador[]) ?? [],
+      movimientos: (movimientos as MovimientoRifa[]) ?? [],
     },
   };
+}
+
+// ---------------------------------------------------------------------------
+// Caja (owner): retiros y gastos sobre lo recaudado
+// ---------------------------------------------------------------------------
+const movimientoSchema = z.object({
+  rifa_id: z.string().uuid(),
+  tipo: z.enum(["retiro", "gasto"]).default("retiro"),
+  monto: z.number().int().positive("El monto debe ser mayor a 0"),
+  metodo: z.enum(["efectivo", "transferencia"]).default("transferencia"),
+  detalle: z.string().trim().max(200).nullable().optional(),
+});
+
+/** Registra una salida de plata (retiro o gasto) de lo recaudado en la rifa. */
+export async function crearMovimientoRifa(
+  input: z.input<typeof movimientoSchema>,
+): Promise<ActionResult> {
+  const membership = await requireMembership();
+  if (!membership) return { success: false, error: "Sin sesión" };
+
+  const parsed = movimientoSchema.safeParse(input);
+  if (!parsed.success) {
+    return { success: false, error: parsed.error.issues[0].message };
+  }
+  const d = parsed.data;
+
+  const supabase = await createClient();
+  // El tenant de la RIFA (el superadmin registra en rifas de otros); la RLS lo exige.
+  const { data: rifa } = await supabase
+    .from("rifas")
+    .select("tenant_id")
+    .eq("id", d.rifa_id)
+    .maybeSingle();
+  if (!rifa) return { success: false, error: "Rifa no encontrada" };
+
+  const { error } = await supabase.from("movimientos_rifa").insert({
+    rifa_id: d.rifa_id,
+    tenant_id: (rifa as { tenant_id: string }).tenant_id,
+    tipo: d.tipo,
+    monto: d.monto,
+    metodo: d.metodo,
+    detalle: d.detalle || null,
+  });
+  if (error) return { success: false, error: error.message };
+
+  revalidatePath(`/admin/rifas/${d.rifa_id}`);
+  return { success: true, data: undefined };
+}
+
+/** Borra una salida registrada por error. */
+export async function eliminarMovimientoRifa(id: string): Promise<ActionResult> {
+  const membership = await requireMembership();
+  if (!membership) return { success: false, error: "Sin sesión" };
+
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("movimientos_rifa")
+    .delete()
+    .eq("id", id)
+    .select("rifa_id")
+    .maybeSingle();
+  if (error) return { success: false, error: error.message };
+  if (!data) return { success: false, error: "Movimiento no encontrado" };
+
+  revalidatePath(`/admin/rifas/${(data as { rifa_id: string }).rifa_id}`);
+  return { success: true, data: undefined };
 }
 
 // ---------------------------------------------------------------------------
@@ -721,7 +795,7 @@ export async function registrarBoletaAdmin(
     comprador_nombre: d.comprador_nombre,
     comprador_telefono: d.comprador_telefono ?? null,
     responsable_venta: d.responsable_venta ?? null,
-    metodo_pago: d.pagado ? (d.metodo_pago ?? null) : null,
+    metodo_pago: d.pagado ? (d.metodo_pago ?? "transferencia") : null,
     nota: d.nota ?? null,
     pagado_at: d.pagado ? new Date().toISOString() : null,
   });
@@ -778,7 +852,7 @@ export async function registrarBoletasLote(
     comprador_nombre: d.comprador_nombre,
     comprador_telefono: d.comprador_telefono ?? null,
     responsable_venta: d.responsable_venta ?? null,
-    metodo_pago: d.pagado ? (d.metodo_pago ?? null) : null,
+    metodo_pago: d.pagado ? (d.metodo_pago ?? "transferencia") : null,
     nota: d.nota ?? null,
     pagado_at: d.pagado ? new Date().toISOString() : null,
   };
@@ -850,11 +924,34 @@ export async function actualizarBoleta(
   return { success: true, data: undefined };
 }
 
+/** Corrige el medio con el que se pagó una boleta, sin tocar fecha ni estado. */
+export async function cambiarMetodoPagoBoleta(
+  boletaId: string,
+  metodo: "efectivo" | "transferencia",
+): Promise<ActionResult> {
+  const acceso = await puedeTocarNumeros();
+  if (!acceso.success) return acceso;
+
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("boletas")
+    .update({ metodo_pago: metodo })
+    .eq("id", boletaId)
+    .eq("estado", "pagado")
+    .select("rifa_id")
+    .maybeSingle();
+
+  if (error) return { success: false, error: traducirErrorBoleta(error.message) };
+  if (!data) return { success: false, error: "Ese número no está pagado" };
+  revalidatePath(`/admin/rifas/${(data as { rifa_id: string }).rifa_id}`);
+  return { success: true, data: undefined };
+}
+
 /** Marca una boleta como pagada (o revierte a reservada). */
 export async function marcarPagoBoleta(
   boletaId: string,
   pagado: boolean,
-  metodo: "efectivo" | "transferencia" | null = null,
+  metodo: "efectivo" | "transferencia" = "transferencia",
 ): Promise<ActionResult> {
   const acceso = await puedeTocarNumeros();
   if (!acceso.success) return acceso;

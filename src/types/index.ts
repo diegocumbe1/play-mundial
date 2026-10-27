@@ -586,6 +586,29 @@ export interface DashboardRifa {
   esperadoTotal: number;
   pctCumplimiento: number;
   pctVendido: number;
+  /** Lo recaudado partido por medio (las pagadas sin medio cuentan como transferencia). */
+  recaudadoEfectivo: number;
+  recaudadoTransferencia: number;
+  /** Lo que ya salió de la caja (retiros + gastos), por medio. */
+  salidasEfectivo: number;
+  salidasTransferencia: number;
+  /** Lo que queda de lo reunido: recaudado − salidas, total y por medio. */
+  saldo: number;
+  saldoEfectivo: number;
+  saldoTransferencia: number;
+}
+
+/** Una salida de plata de lo recaudado en una rifa (retiro o gasto). Solo uso interno. */
+export interface MovimientoRifa {
+  id: string;
+  rifa_id: string;
+  tenant_id: string;
+  tipo: "retiro" | "gasto";
+  monto: number;
+  /** De qué caja sale: efectivo cobrado o la cuenta (transferencias). */
+  metodo: MetodoPago;
+  detalle: string | null;
+  created_at: string;
 }
 
 /** Un cobro del ledger (prepago manual). */

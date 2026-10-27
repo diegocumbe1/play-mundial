@@ -3,13 +3,14 @@
 import { useRef, useState } from "react";
 import { ChevronDown, Users } from "lucide-react";
 
+import { CajaRifa } from "@/components/rifa/caja-rifa";
 import {
   ParticipantesLista,
   type Filtro,
 } from "@/components/rifa/participantes-lista";
 import { formatCOP } from "@/lib/rifa";
 import { cn } from "@/lib/utils";
-import type { Boleta, DashboardRifa, Rifa } from "@/types";
+import type { Boleta, DashboardRifa, MovimientoRifa, Rifa } from "@/types";
 
 /**
  * Dashboard financiero + participantes. Los indicadores de "Pagadas" y
@@ -20,10 +21,12 @@ export function PanelFinanciero({
   rifa,
   boletas,
   dash,
+  movimientos,
 }: {
   rifa: Rifa;
   boletas: Boleta[];
   dash: DashboardRifa;
+  movimientos: MovimientoRifa[];
 }) {
   const [filtro, setFiltro] = useState<Filtro>("todas");
   const [abierto, setAbierto] = useState(true);
@@ -49,7 +52,7 @@ export function PanelFinanciero({
           label="Recaudado"
           value={formatCOP(dash.recaudado)}
           valueClassName="text-emerald-600 dark:text-emerald-400"
-          sub={`${dash.pagadas} pagada(s) · ${dash.pctCumplimiento}% de ${formatCOP(dash.esperadoTotal)}`}
+          sub={`${dash.pagadas} pagada(s) · ${dash.pctCumplimiento}% de ${formatCOP(dash.esperadoTotal)} · efectivo ${formatCOP(dash.recaudadoEfectivo)} · transf. ${formatCOP(dash.recaudadoTransferencia)}`}
           onClick={() => ver("pagadas")}
         />
         <Stat
@@ -60,6 +63,8 @@ export function PanelFinanciero({
           onClick={() => ver("deben")}
         />
       </section>
+
+      <CajaRifa rifaId={rifa.id} dash={dash} movimientos={movimientos} />
 
       <section ref={listaRef} className="border-border mb-6 scroll-mt-4 rounded-2xl border p-4">
         <button

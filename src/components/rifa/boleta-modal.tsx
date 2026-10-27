@@ -7,6 +7,7 @@ import { toast } from "sonner";
 
 import {
   actualizarBoleta,
+  cambiarMetodoPagoBoleta,
   liberarBoleta,
   marcarPagoBoleta,
   registrarBoletaAdmin,
@@ -27,8 +28,14 @@ import { formatFechaCO } from "@/lib/fecha-co";
 import { urlPublicaRifa } from "@/lib/site-url";
 import { waLink } from "@/lib/whatsapp";
 import { VerificarEmailModal } from "@/components/rifa/verificar-email-modal";
+import { Campo, Segmentado } from "@/components/torneo/campos";
 import { esErrorDeVerificacion } from "@/lib/errores";
-import type { Boleta, Rifa } from "@/types";
+import type { Boleta, MetodoPago, Rifa } from "@/types";
+
+const METODO_LABEL: Record<MetodoPago, string> = {
+  transferencia: "Transferencia",
+  efectivo: "Efectivo",
+};
 
 /**
  * Modal único para gestionar un número de la rifa. Se reusa desde la grilla y
@@ -60,6 +67,8 @@ export function BoletaModal({
   const [nombre, setNombre] = useState(boleta?.comprador_nombre ?? "");
   const [telefono, setTelefono] = useState(boleta?.comprador_telefono ?? "");
   const [responsable, setResponsable] = useState(boleta?.responsable_venta ?? "");
+  // Por defecto transferencia: es como paga la mayoría.
+  const [metodo, setMetodo] = useState<MetodoPago>(boleta?.metodo_pago ?? "transferencia");
   const [confirmandoLiberar, setConfirmandoLiberar] = useState(false);
   const [editando, setEditando] = useState(false);
   const [pidiendoVerificacion, setPidiendoVerificacion] = useState(false);
@@ -163,6 +172,41 @@ export function BoletaModal({
           </div>
         )}
 
+        {/* Medio de pago: al cobrar se elige; si ya está pagado, tocar el otro
+            lo corrige al instante (sin cerrar el modal). */}
+        {(!boleta || (!editando && !confirmandoLiberar)) && (
+          <Campo label={boleta?.estado === "pagado" ? "Pagó con" : "Si ya pagó, ¿cómo?"}>
+            <Segmentado
+              value={metodo}
+              onChange={(v) => {
+                const nuevo = v as MetodoPago;
+                if (boleta?.estado !== "pagado") {
+                  setMetodo(nuevo);
+                  return;
+                }
+                if (nuevo === metodo || pending) return;
+                const anterior = metodo;
+                setMetodo(nuevo);
+                startTransition(async () => {
+                  const r = await cambiarMetodoPagoBoleta(boleta.id, nuevo);
+                  if (!r.success) {
+                    setMetodo(anterior);
+                    if (esErrorDeVerificacion(r.error)) setPidiendoVerificacion(true);
+                    else toast.error(r.error);
+                    return;
+                  }
+                  toast.success(`Medio cambiado a ${METODO_LABEL[nuevo].toLowerCase()}`);
+                  router.refresh();
+                });
+              }}
+              options={[
+                { value: "transferencia", label: METODO_LABEL.transferencia },
+                { value: "efectivo", label: METODO_LABEL.efectivo },
+              ]}
+            />
+          </Campo>
+        )}
+
         {/* Con el teléfono ya guardado, escribirle es un toque: no hay que salir
             a buscar el número ni copiar nada. */}
         {boleta?.comprador_telefono && mensajeRecordatorio && !editando && (
@@ -220,7 +264,7 @@ export function BoletaModal({
                         comprador_telefono: telefono.trim() || null,
                         responsable_venta: responsable.trim() || null,
                         pagado: true,
-                        metodo_pago: "efectivo",
+                        metodo_pago: metodo,
                       }),
                     "Número pagado",
                   )
@@ -290,7 +334,7 @@ export function BoletaModal({
                 <Button
                   disabled={pending}
                   onClick={() =>
-                    correr(() => marcarPagoBoleta(boleta.id, true, "efectivo"), "Pago registrado")
+                    correr(() => marcarPagoBoleta(boleta.id, true, metodo), "Pago registrado")
                   }
                 >
                   <Check className="size-4" /> Marcar pagado
