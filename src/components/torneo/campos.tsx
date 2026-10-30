@@ -1,5 +1,8 @@
 "use client";
 
+import { useState } from "react";
+import { Info } from "lucide-react";
+
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 
@@ -13,22 +16,55 @@ import { cn } from "@/lib/utils";
 export function Campo({
   label,
   ayuda,
+  info,
   className,
   children,
 }: {
   label: string;
   ayuda?: string;
+  /** Explicación del concepto: se abre tocando el ⓘ (funciona en celular). */
+  info?: React.ReactNode;
   className?: string;
   children: React.ReactNode;
 }) {
   return (
     <div className={className}>
-      <Label className="text-muted-foreground mb-1.5 block text-xs font-medium">
-        {label}
-      </Label>
+      <div className="mb-1.5 flex flex-wrap items-center gap-1">
+        <Label className="text-muted-foreground block text-xs font-medium">{label}</Label>
+        {info && <InfoToggle>{info}</InfoToggle>}
+      </div>
       {children}
       {ayuda && <p className="text-muted-foreground mt-1 text-xs">{ayuda}</p>}
     </div>
+  );
+}
+
+/**
+ * Ícono ⓘ que despliega una explicación debajo. Se usa en vez de un tooltip
+ * de hover porque el organizador configura desde el celular.
+ */
+export function InfoToggle({ children }: { children: React.ReactNode }) {
+  const [abierto, setAbierto] = useState(false);
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setAbierto((v) => !v)}
+        aria-expanded={abierto}
+        aria-label={abierto ? "Ocultar explicación" : "¿Qué significa?"}
+        className={cn(
+          "inline-flex size-5 items-center justify-center rounded-full transition-colors",
+          abierto ? "text-primary" : "text-muted-foreground hover:text-foreground",
+        )}
+      >
+        <Info className="size-3.5" />
+      </button>
+      {abierto && (
+        <span className="bg-primary/10 text-foreground order-last mt-1 block w-full basis-full rounded-lg px-2.5 py-2 text-xs leading-relaxed">
+          {children}
+        </span>
+      )}
+    </>
   );
 }
 

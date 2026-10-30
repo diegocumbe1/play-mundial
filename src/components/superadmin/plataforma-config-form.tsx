@@ -24,6 +24,8 @@ export function PlataformaConfigForm({ inicial }: { inicial: PlataformaConfig })
     cobro_rifa_max: String(inicial.cobro_rifa_max ?? 0),
     cobro_rifa_max_5000: String(inicial.cobro_rifa_max_5000 ?? 0),
     cobro_rifa_max_10000: String(inicial.cobro_rifa_max_10000 ?? 0),
+    cobro_rifa_umbral_comercial: String(inicial.cobro_rifa_umbral_comercial ?? 0),
+    cobro_rifa_comercial: String(inicial.cobro_rifa_comercial ?? 0),
     precio_rifa_100: String(inicial.precio_rifa_100),
     precio_rifa_500: String(inicial.precio_rifa_500),
     precio_rifa_1000: String(inicial.precio_rifa_1000),
@@ -31,6 +33,7 @@ export function PlataformaConfigForm({ inicial }: { inicial: PlataformaConfig })
     free_rifas_por_mes: String(inicial.free_rifas_por_mes),
     free_rifas_total: String(inicial.free_rifas_total),
     free_max_numeros: String(inicial.free_max_numeros),
+    free_max_precio_numero: String(inicial.free_max_precio_numero ?? 0),
     precio_torneo_8: String(inicial.precio_torneo_8),
     precio_torneo_16: String(inicial.precio_torneo_16),
     precio_torneo_32: String(inicial.precio_torneo_32),
@@ -60,6 +63,8 @@ export function PlataformaConfigForm({ inicial }: { inicial: PlataformaConfig })
         cobro_rifa_max: Number(f.cobro_rifa_max) || 0,
         cobro_rifa_max_5000: Number(f.cobro_rifa_max_5000) || 0,
         cobro_rifa_max_10000: Number(f.cobro_rifa_max_10000) || 0,
+        cobro_rifa_umbral_comercial: Number(f.cobro_rifa_umbral_comercial) || 0,
+        cobro_rifa_comercial: Number(f.cobro_rifa_comercial) || 0,
         precio_rifa_100: Number(f.precio_rifa_100) || 0,
         precio_rifa_500: Number(f.precio_rifa_500) || 0,
         precio_rifa_1000: Number(f.precio_rifa_1000) || 0,
@@ -67,6 +72,7 @@ export function PlataformaConfigForm({ inicial }: { inicial: PlataformaConfig })
         free_rifas_por_mes: Number(f.free_rifas_por_mes) || 0,
         free_rifas_total: Number(f.free_rifas_total) || 0,
         free_max_numeros: Number(f.free_max_numeros) || 1,
+        free_max_precio_numero: Number(f.free_max_precio_numero) || 0,
         precio_torneo_8: Number(f.precio_torneo_8) || 0,
         precio_torneo_16: Number(f.precio_torneo_16) || 0,
         precio_torneo_32: Number(f.precio_torneo_32) || 0,
@@ -106,10 +112,13 @@ export function PlataformaConfigForm({ inicial }: { inicial: PlataformaConfig })
           <CampoMoneda label="Máximo hasta 1.000 números (0 = sin tope)" value={f.cobro_rifa_max} onChange={(v) => set("cobro_rifa_max", v)} />
           <CampoMoneda label="Máximo de 1.001 a 5.000 números" value={f.cobro_rifa_max_5000} onChange={(v) => set("cobro_rifa_max_5000", v)} />
           <CampoMoneda label="Máximo de 5.001 a 10.000 números" value={f.cobro_rifa_max_10000} onChange={(v) => set("cobro_rifa_max_10000", v)} />
+          <CampoMoneda label="Comercial desde valor potencial de (0 = off)" value={f.cobro_rifa_umbral_comercial} onChange={(v) => set("cobro_rifa_umbral_comercial", v)} />
+          <CampoMoneda label="Tarifa rifa comercial" value={f.cobro_rifa_comercial} onChange={(v) => set("cobro_rifa_comercial", v)} />
         </div>
         <p className="text-muted-foreground mt-2 text-xs">
-          Con <b>% del recaudo</b> el cobro sube con el tamaño del negocio (números ×
-          precio), acotado por el mínimo y el máximo del tamaño de la rifa. La regla <b>1 boleta</b> equivale a
+          Con <b>% del recaudo</b> el cobro sube con el valor total potencial (números ×
+          precio), acotado por el mínimo y el máximo del tamaño de la rifa. Si ese valor
+          supera el umbral comercial, se cobra la tarifa comercial fija. La regla <b>1 boleta</b> equivale a
           100/N del recaudo, así que no es monótona: una rifa que recauda el doble puede
           pagar menos.
         </p>
@@ -144,6 +153,7 @@ export function PlataformaConfigForm({ inicial }: { inicial: PlataformaConfig })
           <Campo label="Rifas gratis por mes" value={f.free_rifas_por_mes} onChange={(v) => set("free_rifas_por_mes", v)} />
           <Campo label="Rifas gratis en total" value={f.free_rifas_total} onChange={(v) => set("free_rifas_total", v)} />
           <Campo label="Máx. números en gratis" value={f.free_max_numeros} onChange={(v) => set("free_max_numeros", v)} />
+          <CampoMoneda label="Máx. precio por número en gratis (0 = sin límite)" value={f.free_max_precio_numero} onChange={(v) => set("free_max_precio_numero", v)} />
         </div>
       </div>
       <div>

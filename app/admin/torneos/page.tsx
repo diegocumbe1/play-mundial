@@ -4,6 +4,7 @@ import { Plus, Trophy } from "lucide-react";
 import { getTorneosConResumen } from "@/actions/torneos";
 import { getMembership } from "@/lib/auth";
 import { buttonVariants } from "@/components/ui/button";
+import { DemoTorneoButton } from "@/components/torneo/demo-torneo-button";
 import { TorneosLista } from "@/components/torneo/torneos-lista";
 
 export const dynamic = "force-dynamic";
@@ -46,15 +47,21 @@ export default async function TorneosPage() {
             Campeonatos, inscripciones y rentabilidad.
           </p>
         </div>
-        <Link href="/admin/torneos/nuevo" className={buttonVariants({ size: "lg" })}>
-          <Plus className="size-4" /> Nuevo torneo
-        </Link>
+        <div className="flex flex-wrap gap-2">
+          <DemoTorneoButton />
+          <Link href="/admin/torneos/nuevo" className={buttonVariants({ size: "lg" })}>
+            <Plus className="size-4" /> Nuevo torneo
+          </Link>
+        </div>
       </header>
 
       {torneos.length === 0 ? (
         <div className="border-border flex flex-col items-center gap-3 rounded-2xl border border-dashed p-12 text-center">
           <Trophy className="text-muted-foreground size-8" />
-          <p className="text-muted-foreground text-sm">Aún no has creado ningún torneo.</p>
+          <p className="text-muted-foreground text-sm">
+            Aún no has creado ningún torneo. Mira primero las demos: un torneo de
+            voleiplaya ya configurado, con equipos y pagos de ejemplo.
+          </p>
           <Link href="/admin/torneos/nuevo" className={buttonVariants({})}>
             <Plus className="size-4" /> Crear mi primer torneo
           </Link>

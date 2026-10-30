@@ -15,6 +15,8 @@ export type ConfigCobroRifa = Pick<
   | "cobro_rifa_max"
   | "cobro_rifa_max_5000"
   | "cobro_rifa_max_10000"
+  | "cobro_rifa_umbral_comercial"
+  | "cobro_rifa_comercial"
   | "precio_rifa_100"
   | "precio_rifa_500"
   | "precio_rifa_1000"
@@ -38,13 +40,30 @@ export function topeCobroRifa(c: ConfigCobroRifa, n: number): number {
   return c.cobro_rifa_max_10000 ?? c.cobro_rifa_max;
 }
 
+/**
+ * ¿La rifa es "comercial"? Lo es cuando su valor total potencial (todos los
+ * números vendidos) supera el umbral configurado (0 = no hay escalón comercial).
+ */
+export function esRifaComercial(c: ConfigCobroRifa, n: number, precioBoleta: number): boolean {
+  const umbral = c.cobro_rifa_umbral_comercial ?? 0;
+  return umbral > 0 && Math.max(0, n) * Math.max(0, precioBoleta) > umbral;
+}
+
 /** Cuánto cuesta activar una rifa de `n` números a `precioBoleta` cada uno. */
 export function cobroActivacionRifa(c: ConfigCobroRifa, n: number, precioBoleta: number): number {
-  // Regla vigente: un % del recaudo proyectado (números × precio), acotado.
-  // Es la única monótona: a más recaudo, más cobro.
+  // Regla vigente: tarifa de activación según el valor total potencial de la
+  // rifa (números × precio, se venda o no todo).
+  //  - Básica (potencial ≤ umbral): un % de ese valor, entre el mínimo y el tope.
+  //  - Comercial (potencial > umbral): precio fijo; en rifas de más de 1.000
+  //    números el % con su tope puede quedar por encima y se cobra ese.
   if (c.cobro_rifa_modo === "porcentaje") {
     const recaudo = Math.max(0, n) * Math.max(0, precioBoleta);
-    return acotar((recaudo * c.cobro_rifa_pct) / 100, c.cobro_rifa_min, topeCobroRifa(c, n));
+    const porcentaje = (recaudo * c.cobro_rifa_pct) / 100;
+    if (esRifaComercial(c, n, precioBoleta) && (c.cobro_rifa_comercial ?? 0) > 0) {
+      const fijo = c.cobro_rifa_comercial;
+      return acotar(porcentaje, fijo, Math.max(fijo, topeCobroRifa(c, n)));
+    }
+    return acotar(porcentaje, c.cobro_rifa_min, topeCobroRifa(c, n));
   }
   // Modo "boleta": activar la rifa cuesta lo mismo que uno de sus puestos.
   if (c.cobro_rifa_modo === "boleta") {
@@ -62,6 +81,8 @@ export function configCobroRifa(c: PlataformaConfig): ConfigCobroRifa {
     cobro_rifa_max: c.cobro_rifa_max,
     cobro_rifa_max_5000: c.cobro_rifa_max_5000,
     cobro_rifa_max_10000: c.cobro_rifa_max_10000,
+    cobro_rifa_umbral_comercial: c.cobro_rifa_umbral_comercial,
+    cobro_rifa_comercial: c.cobro_rifa_comercial,
     precio_rifa_100: c.precio_rifa_100,
     precio_rifa_500: c.precio_rifa_500,
     precio_rifa_1000: c.precio_rifa_1000,

@@ -31,7 +31,7 @@ export default async function EditarTorneoPage({
       <h1 className="mb-6 text-2xl font-bold">Editar torneo</h1>
       <TorneoForm
         torneo={torneo}
-        premiosIniciales={premios}
+        premiosIniciales={premios.filter((p) => p.categoria_id == null)}
         esSuperadmin={superadmin}
       />
     </div>

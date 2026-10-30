@@ -153,6 +153,8 @@ const configSchema = z.object({
   cobro_rifa_max: z.number().int().min(0).default(0),
   cobro_rifa_max_5000: z.number().int().min(0).default(0),
   cobro_rifa_max_10000: z.number().int().min(0).default(0),
+  cobro_rifa_umbral_comercial: z.number().int().min(0).default(0),
+  cobro_rifa_comercial: z.number().int().min(0).default(0),
   moneda: z.string().trim().min(1).default("COP"),
   precio_rifa_100: z.number().int().min(0),
   precio_rifa_500: z.number().int().min(0),
@@ -161,6 +163,7 @@ const configSchema = z.object({
   free_rifas_por_mes: z.number().int().min(0),
   free_rifas_total: z.number().int().min(0),
   free_max_numeros: z.number().int().min(1),
+  free_max_precio_numero: z.number().int().min(0).default(0),
   // Torneos: escalones por cupo de equipos y reglas de su capa gratuita.
   precio_torneo_8: z.number().int().min(0),
   precio_torneo_16: z.number().int().min(0),

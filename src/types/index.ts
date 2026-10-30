@@ -400,6 +400,13 @@ export interface PlataformaConfig {
   cobro_rifa_max_5000: number;
   /** Techo para rifas de más de 5.000 números (0 = sin tope). */
   cobro_rifa_max_10000: number;
+  /**
+   * Valor total potencial (números × precio) desde el que una rifa es
+   * "comercial" y paga `cobro_rifa_comercial` en vez del % (0 = desactivado).
+   */
+  cobro_rifa_umbral_comercial: number;
+  /** Tarifa fija de la rifa comercial (pago único por evento). */
+  cobro_rifa_comercial: number;
   /** Activaciones que cubre PRO en un ciclo mensual. */
   pro_max_rifas_ciclo: number;
   precio_rifa_100: number;
@@ -409,6 +416,8 @@ export interface PlataformaConfig {
   free_rifas_por_mes: number;
   free_rifas_total: number;
   free_max_numeros: number;
+  /** Precio máximo por número para que la rifa entre en el plan gratis (0 = sin límite). */
+  free_max_precio_numero: number;
   /** Torneos: escalones por cupo de equipos (hasta 8 / 16 / 32 / más). */
   precio_torneo_8: number;
   precio_torneo_16: number;
@@ -711,17 +720,86 @@ export interface Torneo {
   /** Nota extra de premiación. Los premios por puesto viven en `premios_torneo`. */
   premiacion_descripcion: string | null;
   tema: string;
+  /** Respuestas del organizador (sets, quién puede jugar…). Ver `src/lib/torneo-reglas.ts`. */
+  reglas: Record<string, unknown>;
+  /** Plantilla de la que salió (`voleiplaya`…), si aplica. */
+  plantilla: string | null;
+  /** Torneo de muestra: habilita el simulador de etapas. */
+  es_demo: boolean;
   cobro_tipo: PlanTenant | null;
   activado_at: string | null;
   created_at: string;
   updated_at: string;
 }
 
+/** Una división del torneo (3 vs 3, 5 vs 5, sub-17…) con su cupo e inscripción. */
+export interface CategoriaTorneo {
+  id: string;
+  tenant_id: string;
+  torneo_id: string;
+  nombre: string;
+  jugadores_en_cancha: number | null;
+  max_jugadores: number | null;
+  cupo_equipos: number;
+  /** `null` = usa el valor de inscripción del torneo. */
+  valor_inscripcion: number | null;
+  orden: number;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Fase de un partido del torneo. */
+export type FaseEncuentro =
+  | "grupos"
+  | "octavos"
+  | "cuartos"
+  | "semifinal"
+  | "tercer_puesto"
+  | "final";
+
+export type EstadoEncuentro = "programado" | "en_vivo" | "finalizado" | "wo";
+
+/** Un partido del fixture. El marcador va por sets: [[21,18],[19,21],[15,12]]. */
+export interface Encuentro {
+  id: string;
+  tenant_id: string;
+  torneo_id: string;
+  categoria_id: string | null;
+  fase: FaseEncuentro;
+  /** "A", "B"… solo en fase de grupos. */
+  grupo: string | null;
+  ronda: number;
+  orden: number;
+  /** `null` mientras el cruce no esté definido. */
+  equipo_a_id: string | null;
+  equipo_b_id: string | null;
+  cancha: number | null;
+  programado_at: string | null;
+  estado: EstadoEncuentro;
+  sets: [number, number][];
+  ganador_id: string | null;
+  /** Código de sala del marcador en vivo (dc-sport-score). */
+  sala_marcador: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Partido en vistas públicas: sin ids de tenant. */
+export type EncuentroPublico = Omit<Encuentro, "tenant_id" | "created_at" | "updated_at">;
+
+/** Categoría en vistas públicas: sin ids de tenant ni fechas internas. */
+export type CategoriaTorneoPublica = Pick<
+  CategoriaTorneo,
+  "id" | "nombre" | "jugadores_en_cancha" | "max_jugadores" | "cupo_equipos" | "valor_inscripcion"
+> & { cuposDisponibles: number };
+
 /** Un equipo inscrito. Contiene datos personales: nunca sale tal cual al público. */
 export interface EquipoTorneo {
   id: string;
   tenant_id: string;
   torneo_id: string;
+  /** Categoría en la que compite (`null` si el torneo no tiene categorías). */
+  categoria_id: string | null;
   nombre: string;
   escudo_url: string | null;
   responsable_nombre: string | null;
@@ -740,6 +818,39 @@ export interface EquipoTorneo {
   updated_at: string;
 }
 
+/** Un jugador inscrito en un equipo. Documento y género: nunca públicos. */
+export interface JugadorTorneo {
+  id: string;
+  tenant_id: string;
+  torneo_id: string;
+  equipo_id: string;
+  nombre: string;
+  documento: string;
+  genero: "femenino" | "masculino";
+  es_externo: boolean;
+  es_referente: boolean;
+  referencia_cliente: string | null;
+  orden: number;
+  created_at: string;
+}
+
+/**
+ * Un abono a la inscripción de un equipo. Un equipo puede pagar en varias
+ * partes y por medios distintos; `EquipoTorneo.monto_pagado` es la suma.
+ */
+export interface PagoEquipoTorneo {
+  id: string;
+  tenant_id: string;
+  torneo_id: string;
+  equipo_id: string;
+  monto: number;
+  metodo: MetodoPago;
+  fecha: string;
+  comprobante_url: string | null;
+  nota: string | null;
+  created_at: string;
+}
+
 /**
  * Un premio del torneo, atado a un puesto (1° campeón, 2° subcampeón…). Un
  * torneo premia tantos puestos como quiera: solo el primero, los dos primeros,
@@ -749,6 +860,8 @@ export interface PremioTorneo {
   id: string;
   tenant_id: string;
   torneo_id: string;
+  /** Categoría que premia (`null` = premio del torneo completo). */
+  categoria_id: string | null;
   puesto: number;
   tipo: "valor" | "producto";
   descripcion: string;
@@ -769,7 +882,7 @@ export interface PremioTorneoInput {
 /** Premio en vistas públicas: el puesto y qué se lleva, sin datos internos. */
 export type PremioTorneoPublico = Pick<
   PremioTorneo,
-  "puesto" | "tipo" | "descripcion" | "valor"
+  "puesto" | "tipo" | "descripcion" | "valor" | "categoria_id"
 >;
 
 /** Un gasto del torneo (cancha, arbitraje, premiación…). Solo uso interno. */

@@ -12,6 +12,8 @@ import {
   labelPuesto,
   valorPremiacion,
 } from "@/lib/torneos";
+import { leerReglas, pasosConfiguracion } from "@/lib/torneo-reglas";
+import { marcadorDisponible } from "@/lib/marcador-externo";
 import { buttonVariants } from "@/components/ui/button";
 import { PagoConfigForm } from "@/components/rifa/pago-config-form";
 import { ActivarTorneoButton } from "@/components/torneo/activar-torneo-button";
@@ -39,7 +41,20 @@ export default async function TorneoDetallePage({
 
   const res = await getTorneo(id);
   if (!res.success) notFound();
-  const { torneo, equipos, gastos, premios, dashboard, alertas } = res.data;
+  const {
+    torneo,
+    equipos,
+    gastos,
+    premios,
+    categorias,
+    encuentros,
+    pagos,
+    jugadores,
+    dashboard,
+    alertas,
+  } = res.data;
+  // La premiación por categoría vive en "Categorías y reglas"; aquí, la general.
+  const premiosGenerales = premios.filter((p) => p.categoria_id == null);
 
   const pagoRes = await getMiPagoConfig();
   const pago = pagoRes.success ? pagoRes.data : null;
@@ -48,6 +63,7 @@ export default async function TorneoDetallePage({
 
   const fechaInicio = formatFechaCO(torneo.fecha_inicio, { conAnio: false });
   const primerPremio = premios.find((p) => p.puesto === 1);
+  const pasos = pasosConfiguracion(torneo, categorias, premios, !pagoIncompleto);
   const resumenParaCompartir = [
     `${torneo.deporte}${torneo.modalidad ? ` ${torneo.modalidad}` : ""}`,
     primerPremio ? `Campeón: ${primerPremio.descripcion}` : null,
@@ -135,6 +151,14 @@ export default async function TorneoDetallePage({
         gastos={gastos}
         dashboard={dashboard}
         alertas={alertas}
+        categorias={categorias}
+        premios={premios}
+        encuentros={encuentros}
+        pagos={pagos}
+        jugadores={jugadores}
+        marcadorDisponible={marcadorDisponible()}
+        reglas={leerReglas(torneo.reglas)}
+        pasos={pasos}
         configuracion={
           <div className="flex flex-col gap-6">
             <section className="border-border rounded-2xl border p-4">
@@ -182,15 +206,19 @@ export default async function TorneoDetallePage({
               </dl>
 
               <div className="mt-4">
-                <p className="mb-2 text-sm font-semibold">Premiación</p>
-                {premios.length === 0 ? (
+                <p className="mb-2 text-sm font-semibold">
+                  {categorias.length > 0 ? "Premiación general" : "Premiación"}
+                </p>
+                {premiosGenerales.length === 0 ? (
                   <p className="text-muted-foreground text-sm">
-                    Sin premios definidos. Es lo primero que pregunta un equipo.
+                    {categorias.length > 0
+                      ? "Los premios de cada categoría están en “Categorías y reglas”."
+                      : "Sin premios definidos. Es lo primero que pregunta un equipo."}
                   </p>
                 ) : (
                   <>
                     <ul className="flex flex-col gap-1.5">
-                      {premios.map((p) => (
+                      {premiosGenerales.map((p) => (
                         <li
                           key={p.id}
                           className="border-border flex items-center justify-between gap-3 rounded-lg border px-3 py-2 text-sm"
@@ -207,11 +235,11 @@ export default async function TorneoDetallePage({
                         </li>
                       ))}
                     </ul>
-                    {valorPremiacion(premios) > 0 && (
+                    {valorPremiacion(premiosGenerales) > 0 && (
                       <p className="text-muted-foreground mt-2 text-xs">
                         Total en dinero:{" "}
                         <b className="text-foreground">
-                          {formatCOP(valorPremiacion(premios))}
+                          {formatCOP(valorPremiacion(premiosGenerales))}
                         </b>
                       </p>
                     )}

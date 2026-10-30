@@ -17,6 +17,8 @@ export default async function PreciosPage() {
 
   const porPorcentaje = c.cobro_rifa_modo === "porcentaje";
   const porBoleta = c.cobro_rifa_modo !== "escalones";
+  // Escalón comercial: tarifa fija cuando el valor potencial pasa el umbral.
+  const comercial = c.cobro_rifa_umbral_comercial > 0 && c.cobro_rifa_comercial > 0;
 
   // Ejemplos reales con la regla vigente. El porcentaje NO es fijo: cobrar una
   // boleta equivale a 100/N del recaudo, así que se calcula y se muestra tal
@@ -25,6 +27,7 @@ export default async function PreciosPage() {
     { numeros: 30, boleta: 15000 },
     { numeros: 100, boleta: 15000 },
     { numeros: 100, boleta: 30000 },
+    { numeros: 100, boleta: 150000 },
     { numeros: 500, boleta: 10000 },
     { numeros: 5000, boleta: 2000 },
     { numeros: 10000, boleta: 1500 },
@@ -43,6 +46,8 @@ export default async function PreciosPage() {
   // El cupo gratis es de por vida por cuenta. Con una sola rifa el límite
   // mensual no aplica, así que el texto cambia en vez de pluralizar.
   const unaGratis = c.free_rifas_total === 1;
+  const topePrecioGratis =
+    c.free_max_precio_numero > 0 ? ` y hasta ${formatCOP(c.free_max_precio_numero)} por número` : "";
   const freeBullets = unaGratis
     ? ["Tu primera rifa es gratis", "Una sola vez por cuenta: no se renueva"]
     : [
@@ -59,23 +64,38 @@ export default async function PreciosPage() {
       bullets: [
         ...freeBullets,
         `Máximo ${c.free_max_numeros} números`,
+        c.free_max_precio_numero > 0
+          ? `Precio máximo de ${formatCOP(c.free_max_precio_numero)} por número`
+          : "",
         "Enlace público en tiempo real",
         "Flyer con marca de agua",
-      ],
+      ].filter(Boolean),
     },
     porPorcentaje
       ? {
           id: "pago_rifa" as const,
           nombre: "Pago por rifa",
-          precio: `${c.cobro_rifa_pct}%`,
-          sub: "de lo que recauda esa rifa",
+          precio:
+            c.cobro_rifa_min > 0 && (comercial || c.cobro_rifa_max > 0)
+              ? `${formatCOP(c.cobro_rifa_min)}–${formatCOP(comercial ? c.cobro_rifa_comercial : c.cobro_rifa_max)}`
+              : `${c.cobro_rifa_pct}%`,
+          sub: "tarifa de activación según el valor total potencial de la rifa",
           destacado: true,
           bullets: [
-            "Pagas solo la rifa que actives, cuando la actives",
-            c.cobro_rifa_min > 0 ? `Nunca menos de ${formatCOP(c.cobro_rifa_min)}` : "",
-            c.cobro_rifa_max > 0 ? `Tope de ${formatCOP(c.cobro_rifa_max)} hasta 1.000 números` : "",
-            c.cobro_rifa_max_5000 > 0 ? `Tope de ${formatCOP(c.cobro_rifa_max_5000)} hasta 5.000` : "",
-            c.cobro_rifa_max_10000 > 0 ? `Tope de ${formatCOP(c.cobro_rifa_max_10000)} hasta 10.000` : "",
+            "Pago único por rifa, sin comisión por venta",
+            `Rifa básica${
+              comercial ? ` (valor potencial hasta ${formatCOP(c.cobro_rifa_umbral_comercial)})` : ""
+            }: ${c.cobro_rifa_pct}%${
+              c.cobro_rifa_min > 0 && c.cobro_rifa_max > 0
+                ? `, entre ${formatCOP(c.cobro_rifa_min)} y ${formatCOP(c.cobro_rifa_max)}`
+                : ""
+            }`,
+            comercial
+              ? `Rifa comercial (más de ${formatCOP(c.cobro_rifa_umbral_comercial)}): ${formatCOP(c.cobro_rifa_comercial)}`
+              : "",
+            c.cobro_rifa_max_5000 > 0 || c.cobro_rifa_max_10000 > 0
+              ? `Más de 1.000 números: tope de ${formatCOP(c.cobro_rifa_max_5000)} hasta 5.000 y ${formatCOP(c.cobro_rifa_max_10000)} hasta 10.000`
+              : "",
             "El precio queda congelado al activar",
             "Sin marca de agua",
             "Pago por transferencia: se activa al confirmar",
@@ -187,12 +207,21 @@ export default async function PreciosPage() {
           <p className="text-muted-foreground mt-1 text-sm">
             {porPorcentaje ? (
               <>
-                Activar una rifa cuesta el <b>{c.cobro_rifa_pct}%</b> de lo que esa rifa
-                recauda si se vende completa, nunca menos de{" "}
-                <b>{formatCOP(c.cobro_rifa_min)}</b>. El tope depende del tamaño:{" "}
-                <b>{formatCOP(c.cobro_rifa_max)}</b> hasta 1.000 números,{" "}
-                <b>{formatCOP(c.cobro_rifa_max_5000)}</b> hasta 5.000 y{" "}
-                <b>{formatCOP(c.cobro_rifa_max_10000)}</b> hasta 10.000. Aquí está el cálculo exacto:
+                La tarifa de activación se calcula sobre el <b>valor total potencial</b>{" "}
+                de la rifa (números × precio), aunque no vendas todos los números. Rifa
+                básica: el <b>{c.cobro_rifa_pct}%</b> de ese valor, nunca menos de{" "}
+                <b>{formatCOP(c.cobro_rifa_min)}</b> ni más de{" "}
+                <b>{formatCOP(c.cobro_rifa_max)}</b> hasta 1.000 números.
+                {c.cobro_rifa_umbral_comercial > 0 && c.cobro_rifa_comercial > 0 && (
+                  <>
+                    {" "}Si el valor potencial pasa de{" "}
+                    <b>{formatCOP(c.cobro_rifa_umbral_comercial)}</b>, es una rifa comercial:{" "}
+                    <b>{formatCOP(c.cobro_rifa_comercial)}</b>, pago único.
+                  </>
+                )}{" "}
+                En rifas más grandes el tope es <b>{formatCOP(c.cobro_rifa_max_5000)}</b> hasta
+                5.000 números y <b>{formatCOP(c.cobro_rifa_max_10000)}</b> hasta 10.000. Aquí
+                está el cálculo exacto:
               </>
             ) : (
               <>
@@ -231,8 +260,8 @@ export default async function PreciosPage() {
           </div>
           <p className="text-muted-foreground mt-3 text-xs">
             {unaGratis
-              ? `Tu primera rifa (hasta ${c.free_max_numeros} números) no paga nada; desde la segunda aplica este cobro.`
-              : `Tus primeras ${c.free_rifas_total} rifas (hasta ${c.free_max_numeros} números) no pagan nada: la capa gratuita se aplica antes que cualquier cobro.`}
+              ? `Tu primera rifa (hasta ${c.free_max_numeros} números${topePrecioGratis}) no paga nada; desde la segunda aplica este cobro.`
+              : `Tus primeras ${c.free_rifas_total} rifas (hasta ${c.free_max_numeros} números${topePrecioGratis}) no pagan nada: la capa gratuita se aplica antes que cualquier cobro.`}
           </p>
         </section>
       )}

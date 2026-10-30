@@ -7,6 +7,7 @@ import type {
   EstadoTorneo,
   FormatoTorneo,
   GastoTorneo,
+  PagoEquipoTorneo,
   PremioTorneo,
   Torneo,
 } from "@/types";
@@ -404,4 +405,20 @@ export function validarViabilidadTorneo(
   }
 
   return alertas;
+}
+
+/**
+ * Lo recibido por cada medio de pago (cuadre de caja). Solo cuenta los abonos
+ * de equipos vigentes, igual que `ingresosRecaudados` del dashboard.
+ */
+export function recaudoPorMetodo(
+  pagos: Pick<PagoEquipoTorneo, "equipo_id" | "monto" | "metodo">[],
+  equipos: EquipoTorneo[],
+): { efectivo: number; transferencia: number } {
+  const vigentes = new Set(equiposVigentes(equipos).map((e) => e.id));
+  const out = { efectivo: 0, transferencia: 0 };
+  for (const p of pagos) {
+    if (vigentes.has(p.equipo_id)) out[p.metodo] += p.monto;
+  }
+  return out;
 }

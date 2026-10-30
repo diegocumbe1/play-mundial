@@ -14,7 +14,10 @@ import { toast } from "sonner";
 
 import { inscribirEquipoPublico } from "@/actions/torneos";
 import type { TorneoPublicoDetalle } from "@/actions/torneos";
-import { Campo } from "@/components/torneo/campos";
+import { Campo, Selector } from "@/components/torneo/campos";
+import { FixtureVista } from "@/components/torneo/fixture-vista";
+import { jugadorVacio, PlantillaEditor } from "@/components/torneo/plantilla-editor";
+import type { JugadorInput } from "@/lib/torneo-jugadores";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { formatFechaCO } from "@/lib/fecha-co";
@@ -39,6 +42,10 @@ export function TorneoPublicoView({ datos }: { datos: TorneoPublicoDetalle }) {
   const {
     torneo,
     premios,
+    categorias,
+    encuentros,
+    tablaReglas,
+    participacion,
     equipos,
     cuposDisponibles,
     inscripcionesAbiertas,
@@ -97,9 +104,36 @@ export function TorneoPublicoView({ datos }: { datos: TorneoPublicoDetalle }) {
             <Trophy className="size-3.5" /> Premiación
           </p>
 
-          {premios.length > 0 && (
+          {categorias.length > 0 && (
+            <div className="mb-2 grid gap-3 sm:grid-cols-2">
+              {categorias.map((c) => (
+                <div key={c.id} className="bg-background/60 rounded-xl p-3">
+                  <p className="text-sm font-bold">{c.nombre}</p>
+                  <p className="text-muted-foreground mb-2 text-xs">
+                    {c.jugadores_en_cancha ? `${c.jugadores_en_cancha} en cancha · ` : ""}
+                    Inscripción {formatCOP(c.valor_inscripcion ?? torneo.valor_inscripcion)} ·{" "}
+                    {c.cuposDisponibles} cupos libres
+                  </p>
+                  <ul className="flex flex-col gap-1">
+                    {premios
+                      .filter((p) => p.categoria_id === c.id)
+                      .map((p) => (
+                        <li key={p.puesto} className="flex justify-between gap-2 text-sm">
+                          <span className="text-muted-foreground">
+                            {apodoPuesto(p.puesto) ?? labelPuesto(p.puesto)}
+                          </span>
+                          <b>{p.tipo === "valor" && p.valor ? formatCOP(p.valor) : p.descripcion}</b>
+                        </li>
+                      ))}
+                  </ul>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {premios.some((p) => p.categoria_id == null) && (
             <ul className="mb-2 flex flex-col gap-2">
-              {premios.map((p) => {
+              {premios.filter((p) => p.categoria_id == null).map((p) => {
                 const apodo = apodoPuesto(p.puesto);
                 return (
                   <li key={p.puesto} className="flex items-start gap-2.5">
@@ -126,6 +160,19 @@ export function TorneoPublicoView({ datos }: { datos: TorneoPublicoDetalle }) {
               {torneo.premiacion_descripcion}
             </p>
           )}
+        </section>
+      )}
+
+      {/* --- Torneo en juego: en vivo, posiciones, llaves y resultados --- */}
+      {encuentros.length > 0 && (
+        <section className="mb-6">
+          <FixtureVista
+            categorias={categorias}
+            equipos={equipos}
+            encuentros={encuentros}
+            tablaReglas={tablaReglas}
+            autoRefrescar
+          />
         </section>
       )}
 
@@ -206,6 +253,9 @@ export function TorneoPublicoView({ datos }: { datos: TorneoPublicoDetalle }) {
       ) : inscripcionesAbiertas ? (
         <FormularioInscripcion
           slug={torneo.slug_publico}
+          categorias={categorias.filter((c) => c.cuposDisponibles > 0)}
+          participacion={participacion}
+          conReglamento={!!torneo.reglamento}
           onListo={(nombre) => setEnviado(nombre)}
         />
       ) : (
@@ -280,7 +330,7 @@ export function TorneoPublicoView({ datos }: { datos: TorneoPublicoDetalle }) {
 
       {/* --- Reglamento --- */}
       {torneo.reglamento && (
-        <section className="border-border mb-6 rounded-2xl border p-4">
+        <section id="reglamento" className="border-border mb-6 scroll-mt-20 rounded-2xl border p-4">
           <p className="mb-2 text-sm font-semibold">Reglamento</p>
           <p className="text-muted-foreground whitespace-pre-line text-sm">
             {torneo.reglamento}
@@ -300,22 +350,37 @@ export function TorneoPublicoView({ datos }: { datos: TorneoPublicoDetalle }) {
 /** Formulario de inscripción sin cuenta (el equipo entra como solicitud). */
 function FormularioInscripcion({
   slug,
+  categorias,
+  participacion,
+  conReglamento,
   onListo,
 }: {
   slug: string;
+  categorias: TorneoPublicoDetalle["categorias"];
+  participacion: TorneoPublicoDetalle["participacion"];
+  conReglamento: boolean;
   onListo: (nombre: string) => void;
 }) {
   const [pending, startTransition] = useTransition();
+  const [categoriaId, setCategoriaId] = useState(categorias[0]?.id ?? "");
+  const categoria = categorias.find((c) => c.id === categoriaId) ?? null;
+  // Arranca con una fila por cada jugador en cancha: es el mínimo a inscribir.
+  const [jugadores, setJugadores] = useState<JugadorInput[]>(() =>
+    Array.from({ length: categorias[0]?.jugadores_en_cancha ?? 2 }, jugadorVacio),
+  );
   const [nombre, setNombre] = useState("");
   const [responsable, setResponsable] = useState("");
   const [telefono, setTelefono] = useState("");
   const [correo, setCorreo] = useState("");
-  const [jugadores, setJugadores] = useState("");
   const [consentimiento, setConsentimiento] = useState(false);
 
   function enviar() {
     if (!consentimiento) {
-      toast.error("Debes aceptar el tratamiento de datos");
+      toast.error(
+        conReglamento
+          ? "Debes aceptar el reglamento y el tratamiento de datos"
+          : "Debes aceptar el tratamiento de datos",
+      );
       return;
     }
     startTransition(async () => {
@@ -324,7 +389,8 @@ function FormularioInscripcion({
         responsable_nombre: responsable.trim(),
         responsable_telefono: telefono.trim(),
         responsable_correo: correo.trim() || null,
-        cantidad_jugadores: jugadores ? Number(jugadores) : null,
+        categoria_id: categoriaId || null,
+        jugadores: jugadores.filter((j) => j.nombre.trim() || j.documento.trim()),
         consentimiento: true,
       });
       if (!r.success) {
@@ -350,6 +416,17 @@ function FormularioInscripcion({
             placeholder="Los Tigres FC"
           />
         </Campo>
+        {categorias.length > 0 && (
+          <Campo label="Categoría" className="sm:col-span-2">
+            <Selector value={categoriaId} onChange={setCategoriaId}>
+              {categorias.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.nombre} · {c.cuposDisponibles} cupos libres
+                </option>
+              ))}
+            </Selector>
+          </Campo>
+        )}
         <Campo label="Responsable">
           <Input
             value={responsable}
@@ -373,14 +450,23 @@ function FormularioInscripcion({
             placeholder="equipo@correo.com"
           />
         </Campo>
-        <Campo label="Cantidad de jugadores (opcional)">
-          <Input
-            value={jugadores}
-            onChange={(e) => setJugadores(e.target.value.replace(/\D/g, ""))}
-            inputMode="numeric"
-            placeholder="12"
-          />
-        </Campo>
+
+      </div>
+
+      <div className="mt-5">
+        <p className="mb-1 text-sm font-semibold">Jugadores del equipo</p>
+        <PlantillaEditor
+          jugadores={jugadores}
+          onChange={setJugadores}
+          reglas={participacion}
+          limites={{
+            minimo: categoria?.jugadores_en_cancha ?? null,
+            maximo: categoria?.max_jugadores ?? null,
+          }}
+        />
+        <p className="text-muted-foreground mt-2 text-xs">
+          El documento solo lo ve el organizador para verificar a los jugadores.
+        </p>
       </div>
 
       <label className="mt-4 flex items-start gap-2 text-xs">
@@ -391,7 +477,17 @@ function FormularioInscripcion({
           className="mt-0.5 size-4 shrink-0"
         />
         <span className="text-muted-foreground">
-          Autorizo el tratamiento de mis datos para gestionar la inscripción del equipo.{" "}
+          {conReglamento && (
+            <>
+              Acepto el{" "}
+              <a href="#reglamento" className="underline">
+                reglamento y las condiciones del torneo
+              </a>{" "}
+              y{" "}
+            </>
+          )}
+          {conReglamento ? "autorizo" : "Autorizo"} el tratamiento de mis datos para
+          gestionar la inscripción del equipo.{" "}
           <a href="/terminos" className="underline" target="_blank" rel="noreferrer">
             Ver política
           </a>

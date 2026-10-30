@@ -37,6 +37,8 @@ interface ReglasProducto {
   columnaCobro: "rifa_id" | "torneo_id";
   /** Tope de tamaño que admite el plan gratis. */
   maxGratis: (c: PlataformaConfig) => number;
+  /** Precio máximo por puesto que admite el plan gratis (0 = sin límite). */
+  maxPrecioGratis: (c: PlataformaConfig) => number;
   /** Cuántas activaciones gratis se permiten en total y por mes. */
   cuotaTotal: (c: PlataformaConfig) => number;
   cuotaMes: (c: PlataformaConfig) => number;
@@ -54,6 +56,8 @@ const REGLAS: Record<ProductoPlataforma, ReglasProducto> = {
     columnaActivacion: "activada_at",
     columnaCobro: "rifa_id",
     maxGratis: (c) => c.free_max_numeros,
+    // Sin este límite, una primera rifa de alto recaudo saldría gratis.
+    maxPrecioGratis: (c) => c.free_max_precio_numero,
     cuotaTotal: (c) => c.free_rifas_total,
     cuotaMes: (c) => c.free_rifas_por_mes,
     // La regla vive en `cobro-rifa.ts` para que la calculadora del cliente la comparta.
@@ -64,6 +68,7 @@ const REGLAS: Record<ProductoPlataforma, ReglasProducto> = {
     columnaActivacion: "activado_at",
     columnaCobro: "torneo_id",
     maxGratis: (c) => c.free_max_equipos,
+    maxPrecioGratis: () => 0,
     cuotaTotal: (c) => c.free_torneos_total,
     cuotaMes: (c) => c.free_torneos_por_mes,
     // Los torneos siguen por escalones de cupo: no hay "boleta" que replicar.
@@ -83,10 +88,12 @@ const CONFIG_DEFAULT: PlataformaConfig = {
   moneda: "COP",
   cobro_rifa_modo: "porcentaje",
   cobro_rifa_pct: 1,
-  cobro_rifa_min: 8000,
+  cobro_rifa_min: 9900,
   cobro_rifa_max: 29900,
   cobro_rifa_max_5000: 79900,
   cobro_rifa_max_10000: 149900,
+  cobro_rifa_umbral_comercial: 3000000,
+  cobro_rifa_comercial: 49900,
   pro_max_rifas_ciclo: 10,
   precio_rifa_100: 0,
   precio_rifa_500: 0,
@@ -95,6 +102,7 @@ const CONFIG_DEFAULT: PlataformaConfig = {
   free_rifas_por_mes: 1,
   free_rifas_total: 1,
   free_max_numeros: 100,
+  free_max_precio_numero: 20000,
   precio_torneo_8: 0,
   precio_torneo_16: 0,
   precio_torneo_32: 0,
@@ -194,11 +202,13 @@ export async function resolverActivacion(params: {
     // aparte (cae al paso 3).
   }
 
-  // 2) Capa gratuita: el tamaño debe caber en el tope y quedar cuota libre.
+  // 2) Capa gratuita: el tamaño (y el precio del puesto) deben caber en los
+  // topes y quedar cuota libre.
   // El conteo y el registro pasan por `consumir_free`, que resuelve todo en una
   // sentencia con lock: dos activaciones simultáneas no gastan el mismo cupo, y
   // borrar la rifa después ya no devuelve el beneficio.
-  if (tamano <= reglas.maxGratis(config)) {
+  const maxPrecio = reglas.maxPrecioGratis(config);
+  if (tamano <= reglas.maxGratis(config) && (maxPrecio <= 0 || precioUnitario <= maxPrecio)) {
     const { data: cubierta } = await svc.rpc("consumir_free", {
       p_tenant: tenantId,
       p_rifa: entidadId,
