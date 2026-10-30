@@ -363,6 +363,8 @@ export interface TenantPagoConfig {
   qr_url: string | null;
   whatsapp: string | null;
   mensaje_qr: string | null;
+  /** Otras llaves Bre-B además de `llave` (una por banco, por ejemplo). */
+  llaves_adicionales?: string[] | null;
   updated_at: string;
 }
 
@@ -448,6 +450,12 @@ export interface Rifa {
   solo_pagadas_juegan: boolean;
   /** Cuántos números debe llevar como mínimo cada compra (1 = sin mínimo). */
   min_numeros_compra: number;
+  /** Se puede separar un número con un abono y pagar el resto por cuotas. */
+  permite_abonos: boolean;
+  /** Cuota mínima: para separar y por cada sorteo. */
+  abono_minimo: number | null;
+  /** El pago cuenta solo si se registró hasta N días antes de cada sorteo. */
+  dias_limite_pago: number | null;
   /** Si está archivada: fuera de la lista principal y del enlace público. */
   archivada_at: string | null;
   slug_publico: string;
@@ -513,6 +521,18 @@ export interface Premio {
   orden: number;
   /** Foto del producto (se pinta en la tarjeta del premio: flyer y enlace público). */
   imagen_url: string | null;
+  /**
+   * Fecha de la lotería que define ESTE premio (sorteos en fechas distintas).
+   * `null` = juega con la fecha de la rifa.
+   */
+  fecha_loteria: string | null;
+  /** Resultado de la lotería de esa fecha, cuando el premio juega por separado. */
+  resultado_loteria: string | null;
+  /**
+   * Cuánto debe llevar pagado un número para jugar ESTE premio (rifas con
+   * abonos). `null` = pago completo, que es lo normal.
+   */
+  minimo_para_jugar: number | null;
   created_at: string;
 }
 
@@ -531,8 +551,24 @@ export interface Boleta {
   nota: string | null;
   consentimiento_datos: boolean;
   pagado_at: string | null;
+  /** Total abonado (separar con saldo). 0 si se pagó de una o no ha pagado. */
+  monto_abonado: number;
+  /** De lo abonado, cuánto fue en efectivo (cuadre de caja). */
+  abonado_efectivo: number;
   created_at: string;
   updated_at: string;
+}
+
+/** Un pago parcial de una boleta ("separa con $50.000 y abona cada 15 días"). */
+export interface AbonoBoleta {
+  id: string;
+  tenant_id: string;
+  rifa_id: string;
+  boleta_id: string;
+  monto: number;
+  metodo: MetodoPago;
+  nota: string | null;
+  created_at: string;
 }
 
 /** Un ganador resuelto de la rifa. */

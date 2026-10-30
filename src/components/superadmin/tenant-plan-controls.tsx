@@ -3,11 +3,12 @@
 import { useState } from "react";
 import { useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Ban, CheckCircle2, Gift, Lock, Settings, Unlock } from "lucide-react";
+import { Ban, CheckCircle2, Gift, KeyRound, Lock, Settings, Unlock } from "lucide-react";
 import { toast } from "sonner";
 
-import { setEstadoTenant, setPlanTenant } from "@/actions/tenants";
+import { restablecerPasswordOwner, setEstadoTenant, setPlanTenant } from "@/actions/tenants";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   Dialog,
   DialogContent,
@@ -28,6 +29,8 @@ interface TenantMetricSummary {
   pendienteCantidadMes: number;
   confirmadoMontoMes: number;
   confirmadoCantidadMes: number;
+  roles?: string[];
+  emails?: string[];
 }
 
 type Accion =
@@ -49,7 +52,21 @@ export function TenantPlanControls({
   const [pending, startTransition] = useTransition();
   const [abierto, setAbierto] = useState(false);
   const [accion, setAccion] = useState<Accion | null>(null);
+  const [password, setPassword] = useState("");
   const bloqueado = tenant.estado !== "activo";
+  const esSuper = metric?.roles?.includes("superadmin") ?? false;
+
+  function cambiarPassword() {
+    startTransition(async () => {
+      const r = await restablecerPasswordOwner({ tenantId: tenant.id, password });
+      if (!r.success) {
+        toast.error(r.error);
+        return;
+      }
+      toast.success("Contraseña actualizada. Compártela con el organizador.");
+      setPassword("");
+    });
+  }
 
   function correr(accionFn: () => Promise<{ success: boolean; error?: string }>, ok: string) {
     startTransition(async () => {
@@ -149,6 +166,33 @@ export function TenantPlanControls({
                 {bloqueado ? "Reactivar" : "Bloquear"}
               </Button>
             </div>
+
+            {!esSuper && (
+              <div className="border-border rounded-xl border p-3">
+                <p className="text-sm font-semibold">Restablecer contraseña</p>
+                <p className="text-muted-foreground mb-2 text-xs">
+                  {metric?.emails?.length ? metric.emails.join(", ") : "Owner del organizador"} · la anterior deja de funcionar.
+                </p>
+                <div className="flex gap-2">
+                  <Input
+                    type="text"
+                    autoComplete="off"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="nueva contraseña (mín. 6)"
+                    className="h-9"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={pending || password.length < 6}
+                    onClick={cambiarPassword}
+                  >
+                    <KeyRound className="size-3.5" /> Guardar
+                  </Button>
+                </div>
+              </div>
+            )}
 
             {accion && (
               <div className="border-primary/40 bg-primary/10 rounded-xl border p-3 text-sm">

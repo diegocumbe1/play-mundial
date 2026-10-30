@@ -21,7 +21,7 @@ import type { JugadorInput } from "@/lib/torneo-jugadores";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { formatFechaCO } from "@/lib/fecha-co";
-import { labelCuentaPago } from "@/lib/pagos";
+import { labelCuentaPago, llavesBreB } from "@/lib/pagos";
 import {
   apodoPuesto,
   formatCOP,
@@ -315,12 +315,12 @@ export function TorneoPublicoView({ datos }: { datos: TorneoPublicoDetalle }) {
                 <b>{pago.cuenta_numero ?? pago.nequi_llave}</b>
               </p>
             )}
-            {pago.llave && (
-              <p>
+            {llavesBreB(pago).map((l) => (
+              <p key={l}>
                 <span className="text-muted-foreground text-xs">Llave</span>{" "}
-                <b>{pago.llave}</b>
+                <b>{l}</b>
               </p>
-            )}
+            ))}
           </div>
           <p className="text-muted-foreground mt-2 text-xs">
             Paga solo después de que el organizador confirme tu cupo.

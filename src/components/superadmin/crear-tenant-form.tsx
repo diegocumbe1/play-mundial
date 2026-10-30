@@ -41,11 +41,11 @@ export function CrearTenantForm() {
       </div>
       <div>
         <Label className="text-muted-foreground mb-1.5 block text-xs">Email de acceso</Label>
-        <Input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="owner@correo.com" type="email" />
+        <Input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="owner@correo.com" type="email" autoComplete="off" />
       </div>
       <div>
         <Label className="text-muted-foreground mb-1.5 block text-xs">Contraseña</Label>
-        <Input value={password} onChange={(e) => setPassword(e.target.value)} placeholder="mínimo 6 caracteres" type="password" />
+        <Input value={password} onChange={(e) => setPassword(e.target.value)} placeholder="mínimo 6 caracteres" type="password" autoComplete="new-password" />
       </div>
       <div className="sm:col-span-3">
         <Button onClick={crear} disabled={pending || !nombre.trim() || !email.trim() || password.length < 6}>

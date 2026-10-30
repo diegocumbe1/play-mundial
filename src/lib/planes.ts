@@ -235,7 +235,13 @@ export async function resolverActivacion(params: {
     .maybeSingle();
 
   let cobroId = (existente as { id: string; monto: number } | null)?.id ?? null;
-  const montoFinal = (existente as { monto: number } | null)?.monto ?? monto;
+
+  // Sigue sin pagarse: si el organizador cambió la rifa (precio del puesto o
+  // cantidad de números), el cobro pendiente se recotiza con lo que hay ahora.
+  if (cobroId && (existente as { monto: number }).monto !== monto) {
+    await svc.from("cobros").update({ monto }).eq("id", cobroId);
+  }
+  const montoFinal = monto;
 
   if (!cobroId) {
     const { data: creado } = await svc

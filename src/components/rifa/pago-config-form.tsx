@@ -2,7 +2,7 @@
 
 import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { ImageUp, Loader2, X } from "lucide-react";
+import { ImageUp, Loader2, Plus, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { guardarPagoConfig, subirQrImagen } from "@/actions/tenants";
@@ -35,6 +35,7 @@ export function PagoConfigForm({
   );
   const [cuentaNumero, setCuentaNumero] = useState(cuentaInicial);
   const [llave, setLlave] = useState(inicial?.llave ?? "");
+  const [llavesExtra, setLlavesExtra] = useState<string[]>(inicial?.llaves_adicionales ?? []);
   const [titular, setTitular] = useState(inicial?.titular ?? "");
   const [whatsapp, setWhatsapp] = useState(inicial?.whatsapp ?? "");
   const [qr, setQr] = useState(inicial?.qr_url ?? "");
@@ -72,6 +73,7 @@ export function PagoConfigForm({
         cuenta_tipo: cuentaNumero.trim() ? tipoCuentaFinal : null,
         cuenta_numero: cuentaNumero.trim() || null,
         llave: llave.trim() || null,
+        llaves_adicionales: llavesExtra.map((l) => l.trim()).filter(Boolean),
         titular: titular.trim() || null,
         whatsapp: whatsapp.trim() || null,
         qr_url: qr.trim() || null,
@@ -114,9 +116,39 @@ export function PagoConfigForm({
           Puedes usar cuenta bancaria/billetera y, si aplica, también una Llave Bre-B.
         </p>
       </div>
-      <div>
-        <Label className="text-muted-foreground mb-1.5 block text-xs">Llave / alias Bre-B (opcional)</Label>
-        <Input value={llave} onChange={(e) => setLlave(e.target.value)} placeholder="@turifa o correo" />
+      <div className="flex flex-col gap-2 sm:col-span-2">
+        <Label className="text-muted-foreground block text-xs">Llave / alias Bre-B (opcional)</Label>
+        <Input value={llave} onChange={(e) => setLlave(e.target.value)} placeholder="@turifa o correo" className="sm:max-w-[calc(50%-0.375rem)]" />
+        {llavesExtra.map((l, i) => (
+          <div key={i} className="flex items-center gap-2 sm:max-w-[calc(50%-0.375rem)]">
+            <Input
+              value={l}
+              onChange={(e) =>
+                setLlavesExtra((prev) => prev.map((x, j) => (j === i ? e.target.value : x)))
+              }
+              placeholder="Otra llave Bre-B"
+            />
+            <button
+              type="button"
+              onClick={() => setLlavesExtra((prev) => prev.filter((_, j) => j !== i))}
+              aria-label="Quitar llave"
+              className="text-muted-foreground hover:text-destructive"
+            >
+              <X className="size-4" />
+            </button>
+          </div>
+        ))}
+        {llave.trim() && llavesExtra.length < 5 && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="self-start"
+            onClick={() => setLlavesExtra((prev) => [...prev, ""])}
+          >
+            <Plus className="size-3.5" /> Agregar otra llave
+          </Button>
+        )}
       </div>
       <p className="text-muted-foreground -mt-1 text-[11px] sm:col-span-2">
         Debes indicar al menos uno: cuenta o Llave Bre-B. Los dos no son obligatorios.
@@ -129,6 +161,9 @@ export function PagoConfigForm({
       <div>
         <Label className="text-muted-foreground mb-1.5 block text-xs">WhatsApp de contacto</Label>
         <Input value={whatsapp} onChange={(e) => setWhatsapp(e.target.value)} placeholder="573000000000" inputMode="tel" />
+        <p className="text-muted-foreground mt-1 text-[11px]">
+          El número con indicativo (57…), no el @usuario: los enlaces de WhatsApp van al número.
+        </p>
       </div>
 
       {/* QR */}

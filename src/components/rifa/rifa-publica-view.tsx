@@ -23,16 +23,19 @@ import {
   decodificarOcupados,
   formatCOP,
   formatNumero,
+  reglasPagoTexto,
+  requisitoPremioTexto,
   inicioNumeros,
   labelModoCifras,
   labelSorteoPropio,
   ultimoNumero,
 } from "@/lib/rifa";
 import { formatFechaCO } from "@/lib/fecha-co";
-import { labelCuentaPago } from "@/lib/pagos";
+import { labelCuentaPago, llavesBreB } from "@/lib/pagos";
 import { conAlfa, esTemaClaro, getDecoracion, getTema } from "@/lib/temas-rifa";
 import { waLink } from "@/lib/whatsapp";
 import { Decoracion } from "@/components/rifa/decoracion-rifa";
+import { ImagenZoom } from "@/components/rifa/imagen-zoom";
 import { SorteoAnimado } from "@/components/rifa/sorteo-animado";
 import { SorteoDemo } from "@/components/rifa/sorteo-demo";
 import {
@@ -158,10 +161,26 @@ export function RifaPublicaView({
     [premios],
   );
   const premioPrincipal = premiosOrdenados[0];
+  // Hoy en Colombia (AAAA-MM-DD), para saber qué premio sigue y cuánto falta.
+  const hoyCO = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Bogota" }).format(new Date());
+  const proximoPremio = premiosOrdenados
+    .filter((p) => !p.jugado && p.fecha_loteria && p.fecha_loteria.slice(0, 10) >= hoyCO)
+    .sort((a, b) => a.fecha_loteria!.localeCompare(b.fecha_loteria!))[0];
+  const diasPara = (fecha: string) =>
+    Math.round((Date.parse(fecha.slice(0, 10)) - Date.parse(hoyCO)) / 86_400_000);
+  const reglasPago = reglasPagoTexto(rifa, premiosOrdenados);
   // Portada: la de la rifa o, si solo hay un premio, la foto de ese producto.
   const portada =
     rifa.imagen_url ??
     (premiosOrdenados.length === 1 ? premiosOrdenados[0].imagen_url : null);
+  // El banner de arriba solo se pinta si no repite lo que ya muestran las
+  // tarjetas de premios: con varios premios y alguno con foto, el producto ya
+  // se ve (completo y con zoom) en su tarjeta. La portada se sigue usando en la
+  // vista previa del enlace (WhatsApp) y en el flyer.
+  const mostrarPortada =
+    !!portada &&
+    !premiosOrdenados.some((p) => p.imagen_url && p.imagen_url === rifa.imagen_url) &&
+    !(premiosOrdenados.length > 1 && premiosOrdenados.some((p) => p.imagen_url));
   // El mensaje es uno solo para toda la rifa: se toma del primer ganador que lo traiga.
   // El recordatorio de WhatsApp llega con `?n=17,18`: son los números de esa
   // persona. No hay dato personal en la URL —esos números ya se ven ocupados en
@@ -316,9 +335,9 @@ export function RifaPublicaView({
                 {cuentaPago && (
                   <PagoLinea label={cuentaPagoLabel} value={cuentaPago} sub={pago.titular ?? undefined} />
                 )}
-                {pago.llave && (
-                  <PagoLinea label="Llave / Bre-B" value={pago.llave} sub={pago.titular ?? undefined} />
-                )}
+                {llavesBreB(pago).map((l) => (
+                  <PagoLinea key={l} label="Llave / Bre-B" value={l} sub={pago.titular ?? undefined} />
+                ))}
               </div>
             )}
             {pago?.whatsapp && (
@@ -340,13 +359,12 @@ export function RifaPublicaView({
         )}
 
         {/* Foto del premio */}
-        {portada && (
+        {mostrarPortada && (
           <div
             className="mb-4 overflow-hidden rounded-2xl border"
             style={{ borderColor: t.line, background: t.surface }}
           >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
+            <ImagenZoom
               src={portada}
               alt={`Premio de la rifa ${rifa.nombre}`}
               className="max-h-80 w-full object-cover"
@@ -431,15 +449,36 @@ export function RifaPublicaView({
             <ul className="grid grid-cols-2 gap-2">
               {premiosOrdenados.map((p, i) => {
                 const gana = comoSeGanaPremio(rifa, p.criterio, i + 1);
+                const esProximo = proximoPremio === p;
+                // Impar: el último ocupa la fila completa en vez de dejar un hueco.
+                const ancho2 =
+                  premiosOrdenados.length % 2 === 1 && i === premiosOrdenados.length - 1;
+                const faltan = esProximo && p.fecha_loteria ? diasPara(p.fecha_loteria) : null;
                 return (
                   <li
                     key={i}
-                    className="flex flex-col overflow-hidden rounded-xl border p-2"
+                    className={`relative flex flex-col overflow-hidden rounded-xl border p-2 ${ancho2 ? "col-span-2" : ""}`}
                     style={{
-                      borderColor: i === 0 ? t.accent : t.line,
-                      background: i === 0 ? conAlfa(t.accent, 0.08) : undefined,
+                      borderColor: i === 0 && !p.jugado ? t.accent : t.line,
+                      background: i === 0 && !p.jugado ? conAlfa(t.accent, 0.08) : undefined,
+                      // Lo ya jugado pasa a segundo plano: la atención va al que sigue.
+                      opacity: p.jugado ? 0.85 : 1,
                     }}
                   >
+                    {/* Sello de "ya jugó" con el número que salió */}
+                    {p.jugado && (
+                      <span
+                        className="absolute right-1.5 top-1.5 -rotate-6 rounded-md border-2 px-1.5 py-0.5 text-center text-[10px] font-extrabold uppercase leading-tight"
+                        style={{ borderColor: t.accent, color: t.accent, background: t.surface }}
+                      >
+                        Ya jugó
+                        {p.numero_ganador != null && (
+                          <span className="block text-sm tabular-nums">
+                            {formatNumero(p.numero_ganador, ancho)}
+                          </span>
+                        )}
+                      </span>
+                    )}
                     <div className="flex items-start gap-1.5">
                       <span
                         className="inline-flex size-6 shrink-0 items-center justify-center rounded-full text-[11px] font-bold"
@@ -457,18 +496,40 @@ export function RifaPublicaView({
                       )}
                     </div>
                     {p.imagen_url && (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={p.imagen_url}
-                        alt={p.descripcion}
-                        className="mt-2 aspect-square w-full rounded-lg bg-white object-contain"
-                      />
+                      <div className="mt-2">
+                        <ImagenZoom
+                          src={p.imagen_url}
+                          alt={p.descripcion}
+                          className="rounded-lg"
+                          difuminado
+                        />
+                      </div>
                     )}
                     <p className="mt-2 text-sm font-semibold leading-snug">
                       {p.tipo === "valor" && p.valor ? formatCOP(p.valor) : p.descripcion}
                     </p>
                     {p.tipo === "valor" && !!p.valor && (
                       <p className="text-[11px] text-[var(--rifa-muted)]">{p.descripcion}</p>
+                    )}
+                    {p.fecha_loteria && (
+                      <p className="mt-1 text-[11px] font-semibold" style={{ color: p.jugado ? t.muted : t.accent }}>
+                        {p.jugado ? "Jugó" : "Juega"} el {formatFechaCO(p.fecha_loteria, { conAnio: false })}
+                      </p>
+                    )}
+                    {/* Qué exige este premio (reglas de pago), en corto */}
+                    {!p.jugado && requisitoPremioTexto(rifa, p) && (
+                      <p className="mt-1 text-[10px] leading-tight text-[var(--rifa-muted)]">
+                        {requisitoPremioTexto(rifa, p)}
+                      </p>
+                    )}
+                    {/* Solo el que sigue lleva la cuenta regresiva: una sola señal. */}
+                    {faltan != null && (
+                      <span
+                        className="mt-1 self-start rounded-full px-2 py-0.5 text-[10px] font-bold"
+                        style={{ background: t.accent, color: t.accentInk }}
+                      >
+                        {faltan === 0 ? "¡Juega hoy!" : faltan === 1 ? "Juega mañana" : `Faltan ${faltan} días`}
+                      </span>
                     )}
                   </li>
                 );
@@ -507,6 +568,24 @@ export function RifaPublicaView({
               ¿Cómo funciona?
             </a>
           </p>
+        )}
+
+        {/* Reglas de pago (cuotas, fecha límite): plegadas para no saturar el
+            celular, pero a un toque. */}
+        {reglasPago.length > 0 && (rifa.permite_abonos || rifa.dias_limite_pago != null) && (
+          <details
+            className="mb-4 rounded-lg border px-3 py-2 text-xs"
+            style={{ borderColor: t.line, background: t.surface }}
+          >
+            <summary className="cursor-pointer font-semibold" style={{ color: t.text }}>
+              💳 Reglas de pago{rifa.permite_abonos && rifa.abono_minimo ? ` · separa con ${formatCOP(rifa.abono_minimo)}` : ""}
+            </summary>
+            <ul className="mt-2 list-disc space-y-1 pl-4 text-[var(--rifa-muted)]">
+              {reglasPago.map((l) => (
+                <li key={l}>{l}</li>
+              ))}
+            </ul>
+          </details>
         )}
 
         {/* Cómo se juega (sorteo propio) */}
@@ -712,9 +791,9 @@ export function RifaPublicaView({
               {cuentaPago && (
                 <PagoLinea label={cuentaPagoLabel} value={cuentaPago} sub={pago.titular ?? undefined} />
               )}
-              {pago.llave && (
-                <PagoLinea label="Llave / Bre-B" value={pago.llave} sub={pago.titular ?? undefined} />
-              )}
+              {llavesBreB(pago).map((l) => (
+                <PagoLinea key={l} label="Llave / Bre-B" value={l} sub={pago.titular ?? undefined} />
+              ))}
             </div>
             {pago.qr_url && (
               <div className="mt-3 flex justify-center">
@@ -790,7 +869,9 @@ export function RifaPublicaView({
           </DialogHeader>
           <div className="flex flex-col gap-2">
             {cuentaPago && <PagoLinea label={cuentaPagoLabel} value={cuentaPago} sub={pago?.titular ?? undefined} />}
-            {pago?.llave && <PagoLinea label="Llave / Bre-B" value={pago.llave} sub={pago.titular ?? undefined} />}
+            {llavesBreB(pago).map((l) => (
+              <PagoLinea key={l} label="Llave / Bre-B" value={l} sub={pago?.titular ?? undefined} />
+            ))}
           </div>
           <DialogFooter>
             {pago?.whatsapp ? (

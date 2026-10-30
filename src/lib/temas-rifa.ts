@@ -4,7 +4,7 @@
  * para satori). El owner elige el tema al crear/editar la rifa.
  */
 
-export type TemaRifa = "rosa" | "clasico" | "esmeralda" | "oceano" | "durazno";
+export type TemaRifa = "rosa" | "clasico" | "esmeralda" | "oceano" | "durazno" | "navidad";
 
 export interface TemaWeb {
   bg: string;
@@ -111,6 +111,24 @@ export const TEMAS: Record<TemaRifa, Tema> = {
       numBg: "#FDE9D6", numInk: "#4A2E22", ocupBg: "#EFD3BC", ocupInk: "#A98A76",
     },
   },
+  navidad: {
+    nombre: "Navidad",
+    chip: "#C8102E",
+    // Verde pino de fondo y DORADO de acento. El rojo va solo en los adornos:
+    // rojo sobre verde oscuro tiene poco contraste de luminosidad (los dos son
+    // oscuros, ~2:1) y además "vibra" a la vista; en textos chicos (fechas,
+    // "Lotería de…") se volvía ilegible. El dorado da ~9:1 sobre el verde.
+    web: {
+      bg: "#0D2B1E", surface: "#143A29", text: "#FFF8E7", muted: "#B5CBBE",
+      accent: "#F2C14E", accentInk: "#0D2B1E", line: "#23513B",
+      ocupadoBg: "#1E4634", ocupadoInk: "#6F9180",
+    },
+    flyer: {
+      bgTop: "#0F5132", bgBottom: "#072B1B", band: "#F2C14E", card: "#FFF8E7",
+      ink: "#0A3622", accent: "#C8102E", titulo: "#FFE08A",
+      numBg: "#FFF8E7", numInk: "#0A3622", ocupBg: "#7A1C26", ocupInk: "#E9B7BD",
+    },
+  },
 };
 
 export const TEMA_DEFAULT: TemaRifa = "rosa";
@@ -166,7 +184,8 @@ export type DecoracionRifa =
   | "floral"
   | "hojas"
   | "geometrico"
-  | "confeti";
+  | "confeti"
+  | "navidad";
 
 export const DECORACIONES: {
   id: DecoracionRifa;
@@ -178,6 +197,7 @@ export const DECORACIONES: {
   { id: "hojas", nombre: "Botánico", pista: "Hojas — natural y neutro" },
   { id: "geometrico", nombre: "Geométrico", pista: "Formas — moderno / masculino" },
   { id: "confeti", nombre: "Confeti", pista: "Fiesta y celebración" },
+  { id: "navidad", nombre: "Navidad", pista: "Bolas de árbol y nieve" },
   { id: "ninguna", nombre: "Sin adornos", pista: "Limpio y sobrio" },
 ];
 

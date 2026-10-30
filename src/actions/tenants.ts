@@ -243,6 +243,46 @@ export async function crearTenantConOwner(
   return { success: true, data: { tenantId } };
 }
 
+const passwordOwnerSchema = z.object({
+  tenantId: z.string().uuid(),
+  password: z.string().min(6, "La contraseña debe tener al menos 6 caracteres"),
+});
+
+/**
+ * Pone una contraseña nueva al owner de un tenant. Solo superadmin: es la
+ * salida cuando el organizador no puede entrar y no hay recuperación por
+ * correo. Solo toca usuarios `owner`, nunca a otro superadmin.
+ */
+export async function restablecerPasswordOwner(
+  input: z.infer<typeof passwordOwnerSchema>,
+): Promise<ActionResult> {
+  if (!(await esSuperadmin())) {
+    return { success: false, error: "No autorizado" };
+  }
+  const parsed = passwordOwnerSchema.safeParse(input);
+  if (!parsed.success) {
+    return { success: false, error: parsed.error.issues[0].message };
+  }
+  const { tenantId, password } = parsed.data;
+
+  const svc = createServiceRoleClient();
+  const { data: owners, error } = await svc
+    .from("memberships")
+    .select("user_id")
+    .eq("tenant_id", tenantId)
+    .eq("rol", "owner");
+  if (error) return { success: false, error: error.message };
+  if (!owners?.length) {
+    return { success: false, error: "Ese organizador no tiene usuario owner" };
+  }
+
+  for (const { user_id } of owners as { user_id: string }[]) {
+    const { error: errUser } = await svc.auth.admin.updateUserById(user_id, { password });
+    if (errUser) return { success: false, error: errUser.message };
+  }
+  return { success: true, data: undefined };
+}
+
 /** Archiva o reactiva un tenant. Solo superadmin. */
 export async function setEstadoTenant(
   tenantId: string,
@@ -413,6 +453,8 @@ const pagoConfigSchema = z.object({
   qr_url: z.string().trim().nullable().optional(),
   whatsapp: z.string().trim().nullable().optional(),
   mensaje_qr: z.string().trim().nullable().optional(),
+  /** Llaves Bre-B además de la principal. */
+  llaves_adicionales: z.array(z.string().trim().max(80)).max(5).optional(),
 });
 
 /**
@@ -456,6 +498,9 @@ export async function guardarPagoConfig(
     qr_url: d.qr_url?.trim() || null,
     whatsapp: d.whatsapp?.trim() || null,
     mensaje_qr: d.mensaje_qr?.trim() || null,
+    llaves_adicionales: [...new Set((d.llaves_adicionales ?? []).filter(Boolean))].filter(
+      (l) => l !== d.llave?.trim(),
+    ),
   });
   if (error) return { success: false, error: error.message };
 

@@ -24,7 +24,19 @@ export type PagoConfigLike = {
   qr_url?: string | null;
   whatsapp?: string | null;
   mensaje_qr?: string | null;
+  llaves_adicionales?: string[] | null;
 };
+
+/**
+ * Todas las llaves Bre-B del organizador, la principal primero y sin repetir.
+ * Hay quien recibe en varias (una por banco).
+ */
+export function llavesBreB(pago: PagoConfigLike | null | undefined): string[] {
+  const todas = [pago?.llave, ...(pago?.llaves_adicionales ?? [])]
+    .map((l) => l?.trim() ?? "")
+    .filter(Boolean);
+  return [...new Set(todas)];
+}
 
 /** Aviso por defecto cuando la config no trae mensaje propio. */
 export const MENSAJE_QR_DEFAULT =

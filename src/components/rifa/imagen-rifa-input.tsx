@@ -5,6 +5,7 @@ import { ImageUp, Loader2, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { subirImagenRifa } from "@/actions/rifas";
+import { ImagenZoom } from "@/components/rifa/imagen-zoom";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { prepararImagen } from "@/lib/imagen";
@@ -60,12 +61,13 @@ export function ImagenRifaInput({
       <div className="flex items-center gap-3">
         {valor ? (
           <div className="relative">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={valor}
-              alt={label}
-              className={`border-border ${caja} rounded-lg border object-cover`}
-            />
+            <div className={caja}>
+              <ImagenZoom
+                src={valor}
+                alt={label}
+                className={`border-border ${caja} rounded-lg border object-cover`}
+              />
+            </div>
             <button
               type="button"
               onClick={() => onChange("")}

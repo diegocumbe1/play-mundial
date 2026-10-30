@@ -17,12 +17,15 @@ import {
   codificarOcupados,
   numeroEnRango,
   posicionPremioDeBola,
+  cifrasDeResultado,
+  elegiblesParaPremio,
   resolverGanadores,
   sortearBolas,
   tieneRondaFinal,
 } from "@/lib/rifa";
 import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
 import type {
+  AbonoBoleta,
   ActionResult,
   Boleta,
   BolaSorteo,
@@ -163,8 +166,10 @@ const rifaSchema = z.object({
   /** Cada compra debe llevar al menos estos números (1 = sin mínimo). */
   min_numeros_compra: z.number().int().min(1).max(100).default(1),
   solo_pagadas_juegan: z.boolean().default(true),
-  tema: z.enum(["rosa", "clasico", "esmeralda", "oceano", "durazno"]).default("rosa"),
-  decoracion: z.enum(["ninguna", "floral", "hojas", "geometrico", "confeti"]).default("floral"),
+  tema: z.enum(["rosa", "clasico", "esmeralda", "oceano", "durazno", "navidad"]).default("rosa"),
+  decoracion: z
+    .enum(["ninguna", "floral", "hojas", "geometrico", "confeti", "navidad"])
+    .default("floral"),
   imagen_url: z.string().trim().url("La imagen debe ser una URL").nullable().optional().or(z.literal("")),
   imagen_fondo_url: z.string().trim().url("La imagen debe ser una URL").nullable().optional().or(z.literal("")),
   sorteo_bolas: z.number().int().min(1).max(10).default(1),
@@ -176,6 +181,10 @@ const rifaSchema = z.object({
   fecha_loteria: z.string().trim().nullable().optional(),
   modo_cifras: z.enum(["primeras_dos", "ultimas_dos", "ambas"]).nullable().optional(),
   fecha_sorteo: z.string().trim().nullable().optional(),
+  // Pago por cuotas (opcional).
+  permite_abonos: z.boolean().default(false),
+  abono_minimo: z.number().int().positive().nullable().optional(),
+  dias_limite_pago: z.number().int().min(0).max(30).nullable().optional(),
   /** Solo superadmin: delegar la rifa a otro organizador. */
   tenant_id: z.string().uuid().nullable().optional(),
 });
@@ -217,6 +226,10 @@ function camposRifa(d: z.infer<typeof rifaSchema>) {
         : (d.modo_cifras ?? null)
       : null,
     fecha_sorteo: d.fecha_sorteo ?? null,
+    // Las cuotas solo tienen sentido si los no pagados no juegan.
+    permite_abonos: d.solo_pagadas_juegan && d.permite_abonos,
+    abono_minimo: d.solo_pagadas_juegan && d.permite_abonos ? (d.abono_minimo ?? null) : null,
+    dias_limite_pago: d.solo_pagadas_juegan ? (d.dias_limite_pago ?? null) : null,
   };
 }
 
@@ -228,6 +241,10 @@ const premioSchema = z.object({
   criterio: z.enum(["primeras_2", "ultimas_2"]).nullable().optional(),
   orden: z.number().int().min(1).default(1),
   imagen_url: z.string().trim().url().nullable().optional(),
+  /** Solo si los premios juegan en fechas distintas (`null` = fecha de la rifa). */
+  fecha_loteria: z.string().trim().nullable().optional(),
+  /** Rifas con abonos: cuánto debe llevar pagado para jugarlo (`null` = completo). */
+  minimo_para_jugar: z.number().int().positive().nullable().optional(),
 });
 
 // ---------------------------------------------------------------------------
@@ -464,23 +481,70 @@ export async function guardarPremios(
     return { success: false, error: parsed.error.issues[0].message };
   }
 
-  const supabase = await createClient();
-  await supabase.from("premios").delete().eq("rifa_id", rifaId);
+  const filas = parsed.data.map((p, i) => ({
+    rifa_id: rifaId,
+    tipo: p.tipo,
+    descripcion: p.descripcion,
+    valor: p.tipo === "valor" ? (p.valor ?? 0) : null,
+    cantidad_ganadores: p.cantidad_ganadores,
+    criterio: p.criterio ?? null,
+    orden: p.orden ?? i + 1,
+    imagen_url: p.imagen_url || null,
+    fecha_loteria: p.fecha_loteria || null,
+    minimo_para_jugar: p.minimo_para_jugar ?? null,
+  }));
 
-  if (parsed.data.length > 0) {
-    const { error } = await supabase.from("premios").insert(
-      parsed.data.map((p, i) => ({
-        rifa_id: rifaId,
-        tipo: p.tipo,
-        descripcion: p.descripcion,
-        valor: p.tipo === "valor" ? (p.valor ?? 0) : null,
-        cantidad_ganadores: p.cantidad_ganadores,
-        criterio: p.criterio ?? null,
-        orden: p.orden ?? i + 1,
-        imagen_url: p.imagen_url || null,
-      })),
-    );
-    if (error) return { success: false, error: error.message };
+  const supabase = await createClient();
+  const [{ data: actuales }, { data: conGanador }] = await Promise.all([
+    supabase.from("premios").select("*").eq("rifa_id", rifaId).order("orden"),
+    supabase.from("ganadores").select("premio_id").eq("rifa_id", rifaId),
+  ]);
+  const previos = (actuales as Premio[]) ?? [];
+  const sorteados = new Set(((conGanador as { premio_id: string }[]) ?? []).map((g) => g.premio_id));
+  for (const p of previos) if (p.resultado_loteria) sorteados.add(p.id);
+
+  // Con premios ya sorteados (sorteos en fechas distintas) no se puede borrar y
+  // reinsertar: se perderían sus ganadores. Se editan en su lugar, y a esos
+  // premios no se les cambia cómo ni cuándo se ganan.
+  if (sorteados.size > 0) {
+    if (previos.length !== filas.length) {
+      return {
+        success: false,
+        error: "Ya hay premios sorteados: no puedes agregar ni quitar premios.",
+      };
+    }
+    for (const [i, previo] of previos.entries()) {
+      const nueva = filas[i];
+      if (
+        sorteados.has(previo.id) &&
+        (previo.criterio !== nueva.criterio || (previo.fecha_loteria ?? null) !== nueva.fecha_loteria)
+      ) {
+        return {
+          success: false,
+          error: `El premio ${i + 1} ya se sorteó: no puedes cambiar su fecha ni con qué cifras se gana.`,
+        };
+      }
+      const { error } = await supabase.from("premios").update(nueva).eq("id", previo.id);
+      if (error) return { success: false, error: error.message };
+    }
+  } else {
+    // Primero los nuevos y SOLO si entran se borran los viejos: al revés, un
+    // insert fallido (p. ej. una columna que aún no migró) dejaba la rifa sin
+    // premios.
+    if (filas.length > 0) {
+      const { error } = await supabase.from("premios").insert(filas);
+      if (error) return { success: false, error: `No se guardaron los premios: ${error.message}` };
+    }
+    if (previos.length > 0) {
+      const { error } = await supabase
+        .from("premios")
+        .delete()
+        .in(
+          "id",
+          previos.map((p) => p.id),
+        );
+      if (error) return { success: false, error: error.message };
+    }
   }
 
   revalidatePath(`/admin/rifas/${rifaId}`);
@@ -581,6 +645,14 @@ export async function activarRifa(
   }
   if (r.estado !== "borrador") {
     return { success: false, error: "La rifa ya fue activada" };
+  }
+  // La tarifa (y si cabe en el plan gratis) se calcula con el valor del puesto:
+  // sin él se cotizaría una rifa de $0 y se gastaría el cupo gratis en ella.
+  if (!r.precio_boleta || r.precio_boleta <= 0) {
+    return {
+      success: false,
+      error: "Ponle el valor del puesto antes de activar: con él se calcula la tarifa.",
+    };
   }
 
   // La decisión de plan/cuota/cobro es común a todas las verticales.
@@ -761,6 +833,8 @@ const registrarBoletaSchema = z.object({
   pagado: z.boolean().default(false),
   metodo_pago: z.enum(["efectivo", "transferencia"]).nullable().optional(),
   nota: z.string().trim().nullable().optional(),
+  /** Separar con saldo: lo que deja de una vez al apartar (0 = nada). */
+  abono: z.number().int().min(0).optional(),
 });
 
 /** El owner registra manualmente un número (apartado o pagado). */
@@ -787,23 +861,39 @@ export async function registrarBoletaAdmin(
     .maybeSingle();
   if (!rifa) return { success: false, error: "Rifa no encontrada" };
 
-  const { error } = await supabase.from("boletas").insert({
-    rifa_id: d.rifa_id,
-    tenant_id: (rifa as { tenant_id: string }).tenant_id,
-    numero: d.numero,
-    estado: d.pagado ? "pagado" : "reservado",
-    comprador_nombre: d.comprador_nombre,
-    comprador_telefono: d.comprador_telefono ?? null,
-    responsable_venta: d.responsable_venta ?? null,
-    metodo_pago: d.pagado ? (d.metodo_pago ?? "transferencia") : null,
-    nota: d.nota ?? null,
-    pagado_at: d.pagado ? new Date().toISOString() : null,
-  });
+  const { data: creada, error } = await supabase
+    .from("boletas")
+    .insert({
+      rifa_id: d.rifa_id,
+      tenant_id: (rifa as { tenant_id: string }).tenant_id,
+      numero: d.numero,
+      estado: d.pagado ? "pagado" : "reservado",
+      comprador_nombre: d.comprador_nombre,
+      comprador_telefono: d.comprador_telefono ?? null,
+      responsable_venta: d.responsable_venta ?? null,
+      metodo_pago: d.pagado ? (d.metodo_pago ?? "transferencia") : null,
+      nota: d.nota ?? null,
+      pagado_at: d.pagado ? new Date().toISOString() : null,
+    })
+    .select("id")
+    .single();
 
   if (error) {
     const msg =
       error.code === "23505" ? "Ese número ya está tomado" : traducirErrorBoleta(error.message);
     return { success: false, error: msg };
+  }
+
+  // Separó con saldo: el primer abono queda registrado de una vez.
+  if (!d.pagado && d.abono && d.abono > 0) {
+    const r = await registrarAbono(
+      supabase,
+      (creada as { id: string }).id,
+      d.abono,
+      d.metodo_pago ?? "transferencia",
+      null,
+    );
+    if (!r.success) return r;
   }
   revalidatePath(`/admin/rifas/${d.rifa_id}`);
   await revalidarPublica(d.rifa_id);
@@ -957,6 +1047,36 @@ export async function marcarPagoBoleta(
   if (!acceso.success) return acceso;
 
   const supabase = await createClient();
+
+  // Si venía abonando, "pagado" es abonar lo que falta (así la caja cuadra), y
+  // no se puede volver a pendiente sin quitar abonos: se perdería la plata.
+  const { data: actual } = await supabase
+    .from("boletas")
+    .select("monto_abonado, rifa_id, rifas(precio_boleta)")
+    .eq("id", boletaId)
+    .maybeSingle();
+  const abonado = (actual as { monto_abonado: number } | null)?.monto_abonado ?? 0;
+  if (actual && abonado > 0) {
+    if (!pagado) {
+      return {
+        success: false,
+        error: "Este número se pagó con abonos: para dejarlo pendiente elimina el último abono.",
+      };
+    }
+    const precio =
+      (actual as unknown as { rifas: { precio_boleta: number } | null }).rifas?.precio_boleta ?? 0;
+    const saldo = Math.max(0, precio - abonado);
+    const r =
+      saldo > 0
+        ? await registrarAbono(supabase, boletaId, saldo, metodo, "Saldo completo")
+        : await recalcularAbonos(supabase, boletaId);
+    if (!r.success) return r;
+    const rifaId = (actual as { rifa_id: string }).rifa_id;
+    revalidatePath(`/admin/rifas/${rifaId}`);
+    await revalidarPublica(rifaId);
+    return { success: true, data: undefined };
+  }
+
   const { data, error } = await supabase
     .from("boletas")
     .update({
@@ -985,9 +1105,16 @@ export async function liberarBoleta(boletaId: string): Promise<ActionResult> {
   const supabase = await createClient();
   const { data } = await supabase
     .from("boletas")
-    .select("rifa_id")
+    .select("rifa_id, monto_abonado")
     .eq("id", boletaId)
     .maybeSingle();
+  const abonado = (data as { monto_abonado: number } | null)?.monto_abonado ?? 0;
+  if (abonado > 0) {
+    return {
+      success: false,
+      error: `Este número tiene abonos por ${abonado.toLocaleString("es-CO")}: elimínalos antes de liberarlo.`,
+    };
+  }
   const { error } = await supabase.from("boletas").delete().eq("id", boletaId);
   if (error) return { success: false, error: traducirErrorBoleta(error.message) };
   if (data) {
@@ -999,12 +1126,186 @@ export async function liberarBoleta(boletaId: string): Promise<ActionResult> {
 }
 
 // ---------------------------------------------------------------------------
+// Abonos (separar con saldo)
+// ---------------------------------------------------------------------------
+type SupabaseServer = Awaited<ReturnType<typeof createClient>>;
+
+/**
+ * Recalcula lo abonado de una boleta desde sus abonos y su estado: al alcanzar
+ * el precio del puesto queda `pagado` (con el medio del abono que la completó);
+ * si le falta, vuelve a `reservado`.
+ */
+async function recalcularAbonos(
+  supabase: SupabaseServer,
+  boletaId: string,
+): Promise<ActionResult> {
+  const [{ data: boleta }, { data: abonos }] = await Promise.all([
+    supabase
+      .from("boletas")
+      .select("pagado_at, rifas(precio_boleta)")
+      .eq("id", boletaId)
+      .maybeSingle(),
+    supabase
+      .from("abonos_boleta")
+      .select("monto, metodo, created_at")
+      .eq("boleta_id", boletaId)
+      .order("created_at"),
+  ]);
+  if (!boleta) return { success: false, error: "Número no encontrado" };
+
+  const lista = (abonos as Pick<AbonoBoleta, "monto" | "metodo" | "created_at">[]) ?? [];
+  const total = lista.reduce((s, a) => s + a.monto, 0);
+  const efectivo = lista.filter((a) => a.metodo === "efectivo").reduce((s, a) => s + a.monto, 0);
+  const precio =
+    (boleta as unknown as { rifas: { precio_boleta: number } | null }).rifas?.precio_boleta ?? 0;
+  const completo = total > 0 && total >= precio;
+
+  const { error } = await supabase
+    .from("boletas")
+    .update({
+      monto_abonado: total,
+      abonado_efectivo: efectivo,
+      estado: completo ? "pagado" : "reservado",
+      metodo_pago: completo ? lista[lista.length - 1].metodo : null,
+      pagado_at: completo
+        ? ((boleta as { pagado_at: string | null }).pagado_at ?? new Date().toISOString())
+        : null,
+    })
+    .eq("id", boletaId);
+  if (error) return { success: false, error: traducirErrorBoleta(error.message) };
+  return { success: true, data: undefined };
+}
+
+/** Inserta un abono y recalcula la boleta. No revalida: lo hace quien llama. */
+async function registrarAbono(
+  supabase: SupabaseServer,
+  boletaId: string,
+  monto: number,
+  metodo: "efectivo" | "transferencia",
+  nota: string | null,
+): Promise<ActionResult> {
+  const { data: boleta } = await supabase
+    .from("boletas")
+    .select("tenant_id, rifa_id, estado")
+    .eq("id", boletaId)
+    .maybeSingle();
+  if (!boleta) return { success: false, error: "Número no encontrado" };
+  const b = boleta as { tenant_id: string; rifa_id: string; estado: string };
+
+  const { error } = await supabase.from("abonos_boleta").insert({
+    tenant_id: b.tenant_id,
+    rifa_id: b.rifa_id,
+    boleta_id: boletaId,
+    monto,
+    metodo,
+    nota,
+  });
+  if (error) return { success: false, error: error.message };
+  return recalcularAbonos(supabase, boletaId);
+}
+
+const abonoSchema = z.object({
+  boleta_id: z.string().uuid(),
+  monto: z.number().int().positive("El abono debe ser mayor a 0"),
+  metodo: z.enum(["efectivo", "transferencia"]).default("transferencia"),
+  nota: z.string().trim().max(200).nullable().optional(),
+});
+
+/** Registra un abono a un número apartado. Si completa el precio, queda pagado. */
+export async function abonarBoleta(
+  input: z.input<typeof abonoSchema>,
+): Promise<ActionResult<{ pagado: boolean; saldo: number }>> {
+  const acceso = await puedeTocarNumeros();
+  if (!acceso.success) return acceso;
+  const parsed = abonoSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: parsed.error.issues[0].message };
+  const d = parsed.data;
+
+  const supabase = await createClient();
+  const { data: boleta } = await supabase
+    .from("boletas")
+    .select("estado, monto_abonado, rifa_id, rifas(precio_boleta, abono_minimo)")
+    .eq("id", d.boleta_id)
+    .maybeSingle();
+  if (!boleta) return { success: false, error: "Número no encontrado" };
+  const b = boleta as unknown as {
+    estado: string;
+    monto_abonado: number;
+    rifa_id: string;
+    rifas: { precio_boleta: number; abono_minimo: number | null } | null;
+  };
+  if (b.estado === "pagado") return { success: false, error: "Este número ya está pagado" };
+  const saldo = Math.max(0, (b.rifas?.precio_boleta ?? 0) - b.monto_abonado);
+  // La cuota mínima aplica salvo cuando lo que falta es menos que ella.
+  const minimo = Math.min(b.rifas?.abono_minimo ?? 0, saldo);
+  if (d.monto < minimo) {
+    return { success: false, error: `La cuota mínima es ${minimo.toLocaleString("es-CO")}.` };
+  }
+  if (d.monto > saldo) {
+    return {
+      success: false,
+      error: `El abono supera lo que falta (${saldo.toLocaleString("es-CO")}).`,
+    };
+  }
+
+  const r = await registrarAbono(supabase, d.boleta_id, d.monto, d.metodo, d.nota ?? null);
+  if (!r.success) return r;
+
+  revalidatePath(`/admin/rifas/${b.rifa_id}`);
+  await revalidarPublica(b.rifa_id);
+  return { success: true, data: { pagado: d.monto === saldo, saldo: saldo - d.monto } };
+}
+
+/** Abonos de un número, del más viejo al más nuevo (para el modal del número). */
+export async function getAbonosBoleta(boletaId: string): Promise<ActionResult<AbonoBoleta[]>> {
+  const membership = await requireMembership();
+  if (!membership) return { success: false, error: "Sin sesión" };
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("abonos_boleta")
+    .select("*")
+    .eq("boleta_id", boletaId)
+    .order("created_at");
+  if (error) return { success: false, error: error.message };
+  return { success: true, data: (data as AbonoBoleta[]) ?? [] };
+}
+
+/** Borra un abono registrado por error y recalcula el número. */
+export async function eliminarAbonoBoleta(abonoId: string): Promise<ActionResult> {
+  const acceso = await puedeTocarNumeros();
+  if (!acceso.success) return acceso;
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("abonos_boleta")
+    .delete()
+    .eq("id", abonoId)
+    .select("boleta_id, rifa_id")
+    .maybeSingle();
+  if (error) return { success: false, error: error.message };
+  if (!data) return { success: false, error: "Abono no encontrado" };
+  const { boleta_id, rifa_id } = data as { boleta_id: string; rifa_id: string };
+
+  const r = await recalcularAbonos(supabase, boleta_id);
+  if (!r.success) return r;
+  revalidatePath(`/admin/rifas/${rifa_id}`);
+  await revalidarPublica(rifa_id);
+  return { success: true, data: undefined };
+}
+
+// ---------------------------------------------------------------------------
 // Sorteo
 // ---------------------------------------------------------------------------
-/** Ingresa el resultado de la lotería y resuelve ganadores (auto-match). */
+/**
+ * Ingresa el resultado de la lotería y resuelve ganadores (auto-match).
+ *
+ * Con `premioId` resuelve SOLO ese premio (rifas con premios en fechas
+ * distintas): guarda el resultado en el premio, reemplaza solo sus ganadores y
+ * la rifa queda `sorteada` cuando ya no le falta resultado a ningún premio.
+ */
 export async function ingresarResultadoLoteria(
   rifaId: string,
   resultado: string,
+  premioId?: string,
 ): Promise<ActionResult<{ ganadores: number; sinVender: number }>> {
   const membership = await requireMembership();
   if (!membership) return { success: false, error: "Sin sesión" };
@@ -1016,18 +1317,89 @@ export async function ingresarResultadoLoteria(
   const { data: rifa } = await supabase.from("rifas").select("*").eq("id", rifaId).maybeSingle();
   if (!rifa) return { success: false, error: "Rifa no encontrada" };
 
-  const [{ data: premios }, { data: boletas }] = await Promise.all([
+  const [{ data: premios }, { data: boletas }, { data: abonos }] = await Promise.all([
     supabase.from("premios").select("*").eq("rifa_id", rifaId).order("orden"),
     traerTodas<Boleta>((desde, hasta) =>
       supabase.from("boletas").select("*").eq("rifa_id", rifaId).order("numero").range(desde, hasta),
     ),
+    traerTodas<{ boleta_id: string; monto: number; created_at: string }>((desde, hasta) =>
+      supabase
+        .from("abonos_boleta")
+        .select("boleta_id, monto, created_at")
+        .eq("rifa_id", rifaId)
+        .range(desde, hasta),
+    ),
   ]);
+
+  const todos = (premios as Premio[]) ?? [];
+  // Quién juega cada premio sale de sus reglas de pago (lo que exige ese
+  // premio y la fecha límite) evaluadas a la fecha de SU sorteo.
+  const elegiblesDe = (p: Premio) =>
+    elegiblesParaPremio(
+      rifa as Rifa,
+      p,
+      (boletas as Boleta[]) ?? [],
+      (abonos as { boleta_id: string; monto: number; created_at: string }[]) ?? [],
+    );
+
+  if (premioId) {
+    const premio = todos.find((p) => p.id === premioId);
+    if (!premio) return { success: false, error: "Premio no encontrado" };
+    const { count: yaPublicado } = await supabase
+      .from("ganadores")
+      .select("id", { count: "exact", head: true })
+      .eq("premio_id", premioId)
+      .eq("publicado", true);
+    if ((yaPublicado ?? 0) > 0) {
+      return { success: false, error: "El ganador de este premio ya está publicado" };
+    }
+
+    const resueltos = resolverGanadores(
+      rifa as Rifa,
+      [premio],
+      (boletas as Boleta[]) ?? [],
+      limpio,
+      elegiblesDe,
+    );
+    await supabase.from("ganadores").delete().eq("premio_id", premioId);
+    const conBoleta = resueltos.filter((g) => g.boleta_id !== null);
+    if (conBoleta.length > 0) {
+      await supabase.from("ganadores").insert(
+        conBoleta.map((g) => ({
+          rifa_id: rifaId,
+          premio_id: g.premio_id,
+          boleta_id: g.boleta_id,
+          numero: g.numero,
+          publicado: false,
+        })),
+      );
+    }
+    const { error: errPremio } = await supabase
+      .from("premios")
+      .update({ resultado_loteria: limpio })
+      .eq("id", premioId);
+    if (errPremio) return { success: false, error: errPremio.message };
+
+    // La rifa termina cuando el último premio tiene su resultado.
+    const faltan = todos.some((p) => p.id !== premioId && p.criterio !== null && !p.resultado_loteria);
+    if (!faltan) {
+      await supabase.from("rifas").update({ estado: "sorteada" }).eq("id", rifaId);
+    }
+
+    revalidatePath(`/admin/rifas/${rifaId}`);
+    await revalidarPublica(rifaId);
+    return {
+      success: true,
+      data: { ganadores: conBoleta.length, sinVender: resueltos.length - conBoleta.length },
+    };
+  }
 
   const resueltos = resolverGanadores(
     rifa as Rifa,
-    (premios as Premio[]) ?? [],
+    todos,
     (boletas as Boleta[]) ?? [],
     limpio,
+    elegiblesDe,
   );
 
   await supabase.from("ganadores").delete().eq("rifa_id", rifaId);
@@ -1352,8 +1724,27 @@ export interface RifaPublica {
     | "formato_cifras"
     | "fecha_sorteo"
     | "min_numeros_compra"
+    | "solo_pagadas_juegan"
+    | "permite_abonos"
+    | "abono_minimo"
+    | "dias_limite_pago"
   >;
-  premios: Pick<Premio, "tipo" | "descripcion" | "valor" | "criterio" | "orden" | "imagen_url">[];
+  premios: (Pick<
+    Premio,
+    | "tipo"
+    | "descripcion"
+    | "valor"
+    | "criterio"
+    | "orden"
+    | "imagen_url"
+    | "fecha_loteria"
+    | "minimo_para_jugar"
+  > & {
+    /** Ya se conoce el resultado de la lotería de este premio. */
+    jugado: boolean;
+    /** Número que salió (cifras del resultado según el criterio del premio). */
+    numero_ganador: number | null;
+  })[];
   /**
    * Números tomados como bitmap en base64 (bit i = número `inicio + i`). Con
    * 10.000 números son ~1,7 KB, contra ~250 KB de la grilla como objetos; el
@@ -1520,15 +1911,34 @@ async function cargarRifaPublica(slug: string): Promise<ActionResult<RifaPublica
         formato_cifras: r.formato_cifras,
         fecha_sorteo: r.fecha_sorteo,
         min_numeros_compra: r.min_numeros_compra ?? 1,
+        solo_pagadas_juegan: r.solo_pagadas_juegan,
+        permite_abonos: r.permite_abonos ?? false,
+        abono_minimo: r.abono_minimo ?? null,
+        dias_limite_pago: r.dias_limite_pago ?? null,
       },
-      premios: ((premios as Premio[]) ?? []).map((p) => ({
+      premios: ((premios as Premio[]) ?? []).map((p) => {
+        // El resultado de la lotería es público: se muestra el número que salió
+        // apenas el organizador lo ingresa (por premio, o el de la rifa).
+        const resultado = p.resultado_loteria ?? (r.tipo === "loteria" ? r.resultado_loteria : null);
+        const cifras = resultado ? cifrasDeResultado(resultado, r.formato_cifras) : null;
+        const numeroGanador = cifras
+          ? p.criterio === "primeras_2"
+            ? cifras.primeras
+            : cifras.ultimas
+          : (filasGanadores.find((g) => g.premio_id === p.id)?.numero ?? null);
+        return {
+        jugado: !!resultado || filasGanadores.some((g) => g.premio_id === p.id),
+        numero_ganador: numeroGanador,
         tipo: p.tipo,
         descripcion: p.descripcion,
         valor: p.valor,
         criterio: p.criterio,
         orden: p.orden,
         imagen_url: p.imagen_url ?? null,
-      })),
+        fecha_loteria: p.fecha_loteria ?? null,
+        minimo_para_jugar: p.minimo_para_jugar ?? null,
+        };
+      }),
       ocupados,
       disponibles: r.cantidad_numeros - new Set(tomados).size,
       pago: (pago as TenantPagoConfig | null) ?? null,

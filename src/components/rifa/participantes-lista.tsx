@@ -155,8 +155,11 @@ export function ParticipantesLista({
         { nombre, boletas: [], pagadas: 0, pendientes: 0, porCobrar: 0 };
       actual.boletas.push(b);
       if (b.estado === "pagado") actual.pagadas += 1;
-      else actual.pendientes += 1;
-      actual.porCobrar = actual.pendientes * rifa.precio_boleta;
+      else {
+        actual.pendientes += 1;
+        // Lo ya abonado (separar con saldo) no se vuelve a cobrar.
+        actual.porCobrar += Math.max(0, rifa.precio_boleta - (b.monto_abonado ?? 0));
+      }
       map.set(clave, actual);
     }
     return [...map.values()].sort((a, b) => b.boletas.length - a.boletas.length);
@@ -195,8 +198,10 @@ export function ParticipantesLista({
         };
       actual.boletas.push(b);
       if (b.estado === "pagado") actual.pagadas += 1;
-      else actual.pendientes += 1;
-      actual.debe = actual.pendientes * rifa.precio_boleta;
+      else {
+        actual.pendientes += 1;
+        actual.debe += Math.max(0, rifa.precio_boleta - (b.monto_abonado ?? 0));
+      }
       actual.primerRegistro = Math.min(actual.primerRegistro, t);
       actual.ultimoRegistro = Math.max(actual.ultimoRegistro, t);
       map.set(clave, actual);

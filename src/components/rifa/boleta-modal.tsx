@@ -1,13 +1,16 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Check, Clock, MessageCircle, Pencil, Trash2 } from "lucide-react";
+import { Check, Clock, MessageCircle, Pencil, PiggyBank, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 
 import {
+  abonarBoleta,
   actualizarBoleta,
   cambiarMetodoPagoBoleta,
+  eliminarAbonoBoleta,
+  getAbonosBoleta,
   liberarBoleta,
   marcarPagoBoleta,
   registrarBoletaAdmin,
@@ -27,10 +30,11 @@ import { formatCOP, formatNumero } from "@/lib/rifa";
 import { formatFechaCO } from "@/lib/fecha-co";
 import { urlPublicaRifa } from "@/lib/site-url";
 import { waLink } from "@/lib/whatsapp";
+import { InputMoneda } from "@/components/rifa/input-moneda";
 import { VerificarEmailModal } from "@/components/rifa/verificar-email-modal";
 import { Campo, Segmentado } from "@/components/torneo/campos";
 import { esErrorDeVerificacion } from "@/lib/errores";
-import type { Boleta, MetodoPago, Rifa } from "@/types";
+import type { AbonoBoleta, Boleta, MetodoPago, Rifa } from "@/types";
 
 const METODO_LABEL: Record<MetodoPago, string> = {
   transferencia: "Transferencia",
@@ -72,6 +76,29 @@ export function BoletaModal({
   const [confirmandoLiberar, setConfirmandoLiberar] = useState(false);
   const [editando, setEditando] = useState(false);
   const [pidiendoVerificacion, setPidiendoVerificacion] = useState(false);
+  /** Separar con saldo: abono al apartar, o el siguiente abono de un apartado. */
+  const [abono, setAbono] = useState("");
+  const [abonos, setAbonos] = useState<AbonoBoleta[]>([]);
+
+  const precio = rifa?.precio_boleta ?? 0;
+  const abonado = boleta?.monto_abonado ?? 0;
+  const saldo = Math.max(0, precio - abonado);
+  const abonoNum = Number(abono) || 0;
+  // Cuota mínima del organizador (salvo que falte menos que eso).
+  const cuotaMin = rifa?.permite_abonos && rifa.abono_minimo ? rifa.abono_minimo : 0;
+  const abonoBajo = abonoNum > 0 && abonoNum < Math.min(cuotaMin, boleta ? saldo : precio);
+
+  // El historial de abonos solo se trae si el número tiene alguno.
+  useEffect(() => {
+    if (!open || !boleta || abonado <= 0) return;
+    let vigente = true;
+    void getAbonosBoleta(boleta.id).then((r) => {
+      if (vigente && r.success) setAbonos(r.data);
+    });
+    return () => {
+      vigente = false;
+    };
+  }, [open, boleta, abonado]);
 
   function correr(
     accion: () => Promise<{ success: boolean; error?: string }>,
@@ -110,7 +137,9 @@ export function BoletaModal({
           `Hola ${boleta.comprador_nombre ?? ""}, te escribo por la rifa "${rifa.nombre}".`,
           boleta.estado === "pagado"
             ? `Tu número ${formatNumero(boleta.numero, ancho)} está pago y confirmado.`
-            : `Tienes apartado el número ${formatNumero(boleta.numero, ancho)} y queda pendiente ${formatCOP(rifa.precio_boleta)}.`,
+            : abonado > 0
+              ? `Tienes separado el número ${formatNumero(boleta.numero, ancho)}: llevas abonado ${formatCOP(abonado)} y te falta ${formatCOP(saldo)}. Recuerda que el número solo juega cuando esté pago completo.`
+              : `Tienes apartado el número ${formatNumero(boleta.numero, ancho)} y queda pendiente ${formatCOP(rifa.precio_boleta)}.`,
           fechaJuego ? `El sorteo es el ${fechaJuego}.` : "",
           boleta.estado === "pagado" ? "Sigue la rifa aquí 👇" : "Aquí ves tu número y cómo pagar 👇",
           urlPublicaRifa(rifa.slug_publico, [boleta.numero]),
@@ -132,7 +161,11 @@ export function BoletaModal({
               ? `${boleta.comprador_nombre ?? "Sin nombre"}${
                   boleta.comprador_telefono ? ` · ${boleta.comprador_telefono}` : ""
                 }${boleta.responsable_venta ? ` · responsable: ${boleta.responsable_venta}` : ""} — ${
-                  boleta.estado === "pagado" ? "pagado" : "apartado (sin pagar)"
+                  boleta.estado === "pagado"
+                    ? "pagado"
+                    : abonado > 0
+                      ? `separado con abonos (falta ${formatCOP(saldo)})`
+                      : "apartado (sin pagar)"
                 }`
               : "Registra a quién le vendiste este número."}
           </DialogDescription>
@@ -169,13 +202,102 @@ export function BoletaModal({
                 placeholder=""
               />
             </div>
+            {!boleta && precio > 0 && (
+              <div>
+                <Label className="text-muted-foreground mb-1.5 block text-xs">
+                  Separar con abono (opcional)
+                </Label>
+                <InputMoneda
+                  value={abono}
+                  onChange={setAbono}
+                  placeholder={cuotaMin ? `Mínimo ${cuotaMin.toLocaleString("es-CO")}` : "Ej. 50.000"}
+                />
+                <p className="text-muted-foreground mt-1 text-[11px]">
+                  Lo que deja hoy para separar el número. Queda debiendo{" "}
+                  {formatCOP(Math.max(0, precio - abonoNum))} y lo puede seguir abonando.
+                </p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Apartado que abona por partes: cuánto lleva, cuánto falta y el
+            siguiente abono. El medio de pago es el de arriba. */}
+        {boleta && boleta.estado !== "pagado" && !editando && !confirmandoLiberar && precio > 0 && (
+          <div className="border-border flex flex-col gap-2 rounded-lg border p-3 text-sm">
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground text-xs">Abonado</span>
+              <span>
+                <b>{formatCOP(abonado)}</b>{" "}
+                <span className="text-muted-foreground text-xs">de {formatCOP(precio)} · falta {formatCOP(saldo)}</span>
+              </span>
+            </div>
+            <div className="bg-muted h-1.5 overflow-hidden rounded-full">
+              <div
+                className="bg-primary h-full rounded-full"
+                style={{ width: `${precio > 0 ? Math.min(100, (abonado / precio) * 100) : 0}%` }}
+              />
+            </div>
+            {abonos.length > 0 && (
+              <ul className="flex flex-col gap-1 text-xs">
+                {abonos.map((a) => (
+                  <li key={a.id} className="flex items-center justify-between gap-2">
+                    <span className="text-muted-foreground">
+                      {new Date(a.created_at).toLocaleDateString("es-CO")} · {METODO_LABEL[a.metodo]}
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <b>{formatCOP(a.monto)}</b>
+                      <button
+                        type="button"
+                        disabled={pending}
+                        onClick={() => correr(() => eliminarAbonoBoleta(a.id), "Abono eliminado")}
+                        aria-label="Eliminar abono"
+                        className="text-muted-foreground hover:text-destructive"
+                      >
+                        <X className="size-3.5" />
+                      </button>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <div className="flex gap-2">
+              <InputMoneda value={abono} onChange={setAbono} placeholder="Nuevo abono" />
+              <Button
+                type="button"
+                variant="outline"
+                disabled={pending || abonoNum <= 0 || abonoNum > saldo || abonoBajo}
+                onClick={() =>
+                  correr(
+                    () => abonarBoleta({ boleta_id: boleta.id, monto: abonoNum, metodo }),
+                    abonoNum === saldo ? "Abono registrado: número pagado" : "Abono registrado",
+                  )
+                }
+              >
+                <PiggyBank className="size-4" /> Abonar
+              </Button>
+            </div>
+            {abonoBajo && (
+              <p className="text-destructive text-[11px]">La cuota mínima es {formatCOP(cuotaMin)}.</p>
+            )}
+            {abonoNum > saldo && (
+              <p className="text-destructive text-[11px]">El abono supera lo que falta ({formatCOP(saldo)}).</p>
+            )}
           </div>
         )}
 
         {/* Medio de pago: al cobrar se elige; si ya está pagado, tocar el otro
             lo corrige al instante (sin cerrar el modal). */}
         {(!boleta || (!editando && !confirmandoLiberar)) && (
-          <Campo label={boleta?.estado === "pagado" ? "Pagó con" : "Si ya pagó, ¿cómo?"}>
+          <Campo
+            label={
+              boleta?.estado === "pagado"
+                ? "Pagó con"
+                : abonoNum > 0
+                  ? "El abono lo hizo por"
+                  : "Si ya pagó, ¿cómo?"
+            }
+          >
             <Segmentado
               value={metodo}
               onChange={(v) => {
@@ -234,7 +356,7 @@ export function BoletaModal({
             <>
               <Button
                 variant="outline"
-                disabled={pending || !nombre.trim()}
+                disabled={pending || !nombre.trim() || abonoBajo}
                 onClick={() =>
                   correr(
                     () =>
@@ -245,12 +367,14 @@ export function BoletaModal({
                         comprador_telefono: telefono.trim() || null,
                         responsable_venta: responsable.trim() || null,
                         pagado: false,
+                        metodo_pago: abonoNum > 0 ? metodo : null,
+                        abono: Math.min(abonoNum, precio || abonoNum),
                       }),
-                    "Número apartado",
+                    abonoNum > 0 ? "Número separado con abono" : "Número apartado",
                   )
                 }
               >
-                <Clock className="size-4" /> Apartar
+                <Clock className="size-4" /> {abonoNum > 0 ? "Separar con abono" : "Apartar"}
               </Button>
               <Button
                 disabled={pending || !nombre.trim()}
@@ -337,7 +461,7 @@ export function BoletaModal({
                     correr(() => marcarPagoBoleta(boleta.id, true, metodo), "Pago registrado")
                   }
                 >
-                  <Check className="size-4" /> Marcar pagado
+                  <Check className="size-4" /> {abonado > 0 ? `Pagar saldo (${formatCOP(saldo)})` : "Marcar pagado"}
                 </Button>
               )}
             </>

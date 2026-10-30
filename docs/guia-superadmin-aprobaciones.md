@@ -17,9 +17,11 @@ En **`/superadmin/settings`** revisa:
 
 - **Medios de pago de la plataforma**: Nequi, cuenta, llave Bre-B, QR y **WhatsApp**. Es lo que ve el organizador cuando tiene que pagarte, y el WhatsApp es el botón de "Escribirnos" mientras su cuenta está en revisión.
 - **Precios**:
-  - Cobro por rifa: **1% de lo que recauda si vende todo**, mínimo **$8.000**.
-  - Tope según tamaño: **$29.900** hasta 1.000 números, **$79.900** hasta 5.000 y **$149.900** hasta 10.000.
-  - Gratis: la **primera rifa** de cada cuenta, de hasta **100 números**.
+  - Tarifa de activación según el **valor total potencial** de la rifa (números × precio, se venda o no todo).
+  - Rifa básica (valor potencial hasta **$3.000.000**): **1%**, mínimo **$9.900**, tope **$29.900** hasta 1.000 números.
+  - Rifa comercial (valor potencial **mayor a $3.000.000**): **$49.900** fijo, pago único, sin comisión por venta.
+  - Rifas grandes: tope de **$79.900** hasta 5.000 números y **$149.900** hasta 10.000 (si el 1% supera los $49.900).
+  - Gratis: la **primera rifa** de cada cuenta, de hasta **100 números** y máximo **$20.000 por número**.
   - PRO: el valor mensual y cuántas rifas cubre por mes.
 
 > El precio de una rifa **queda congelado** en el momento en que el organizador la activa. Si cambias tarifas después, los cobros que ya existen no se mueven.
@@ -62,7 +64,8 @@ Ejemplos de cuánto le sale:
 | Rifa | Cobro |
 |---|---|
 | 100 números a $15.000 (no es la primera) | $15.000 |
-| 1.000 números a $10.000 | $29.900 |
+| 100 números a $150.000 ($15M potencial) | $49.900 |
+| 1.000 números a $10.000 | $49.900 |
 | 10.000 números a $1.500 (la moto) | $149.900 |
 
 ---

@@ -116,7 +116,7 @@ export default async function RifaDetallePage({
               <Pencil className="size-3.5" /> Editar
             </Link>
           )}
-          {rifa.estado === "borrador" && <ActivarRifaButton rifaId={rifa.id} />}
+          {rifa.estado === "borrador" && <ActivarRifaButton rifaId={rifa.id} nombreRifa={rifa.nombre} reenviable={superadmin} />}
           <EstadoRifaControl rifaId={rifa.id} estado={rifa.estado} />
         </div>
       </header>

@@ -20,7 +20,13 @@ import {
   type DecoracionRifa,
   type TemaRifa,
 } from "@/lib/temas-rifa";
-import { formatNumero, labelSorteoPropio } from "@/lib/rifa";
+import {
+  formatNumero,
+  labelSorteoPropio,
+  premiosPorFecha,
+  reglasPagoTexto,
+} from "@/lib/rifa";
+import { TemaPreview } from "@/components/rifa/tema-preview";
 import type { CriterioPremio, OrdenSorteo, Premio, Rifa, TipoRifa } from "@/types";
 
 interface PremioDraft {
@@ -30,6 +36,9 @@ interface PremioDraft {
   cantidad_ganadores: string;
   criterio: CriterioPremio | "";
   imagen_url: string;
+  fecha_loteria: string;
+  /** Rifas con abonos: se juega con la cuota mínima (si no, pago completo). */
+  con_cuota: boolean;
 }
 
 function premioVacio(): PremioDraft {
@@ -40,6 +49,8 @@ function premioVacio(): PremioDraft {
     cantidad_ganadores: "1",
     criterio: "",
     imagen_url: "",
+    fecha_loteria: "",
+    con_cuota: false,
   };
 }
 
@@ -73,6 +84,14 @@ export function RifaForm({
   const [minCompra, setMinCompra] = useState(String(rifa?.min_numeros_compra ?? 1));
   const [calculadora, setCalculadora] = useState(false);
   const [soloPagadas, setSoloPagadas] = useState(rifa?.solo_pagadas_juegan ?? true);
+  // Pago por cuotas (opcional).
+  const [permiteAbonos, setPermiteAbonos] = useState(rifa?.permite_abonos ?? false);
+  const [abonoMinimo, setAbonoMinimo] = useState(
+    rifa?.abono_minimo != null ? String(rifa.abono_minimo) : "",
+  );
+  const [diasLimite, setDiasLimite] = useState(
+    rifa?.dias_limite_pago != null ? String(rifa.dias_limite_pago) : "",
+  );
   const [loteria, setLoteria] = useState(rifa?.loteria ?? "");
   const [loteriaUrl, setLoteriaUrl] = useState(rifa?.loteria_url ?? "");
   const [fechaLoteria, setFechaLoteria] = useState(rifa?.fecha_loteria ?? "");
@@ -124,15 +143,67 @@ export function RifaForm({
           cantidad_ganadores: String(p.cantidad_ganadores),
           criterio: p.criterio ?? "",
           imagen_url: p.imagen_url ?? "",
+          fecha_loteria: p.fecha_loteria ?? "",
+          con_cuota: p.minimo_para_jugar != null,
         }))
       : [premioVacio()],
   );
+  // Opcional: cada premio se juega con la lotería de su propia fecha.
+  const [porFecha, setPorFecha] = useState(premiosPorFecha(premiosIniciales ?? []));
+  const sorteoPorFecha = tipo === "loteria" && premios.length > 1 && porFecha;
 
   function setPremio(i: number, patch: Partial<PremioDraft>) {
     setPremios((prev) => prev.map((p, idx) => (idx === i ? { ...p, ...patch } : p)));
   }
 
+  // Cómo se verán las reglas de pago en el enlace público, con lo que hay ahora.
+  const cuotaNum = Number(abonoMinimo) || null;
+  const reglasPreview = reglasPagoTexto(
+    {
+      precio_boleta: Number(precio) || 0,
+      solo_pagadas_juegan: soloPagadas,
+      permite_abonos: permiteAbonos,
+      abono_minimo: cuotaNum,
+      dias_limite_pago: diasLimite.trim() !== "" ? Number(diasLimite) || 0 : null,
+      fecha_loteria: fechaLoteria || null,
+    },
+    premios
+      .filter((p) => p.descripcion.trim())
+      .map((p, i) => ({
+        orden: i + 1,
+        fecha_loteria: sorteoPorFecha ? p.fecha_loteria || null : null,
+        minimo_para_jugar: permiteAbonos && p.con_cuota ? cuotaNum : null,
+      })),
+  );
+
+  /**
+   * Al activar las cuotas: los premios anticipados se juegan con la cuota
+   * mínima y el último (el mayor) exige el pago completo. Es el caso típico
+   * ("con los $50.000 ya participas en los de $500.000"); se puede cambiar.
+   */
+  function activarAbonos(si: boolean) {
+    setPermiteAbonos(si);
+    if (!si || premios.some((p) => p.con_cuota)) return;
+    const porFechaOrden = premios
+      .map((p, i) => ({ i, f: p.fecha_loteria || "" }))
+      .sort((a, b) => a.f.localeCompare(b.f) || a.i - b.i);
+    const ultimo = porFechaOrden.at(-1)?.i;
+    setPremios((prev) => prev.map((p, i) => ({ ...p, con_cuota: prev.length > 1 && i !== ultimo })));
+  }
+
   function submit() {
+    if (soloPagadas && permiteAbonos && !(Number(abonoMinimo) > 0)) {
+      toast.error("Indica la cuota mínima para separar con abono");
+      return;
+    }
+    if (sorteoPorFecha && premios.some((p) => p.descripcion.trim() && !p.fecha_loteria)) {
+      toast.error("Indica la fecha de lotería de cada premio");
+      return;
+    }
+    // La fecha de la rifa es la del último sorteo (el que la cierra).
+    const fechasPremios = premios.map((p) => p.fecha_loteria).filter(Boolean).sort();
+    const fechaRifa = sorteoPorFecha ? (fechasPremios.at(-1) ?? null) : fechaLoteria || null;
+
     const input = {
       nombre: nombre.trim(),
       descripcion: descripcion.trim() || null,
@@ -153,9 +224,15 @@ export function RifaForm({
       mostrar_simulacion: mostrarSimulacion,
       loteria: tipo === "loteria" ? loteria.trim() || null : null,
       loteria_url: tipo === "loteria" ? loteriaUrl.trim() || null : null,
-      fecha_loteria: tipo === "loteria" ? fechaLoteria || null : null,
+      fecha_loteria: tipo === "loteria" ? fechaRifa : null,
       modo_cifras: tipo === "loteria" ? modoCifras : null,
       fecha_sorteo: fechaSorteo || null,
+      permite_abonos: soloPagadas && permiteAbonos,
+      abono_minimo: soloPagadas && permiteAbonos ? Number(abonoMinimo) || null : null,
+      dias_limite_pago:
+        soloPagadas && diasLimite.trim() !== ""
+          ? Math.min(30, Math.max(0, Number(diasLimite) || 0))
+          : null,
       tenant_id: tenantId || null,
     };
 
@@ -173,6 +250,9 @@ export function RifaForm({
         orden: i + 1,
         // Solo los productos llevan foto; al pasar a "Dinero" se descarta.
         imagen_url: p.tipo === "producto" ? p.imagen_url || null : null,
+        fecha_loteria: sorteoPorFecha ? p.fecha_loteria || null : null,
+        minimo_para_jugar:
+          soloPagadas && permiteAbonos && p.con_cuota ? Number(abonoMinimo) || null : null,
       }));
 
     startTransition(async () => {
@@ -411,7 +491,13 @@ export function RifaForm({
             <Input value={loteria} onChange={(e) => setLoteria(e.target.value)} placeholder="Lotería de ..." />
           </Field>
           <Field label="Fecha de la lotería">
-            <Input type="date" value={fechaLoteria ?? ""} onChange={(e) => setFechaLoteria(e.target.value)} />
+            {sorteoPorFecha ? (
+              <p className="text-muted-foreground pt-2 text-xs">
+                Cada premio juega en su propia fecha (abajo, en Premios).
+              </p>
+            ) : (
+              <Input type="date" value={fechaLoteria ?? ""} onChange={(e) => setFechaLoteria(e.target.value)} />
+            )}
           </Field>
           <Field label="Sitio oficial de resultados (opcional)" className="sm:col-span-2">
             <Input
@@ -468,6 +554,90 @@ export function RifaForm({
         </Field>
       </section>
 
+      {/* Reglas de pago (opcionales): cuotas y fecha límite. Se muestran en el
+          enlace público tal como aparecen en la vista previa de abajo. */}
+      {soloPagadas && (
+        <section className="border-border flex flex-col gap-3 rounded-xl border p-4">
+          <p className="text-muted-foreground text-sm font-medium">Reglas de pago (opcional)</p>
+          <label className="flex items-start gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={permiteAbonos}
+              onChange={(e) => activarAbonos(e.target.checked)}
+              className="mt-0.5"
+            />
+            <span>
+              <span className="font-medium">Permitir separar con abono y pagar por cuotas</span>
+              <span className="text-muted-foreground block text-xs">
+                El comprador separa su número con una cuota y abona el resto.
+              </span>
+            </span>
+          </label>
+          {permiteAbonos && (
+            <div className="flex flex-col gap-3">
+              <Field label="Cuota mínima (COP)">
+                <InputMoneda value={abonoMinimo} onChange={setAbonoMinimo} placeholder="50.000" />
+              </Field>
+              {/* Qué exige cada premio para jugarlo */}
+              {premios.some((p) => p.descripcion.trim()) && (
+                <div className="flex flex-col gap-2">
+                  <Label className="text-muted-foreground text-xs font-medium">
+                    ¿Con qué juega cada premio?
+                  </Label>
+                  {premios.map((p, i) =>
+                    p.descripcion.trim() ? (
+                      <div key={i} className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="text-sm">
+                          {i + 1}° {p.descripcion}
+                          {sorteoPorFecha && p.fecha_loteria && (
+                            <span className="text-muted-foreground text-xs"> · {p.fecha_loteria.split("-").reverse().join("/")}</span>
+                          )}
+                        </span>
+                        <Segmented
+                          value={p.con_cuota ? "cuota" : "completo"}
+                          onChange={(v) => setPremio(i, { con_cuota: v === "cuota" })}
+                          options={[
+                            {
+                              value: "cuota",
+                              label: cuotaNum ? `Con ${cuotaNum.toLocaleString("es-CO")}` : "Con la cuota",
+                            },
+                            { value: "completo", label: "Pago completo" },
+                          ]}
+                        />
+                      </div>
+                    ) : null,
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+          <Field label="Fecha límite de pago (opcional)">
+            <div className="flex items-center gap-2">
+              <Input
+                inputMode="numeric"
+                value={diasLimite}
+                onChange={(e) => setDiasLimite(e.target.value.replace(/\D/g, "").slice(0, 2))}
+                placeholder="—"
+                className="w-20"
+              />
+              <span className="text-muted-foreground text-xs">
+                día(s) antes de cada sorteo (0 = el mismo día; vacío = sin límite)
+              </span>
+            </div>
+          </Field>
+          {reglasPreview.length > 0 && (
+            <div className="bg-muted/40 rounded-lg p-3 text-xs">
+              <p className="text-muted-foreground mb-1 font-medium">Así se verá en el enlace:</p>
+              <ul className="list-disc space-y-0.5 pl-4">
+                {reglasPreview.map((l) => (
+                  <li key={l}>{l}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </section>
+      )}
+
       {/* Imágenes de la publicación */}
       <section className="border-border grid gap-4 rounded-xl border p-4 sm:grid-cols-2">
         <p className="text-muted-foreground text-sm font-medium sm:col-span-2">
@@ -488,8 +658,9 @@ export function RifaForm({
         />
       </section>
 
-      {/* Tema visual */}
-      <section className="flex flex-col gap-2">
+      {/* Tema visual + vista previa en vivo */}
+      <section className="grid gap-4 md:grid-cols-[1fr_auto] md:items-start">
+      <div className="flex flex-col gap-2">
         <Label className="text-muted-foreground text-xs font-medium">
           Tema del enlace público y el flyer
         </Label>
@@ -532,6 +703,16 @@ export function RifaForm({
             </button>
           ))}
         </div>
+      </div>
+      <div className="flex flex-col gap-1.5">
+        <Label className="text-muted-foreground text-xs font-medium">Vista previa</Label>
+        <TemaPreview
+          tema={tema}
+          decoracion={decoracion}
+          nombre={nombre}
+          imagenFondoUrl={imagenFondoUrl || undefined}
+        />
+      </div>
       </section>
 
       {/* Premios */}
@@ -542,6 +723,23 @@ export function RifaForm({
             <Plus className="size-3.5" /> Agregar premio
           </Button>
         </div>
+        {tipo === "loteria" && premios.length > 1 && (
+          <label className="border-border flex items-start gap-2 rounded-xl border p-3 text-sm">
+            <input
+              type="checkbox"
+              checked={porFecha}
+              onChange={(e) => setPorFecha(e.target.checked)}
+              className="mt-0.5"
+            />
+            <span>
+              <span className="font-medium">Los premios se sortean en fechas distintas</span>
+              <span className="text-muted-foreground block text-xs">
+                Ej. 1° premio el 19 de noviembre, 2° el 10 de diciembre y el mayor el 24 de
+                diciembre. Cada premio se resuelve con el resultado de la lotería de su fecha.
+              </span>
+            </span>
+          </label>
+        )}
         <div className="flex flex-col gap-3">
           {premios.map((p, i) => (
             <div key={i} className="border-border grid gap-3 rounded-xl border p-3 sm:grid-cols-2">
@@ -582,6 +780,15 @@ export function RifaForm({
                       { value: "ultimas_2", label: `Últimas ${formato} cifras` },
                       { value: "primeras_2", label: `Primeras ${formato} cifras` },
                     ]}
+                  />
+                </Field>
+              )}
+              {sorteoPorFecha && (
+                <Field label="Fecha de la lotería de este premio">
+                  <Input
+                    type="date"
+                    value={p.fecha_loteria}
+                    onChange={(e) => setPremio(i, { fecha_loteria: e.target.value })}
                   />
                 </Field>
               )}

@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Copy, MessageCircle, Rocket } from "lucide-react";
+import { Copy, MessageCircle, Rocket, Share2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { activarRifa } from "@/actions/rifas";
@@ -22,7 +22,17 @@ import { waLink } from "@/lib/whatsapp";
 import type { PlataformaPagoConfig } from "@/types";
 
 /** Activa la rifa aplicando la cuota/plan. Si requiere pago, muestra el cobro. */
-export function ActivarRifaButton({ rifaId }: { rifaId: string }) {
+export function ActivarRifaButton({
+  rifaId,
+  nombreRifa,
+  reenviable = false,
+}: {
+  rifaId: string;
+  /** Superadmin: muestra el mensaje de cobro listo para reenviar al organizador. */
+  reenviable?: boolean;
+  /** Para el mensaje que se reenvía al organizador. */
+  nombreRifa?: string;
+}) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [montoPendiente, setMontoPendiente] = useState<number | null>(null);
@@ -117,6 +127,9 @@ export function ActivarRifaButton({ rifaId }: { rifaId: string }) {
           )}
 
           <PaymentDetails pago={pago} monto={montoPendiente ?? 0} />
+          {reenviable && (
+            <ReenviarCobro pago={pago} monto={montoPendiente ?? 0} nombreRifa={nombreRifa} />
+          )}
           <DialogFooter>
             <Button
               variant="outline"
@@ -184,6 +197,82 @@ function PaymentDetails({ pago, monto }: { pago: PlataformaPagoConfig | null; mo
             <MessageCircle className="size-3.5" /> Enviar comprobante por WhatsApp
           </a>
         )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Texto listo para reenviar al organizador (lo usa el superadmin cuando arma la
+ * rifa por él): cuánto cuesta, a dónde transferir y que mande el comprobante.
+ */
+function mensajeCobro(pago: PlataformaPagoConfig | null, monto: number, nombreRifa?: string) {
+  const cuentaNumero = pago?.cuenta_numero ?? pago?.nequi_llave ?? null;
+  const cuentaLabel = labelCuentaPago(pago?.cuenta_tipo ?? (pago?.nequi_llave ? "nequi" : null));
+  const lineas = [
+    "¡Hola! 👋",
+    `Para activar ${nombreRifa ? `tu rifa *${nombreRifa}*` : "tu rifa"} el costo es de *${formatCOP(monto)}*.`,
+    "",
+    "Puedes transferir a:",
+    pago?.titular ? `• Titular: ${pago.titular}` : null,
+    cuentaNumero ? `• ${cuentaLabel}: ${cuentaNumero}` : null,
+    pago?.llave ? `• Llave: ${pago.llave}` : null,
+    "",
+    pago?.whatsapp
+      ? `Por favor envía el comprobante de pago por WhatsApp al ${pago.whatsapp}.`
+      : "Por favor envía el comprobante de pago por este medio.",
+    "Apenas confirmemos el pago, la rifa queda activa y lista para compartir. ¡Gracias!",
+  ];
+  return lineas.filter((l) => l !== null).join("\n");
+}
+
+function ReenviarCobro({
+  pago,
+  monto,
+  nombreRifa,
+}: {
+  pago: PlataformaPagoConfig | null;
+  monto: number;
+  nombreRifa?: string;
+}) {
+  const texto = mensajeCobro(pago, monto, nombreRifa);
+
+  async function compartir() {
+    if (navigator.share) {
+      try {
+        await navigator.share({ text: texto });
+        return;
+      } catch {
+        // Cancelado por el usuario: no hace falta avisar.
+        return;
+      }
+    }
+    // Sin hoja de compartir (escritorio): WhatsApp deja elegir el chat.
+    window.open(`https://wa.me/?text=${encodeURIComponent(texto)}`, "_blank", "noreferrer");
+  }
+
+  async function copiar() {
+    try {
+      await navigator.clipboard.writeText(texto);
+      toast.success("Mensaje copiado");
+    } catch {
+      window.prompt("Copia este mensaje:", texto);
+    }
+  }
+
+  return (
+    <div className="border-border rounded-lg border p-3">
+      <p className="text-muted-foreground mb-2 text-xs">Mensaje para reenviar al organizador</p>
+      <pre className="bg-muted/40 max-h-40 overflow-auto whitespace-pre-wrap rounded-md p-2 font-sans text-xs">
+        {texto}
+      </pre>
+      <div className="mt-2 flex flex-wrap gap-2">
+        <Button type="button" size="sm" variant="outline" onClick={copiar}>
+          <Copy className="size-3.5" /> Copiar mensaje
+        </Button>
+        <Button type="button" size="sm" variant="outline" onClick={compartir}>
+          <Share2 className="size-3.5" /> Enviar
+        </Button>
       </div>
     </div>
   );

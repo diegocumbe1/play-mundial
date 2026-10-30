@@ -22,6 +22,8 @@ import type {
 
 /** Formatea COP. Reexport para tener todo el dominio rifa en un solo import. */
 export { formatCOP } from "@/lib/polla";
+import { formatCOP as cop } from "@/lib/polla";
+import { formatFechaCO } from "@/lib/fecha-co";
 
 /**
  * Enmascara un nombre para vistas públicas: conserva las 2 primeras letras de
@@ -147,22 +149,32 @@ export function calcularDashboard(
 ): DashboardRifa {
   const total = rifa.cantidad_numeros;
   const pagadas = boletas.filter((b) => b.estado === "pagado").length;
-  const pagadasEfectivo = boletas.filter(
-    (b) => b.estado === "pagado" && b.metodo_pago === "efectivo",
-  ).length;
   const pendientes = boletas.filter((b) => b.estado === "reservado").length;
   const vendidas = pagadas + pendientes;
   const libres = Math.max(0, total - vendidas);
 
-  const recaudado = pagadas * rifa.precio_boleta;
-  const porCobrar = pendientes * rifa.precio_boleta;
+  // Abonos (separar con saldo): un apartado que ya abonó cuenta lo abonado como
+  // recaudado y solo su saldo como por cobrar. Una pagada por abonos reparte el
+  // efectivo según sus abonos, no según el medio del último.
+  const abonadoReservadas = boletas
+    .filter((b) => b.estado === "reservado")
+    .reduce((s, b) => s + Math.min(b.monto_abonado ?? 0, rifa.precio_boleta), 0);
+  const efectivoDe = (b: Boleta) =>
+    (b.monto_abonado ?? 0) > 0
+      ? Math.min(b.abonado_efectivo ?? 0, rifa.precio_boleta)
+      : b.estado === "pagado" && b.metodo_pago === "efectivo"
+        ? rifa.precio_boleta
+        : 0;
+
+  const recaudado = pagadas * rifa.precio_boleta + abonadoReservadas;
+  const porCobrar = pendientes * rifa.precio_boleta - abonadoReservadas;
   const esperadoTotal = total * rifa.precio_boleta;
   const pctCumplimiento =
     esperadoTotal > 0 ? Math.round((recaudado / esperadoTotal) * 100) : 0;
   const pctVendido = total > 0 ? Math.round((vendidas / total) * 100) : 0;
 
   // Sin medio registrado (boletas viejas) se asume transferencia, el medio por defecto.
-  const recaudadoEfectivo = pagadasEfectivo * rifa.precio_boleta;
+  const recaudadoEfectivo = boletas.reduce((s, b) => s + efectivoDe(b), 0);
   const recaudadoTransferencia = recaudado - recaudadoEfectivo;
   const salidas = (metodo: MovimientoRifa["metodo"]) =>
     movimientos.filter((m) => m.metodo === metodo).reduce((s, m) => s + m.monto, 0);
@@ -431,6 +443,175 @@ export function elegirSeguidos(
   return Array.from({ length: n }, (_, i) => inicio + i);
 }
 
+/* -------------------------------------------------------------------------- */
+/* Reglas de pago por cuotas: quién juega cada premio                          */
+/* -------------------------------------------------------------------------- */
+
+export type ReglasCuotas = Pick<
+  Rifa,
+  | "precio_boleta"
+  | "solo_pagadas_juegan"
+  | "permite_abonos"
+  | "abono_minimo"
+  | "dias_limite_pago"
+  | "fecha_loteria"
+>;
+
+/** Lo que importa de un premio para saber quién lo juega. */
+export type ReglaPremio = {
+  fecha_loteria?: string | null;
+  /** Cuánto debe llevar pagado el número para jugarlo. null = pago completo. */
+  minimo_para_jugar?: number | null;
+};
+
+/** Fecha en que se juega un premio: la suya o la de la rifa. */
+export function fechaDePremio(rifa: Pick<Rifa, "fecha_loteria">, premio: ReglaPremio): string | null {
+  return (premio.fecha_loteria ?? rifa.fecha_loteria)?.slice(0, 10) ?? null;
+}
+
+/**
+ * Cuánto debe llevar pagado un número para jugar este premio. Por defecto el
+ * precio completo; un premio puede pedir menos ("con la cuota al día") solo si
+ * la rifa permite abonos.
+ */
+export function requeridoParaPremio(rifa: ReglasCuotas, premio: ReglaPremio): number {
+  const precio = rifa.precio_boleta;
+  if (!rifa.permite_abonos || !premio.minimo_para_jugar) return precio;
+  return Math.min(precio, premio.minimo_para_jugar);
+}
+
+/**
+ * Último instante en que un pago cuenta para el sorteo de `fecha`: fin del día
+ * (hora Colombia) `dias_limite_pago` días antes. `null` = sin límite.
+ */
+export function cortePagoSorteo(rifa: ReglasCuotas, fecha: string | null): Date | null {
+  if (rifa.dias_limite_pago == null || !fecha) return null;
+  const [y, m, d] = fecha.slice(0, 10).split("-").map(Number);
+  // 23:59:59 en Colombia (UTC−5) = 04:59:59 UTC del día siguiente.
+  return new Date(Date.UTC(y, m - 1, d - rifa.dias_limite_pago + 1, 4, 59, 59));
+}
+
+/** Día límite (AAAA-MM-DD) para tener el pago de un premio, o null sin límite. */
+export function diaLimitePago(rifa: ReglasCuotas, premio: ReglaPremio): string | null {
+  const fecha = fechaDePremio(rifa, premio);
+  if (rifa.dias_limite_pago == null || !fecha) return null;
+  const [y, m, d] = fecha.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d - rifa.dias_limite_pago)).toISOString().slice(0, 10);
+}
+
+/**
+ * Números que juegan ESTE premio: cuánto llevaban pagado al corte de su sorteo
+ * frente a lo que exige el premio. Sin "solo pagadas" juega todo lo vendido.
+ */
+export function elegiblesParaPremio(
+  rifa: ReglasCuotas,
+  premio: ReglaPremio,
+  boletas: Boleta[],
+  abonos: { boleta_id: string; monto: number; created_at: string }[] = [],
+): Boleta[] {
+  if (!rifa.solo_pagadas_juegan) {
+    return boletas.filter((b) => b.estado === "pagado" || b.estado === "reservado");
+  }
+  const requerido = requeridoParaPremio(rifa, premio);
+  const corte = cortePagoSorteo(rifa, fechaDePremio(rifa, premio))?.getTime() ?? Infinity;
+  const abonosPorBoleta = new Map<string, { monto: number; t: number }[]>();
+  for (const a of abonos) {
+    const lista = abonosPorBoleta.get(a.boleta_id) ?? [];
+    lista.push({ monto: a.monto, t: Date.parse(a.created_at) });
+    abonosPorBoleta.set(a.boleta_id, lista);
+  }
+  return boletas.filter((b) => {
+    if (b.estado === "libre") return false;
+    const propios = abonosPorBoleta.get(b.id);
+    const pagado = propios
+      ? propios.filter((a) => a.t <= corte).reduce((s, a) => s + a.monto, 0)
+      : b.estado === "pagado" && (!b.pagado_at || Date.parse(b.pagado_at) <= corte)
+        ? rifa.precio_boleta
+        : 0;
+    return pagado > 0 && pagado >= requerido;
+  });
+}
+
+/**
+ * Qué exige un premio, en corto, para su tarjeta: "Pago completo hasta el 18
+ * de noviembre". `null` si la rifa no tiene reglas de pago que contar.
+ */
+export function requisitoPremioTexto(rifa: ReglasCuotas, premio: ReglaPremio): string | null {
+  if (!rifa.solo_pagadas_juegan || (!rifa.permite_abonos && rifa.dias_limite_pago == null)) {
+    return null;
+  }
+  const req = requeridoParaPremio(rifa, premio);
+  const que = req >= rifa.precio_boleta ? "pago completo" : `mínimo ${cop(req)} abonados`;
+  const limite = diaLimitePago(rifa, premio);
+  return `Para jugar: ${que}${limite ? ` hasta el ${formatFechaCO(limite, { conAnio: false })}` : ""}`;
+}
+
+/**
+ * Reglas de pago en palabras, para el enlace público y la vista previa del
+ * formulario. Cada línea es una regla. Vacía si la rifa no tiene reglas de pago.
+ */
+export function reglasPagoTexto(rifa: ReglasCuotas, premios: (ReglaPremio & { orden?: number })[]): string[] {
+  if (!rifa.solo_pagadas_juegan || (!rifa.permite_abonos && rifa.dias_limite_pago == null)) {
+    return [];
+  }
+  const lineas: string[] = [];
+
+  if (rifa.permite_abonos && rifa.abono_minimo) {
+    const cuotas = Math.ceil(rifa.precio_boleta / rifa.abono_minimo);
+    // La última cuota vence con el último sorteo (menos el límite de pago).
+    const ultimo = [...premios].sort((a, b) =>
+      (fechaDePremio(rifa, a) ?? "").localeCompare(fechaDePremio(rifa, b) ?? ""),
+    ).at(-1);
+    const vence = ultimo ? (diaLimitePago(rifa, ultimo) ?? fechaDePremio(rifa, ultimo)) : null;
+    lineas.push(
+      `Separa tu número con ${cop(rifa.abono_minimo)}` +
+        (cuotas > 1 ? ` y paga en ${cuotas} cuotas` : "") +
+        (vence ? `; la última hasta el ${formatFechaCO(vence, { conAnio: false })}.` : "."),
+    );
+  }
+
+  // Un renglón por premio con fecha: qué exige y hasta cuándo.
+  const conFecha = premios
+    .map((p, i) => ({ p, i, fecha: fechaDePremio(rifa, p) }))
+    .filter((x) => x.fecha);
+  const distintas = new Set(conFecha.map((x) => x.fecha)).size > 1;
+  if (distintas) {
+    for (const { p, i, fecha } of conFecha) {
+      const req = requeridoParaPremio(rifa, p);
+      const limite = diaLimitePago(rifa, p) ?? fecha!;
+      lineas.push(
+        `${p.orden ?? i + 1}° premio (${formatFechaCO(fecha, { conAnio: false })}): ` +
+          (req >= rifa.precio_boleta ? "número pagado completo" : `mínimo ${cop(req)} abonados`) +
+          ` a más tardar el ${formatFechaCO(limite, { conAnio: false })}.`,
+      );
+    }
+  } else {
+    const req = premios.length ? Math.min(...premios.map((p) => requeridoParaPremio(rifa, p))) : rifa.precio_boleta;
+    lineas.push(
+      req >= rifa.precio_boleta
+        ? "Solo juegan los números pagados completos."
+        : `Juegan los números con al menos ${cop(req)} abonados.`,
+    );
+    if (rifa.dias_limite_pago != null) {
+      lineas.push(
+        rifa.dias_limite_pago === 0
+          ? "El pago cuenta si queda registrado a más tardar el día del sorteo."
+          : `El pago cuenta si queda registrado a más tardar ${rifa.dias_limite_pago} día(s) antes del sorteo.`,
+      );
+    }
+  }
+  lineas.push("Número sin pagar a tiempo no participa en ese premio.");
+  return lineas;
+}
+
+/**
+ * ¿Los premios juegan en fechas distintas? Basta con que uno traiga su propia
+ * fecha de lotería: entonces cada premio se resuelve con su propio resultado.
+ */
+export function premiosPorFecha(premios: { fecha_loteria?: string | null }[]): boolean {
+  return premios.some((p) => !!p.fecha_loteria);
+}
+
 /** Boletas elegibles para el sorteo (regla "no pagada no juega"). */
 export function boletasElegibles(rifa: Rifa, boletas: Boleta[]): Boleta[] {
   return boletas.filter((b) =>
@@ -451,18 +632,23 @@ export function resolverGanadores(
   premios: Premio[],
   boletas: Boleta[],
   resultado: string,
+  /** Reglas de cuotas: qué números juegan ESE premio. Por defecto, la regla simple. */
+  elegiblesDe?: (premio: Premio) => Boleta[],
 ): GanadorResuelto[] {
   const cifras = cifrasDeResultado(resultado, rifa.formato_cifras);
   if (!cifras) return [];
 
   const elegibles = boletasElegibles(rifa, boletas);
-  const porNumero = new Map(elegibles.map((b) => [b.numero, b]));
+  const porNumeroGeneral = new Map(elegibles.map((b) => [b.numero, b]));
 
   return premios
     .filter((p) => p.criterio !== null)
     .map((premio) => {
       const numero =
         premio.criterio === "primeras_2" ? cifras.primeras : cifras.ultimas;
+      const porNumero = elegiblesDe
+        ? new Map(elegiblesDe(premio).map((b) => [b.numero, b]))
+        : porNumeroGeneral;
       const boleta = porNumero.get(numero) ?? null;
       return {
         premio_id: premio.id,

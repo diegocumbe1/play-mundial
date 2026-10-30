@@ -159,6 +159,63 @@ se hace desde el repo:
 
 ---
 
+## Fase 1.5 · Categorías, reglas y plantillas (2026-10-30)
+
+Caso guía: **Torneo Familia Fase 4** (Xtreme Park, Garzón · voleiplaya 3 vs 3 y
+5 vs 5 · 4–27 nov 2026). Modelo de negocio: **suscripción autogestionada**; el
+organizador configura y opera solo, con guía.
+
+- Migración `20261030000000_torneos_categorias_reglas.sql`: `categorias_torneo`,
+  `categoria_id` en equipos y premios (puesto único por torneo+categoría),
+  `torneos.reglas` (jsonb) y `plantillas_torneo` con la de voleiplaya sembrada.
+- `src/lib/torneo-reglas.ts`: esquema zod con defaults, `generarReglamento`
+  (reglamento + condiciones redactados desde las respuestas) y
+  `pasosConfiguracion` (guía de 10 minutos).
+- Pestaña **Categorías y reglas** en el panel + guía en el Resumen.
+- Botón **Ver demo Fase 4** (`crearTorneoDemo`): torneo en borrador con
+  categorías, premios, reglas, reglamento, equipos y gastos de ejemplo.
+- Página pública: premiación por categoría, la inscripción pide categoría y el
+  equipo acepta el reglamento.
+- Propuesta comercial en vivo: `/propuesta/[slug]`, valores en `src/lib/propuestas.ts`.
+
+Luego, el mismo día:
+- `20261030010000_torneos_encuentros.sql`: partidos con marcador por sets y
+  `torneos.es_demo`. Núcleo `src/lib/torneo-fixture.ts` (grupos en serpiente,
+  todos contra todos, tabla calculada con desempate, llaves, simulación).
+- Pestaña **Fixture y resultados** (en vivo, posiciones, eliminatorias, podio,
+  resultados) y lo mismo en `/t/[slug]`, que se refresca cada 15 s si hay
+  partidos en vivo.
+- **Demos separadas** (botón "Ver demos" → `crearTorneoDemo(variante)`):
+  *Configuración* (borrador), *En juego* (30 equipos, grupos con partidos en
+  vivo) y *Finalizado* (llaves y podio). Cada una es un torneo aparte; volver a
+  crearla reemplaza la anterior. Internamente usan `simularEtapaDemo`.
+- `20261030020000_pagos_equipo_torneo.sql`: abonos por equipo (parciales y
+  divididos efectivo/transferencia); Finanzas muestra el cuadre de caja.
+- El superadmin publica sin pasar por planes ni cobros.
+
+- `20261030030000_jugadores_torneo.sql`: plantilla por equipo (nombre,
+  documento, género, externo, referente, referencia de cliente), validada con
+  las reglas en `src/lib/torneo-jugadores.ts` (formulario y servidor). Sin
+  acceso `anon`.
+- Fixture real: `generarFixture` (grupos / liga / eliminación, horarios sin
+  choques), `generarEliminatorias` (siembra 1° vs 2°, pases directos) y
+  `guardarResultado` (sets validados con las reglas, W.O., en vivo, reinicio,
+  avance automático en la llave y al tercer puesto).
+
+- Marcador del juez (dc-sport-score, opcional, `src/lib/marcador-externo.ts`):
+  en "Cargar resultado" → "Abrir marcador para el juez" crea la sala con los
+  equipos y las reglas (`POST /api/rooms/:sala/setup`) y da los enlaces del juez
+  y de la TV; "Traer marcador" (`GET /api/rooms/:sala`) llena los sets para que
+  el organizador los confirme o corrija. dc-sport-score nunca escribe aquí. La
+  página pública lee los puntos en vivo del marcador en cada refresco. Sin
+  cambios en dc-sport-score. Variables: `DC_SPORT_SCORE_URL`,
+  `DC_SPORT_SCORE_PUBLIC_URL`.
+
+Pendiente: editor de plantillas en `/superadmin`, edad mínima (no se pide fecha
+de nacimiento), reprogramar un partido, proteger el control del juez (hoy
+cualquiera con el enlace puede marcar) y tiempo real punto a punto (rol
+espectador + `watch` en dc-sport-score).
+
 ## Siguientes fases
 
 ### Fase 2 · Fixture y resultados

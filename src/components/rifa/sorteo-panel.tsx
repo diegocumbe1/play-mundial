@@ -43,9 +43,12 @@ import {
   enmascararNombre,
   formatNumero,
   inicioNumeros,
+  labelCriterioPremio,
   labelSorteoPropio,
+  premiosPorFecha,
   ultimoNumero,
 } from "@/lib/rifa";
+import { formatFechaCO } from "@/lib/fecha-co";
 
 /** Panel de sorteo: ingresar resultado (lotería) o ganador manual (interna) + publicar. */
 export function SorteoPanel({
@@ -138,7 +141,39 @@ export function SorteoPanel({
 
   return (
     <div className="flex flex-col gap-4">
-      {rifa.tipo === "loteria" ? (
+      {rifa.tipo === "loteria" && premiosPorFecha(premios) ? (
+        <div className="flex flex-col gap-2">
+          <p className="text-muted-foreground text-xs">
+            Cada premio se resuelve con el resultado de la lotería
+            {rifa.loteria ? ` (${rifa.loteria})` : ""} de su fecha. Se cruzan las cifras con las boletas
+            {rifa.solo_pagadas_juegan ? " pagadas" : " vendidas"} al momento de resolver.
+          </p>
+          {[...premios]
+            .sort((a, b) => a.orden - b.orden)
+            .map((p) => (
+              <ResultadoPremio
+                key={p.id}
+                rifa={rifa}
+                premio={p}
+                ganadores={ganadores.filter((g) => g.premio_id === p.id)}
+                nombre={(n) => porNumero.get(n)?.comprador_nombre ?? null}
+                ancho={ancho}
+                pending={pending}
+                correr={correr}
+              />
+            ))}
+          {rifa.loteria_url && (
+            <a
+              href={rifa.loteria_url}
+              target="_blank"
+              rel="noreferrer"
+              className="text-primary inline-flex items-center gap-1 text-xs font-medium hover:underline"
+            >
+              <ExternalLink className="size-3.5" /> Ver resultados oficiales
+            </a>
+          )}
+        </div>
+      ) : rifa.tipo === "loteria" ? (
         <div className="flex flex-col gap-2">
           <Label className="text-muted-foreground text-xs">
             Número ganador de la lotería {rifa.loteria ? `(${rifa.loteria})` : ""}
@@ -443,6 +478,78 @@ export function SorteoPanel({
             </p>
           </div>
         </div>
+      )}
+    </div>
+  );
+}
+
+/** Un premio que juega en su propia fecha: su resultado y su ganador. */
+function ResultadoPremio({
+  rifa,
+  premio,
+  ganadores,
+  nombre,
+  ancho,
+  pending,
+  correr,
+}: {
+  rifa: Rifa;
+  premio: Premio;
+  ganadores: Ganador[];
+  nombre: (numero: number) => string | null;
+  ancho: number;
+  pending: boolean;
+  correr: (accion: () => Promise<{ success: boolean; error?: string }>, ok: string) => void;
+}) {
+  const [resultado, setResultado] = useState(premio.resultado_loteria ?? "");
+  const publicado = ganadores.some((g) => g.publicado);
+
+  return (
+    <div className="border-border flex flex-col gap-2 rounded-xl border p-3">
+      <div className="flex flex-wrap items-baseline justify-between gap-1">
+        <p className="text-sm font-semibold">
+          {premio.orden}° · {premio.descripcion}
+        </p>
+        <p className="text-muted-foreground text-xs">
+          {premio.fecha_loteria ? formatFechaCO(premio.fecha_loteria) : "Sin fecha"}
+          {premio.criterio ? ` · ${labelCriterioPremio(premio.criterio, rifa.formato_cifras)}` : ""}
+        </p>
+      </div>
+      <div className="flex gap-2">
+        <Input
+          value={resultado}
+          onChange={(e) => setResultado(e.target.value)}
+          placeholder="Ej. 1234"
+          inputMode="numeric"
+          className="max-w-40"
+          disabled={publicado}
+        />
+        <Button
+          variant={premio.resultado_loteria ? "outline" : "default"}
+          disabled={pending || publicado || !resultado.trim()}
+          onClick={() =>
+            correr(async () => {
+              const r = await ingresarResultadoLoteria(rifa.id, resultado, premio.id);
+              if (r.success && r.data.sinVender) {
+                toast.message("Ese número no estaba vendido (o no estaba pagado)");
+              }
+              return r;
+            }, "Premio resuelto")
+          }
+        >
+          <Sparkles className="size-4" /> {premio.resultado_loteria ? "Corregir" : "Resolver"}
+        </Button>
+      </div>
+      {premio.resultado_loteria && (
+        <p className="text-muted-foreground text-xs">
+          Resultado {premio.resultado_loteria} ·{" "}
+          {ganadores.length > 0
+            ? ganadores
+                .map((g) => `${formatNumero(g.numero, ancho)} ${nombre(g.numero) ?? ""}`.trim())
+                .join(", ")
+            : "nadie tenía ese número"}
+          {publicado ? " · publicado" : ""}
+        </p>
       )}
     </div>
   );
