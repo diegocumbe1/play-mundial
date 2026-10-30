@@ -89,7 +89,7 @@ export default async function RifaDetallePage({
           <p className="text-sm text-amber-700 dark:text-amber-300">
             📦 Esta rifa está <b>archivada</b>: no se ve en el enlace público ni recibe reservas.
           </p>
-          <AccionesRifa rifa={rifa} />
+          <AccionesRifa rifa={rifa} esSuperadmin={superadmin} />
         </div>
       )}
 

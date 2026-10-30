@@ -115,7 +115,7 @@ export default async function RifasPage({
                 </div>
                 <EstadoRifaBadge estado={r.estado} />
               </Link>
-              <AccionesRifa rifa={r} />
+              <AccionesRifa rifa={r} esSuperadmin={membership?.rol === "superadmin"} />
             </li>
           ))}
         </ul>

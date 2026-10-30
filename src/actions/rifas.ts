@@ -765,18 +765,31 @@ export async function archivarRifa(rifaId: string, archivar: boolean): Promise<A
  * ventas reales. El cobro que tuviera queda en el historial (sin la rifa); si
  * estaba pendiente se anula para que nadie active una rifa que ya no existe.
  */
-export async function eliminarRifa(rifaId: string, confirmacion: string): Promise<ActionResult> {
+export async function eliminarRifa(
+  rifaId: string,
+  confirmacion: string,
+  /** Superadmin: por qué se borra una rifa publicada o con ventas (queda registrado). */
+  motivo?: string,
+): Promise<ActionResult> {
   const membership = await requireMembership();
   if (!membership) return { success: false, error: "Sin sesión" };
 
   const supabase = await createClient();
   const { data: rifa } = await supabase
     .from("rifas")
-    .select("id, nombre, slug_publico, archivada_at")
+    .select("id, tenant_id, nombre, estado, slug_publico, archivada_at, precio_boleta")
     .eq("id", rifaId)
     .maybeSingle();
   if (!rifa) return { success: false, error: "Rifa no encontrada" };
-  const r = rifa as { id: string; nombre: string; slug_publico: string; archivada_at: string | null };
+  const r = rifa as {
+    id: string;
+    tenant_id: string;
+    nombre: string;
+    estado: string;
+    slug_publico: string;
+    archivada_at: string | null;
+    precio_boleta: number;
+  };
   if (!r.archivada_at) {
     return { success: false, error: "Primero archiva la rifa; solo se borran rifas archivadas" };
   }
@@ -784,16 +797,76 @@ export async function eliminarRifa(rifaId: string, confirmacion: string): Promis
     return { success: false, error: "Escribe el nombre exacto de la rifa para confirmar" };
   }
 
+  const svc = createServiceRoleClient();
+  const { data: vendidas } = await svc
+    .from("boletas")
+    .select("estado, monto_abonado")
+    .eq("rifa_id", r.id)
+    .neq("estado", "libre");
+  const ventas = (vendidas as { estado: string; monto_abonado: number | null }[]) ?? [];
+  const protegida = r.estado !== "borrador" || ventas.length > 0;
+
+  if (protegida) {
+    // Publicada o con ventas: solo el superadmin, con motivo, y queda el rastro.
+    if (!(await esSuperadmin())) {
+      return {
+        success: false,
+        error:
+          r.estado !== "borrador"
+            ? "Una rifa que ya se publicó no se puede borrar: queda archivada. Si de verdad hay que borrarla, pídeselo al administrador."
+            : "Tiene números registrados: libéralos primero.",
+      };
+    }
+    const nota = motivo?.trim() ?? "";
+    if (nota.length < 10) {
+      return { success: false, error: "Escribe el motivo del borrado (mínimo 10 caracteres)" };
+    }
+    const pagados = ventas.filter((b) => b.estado === "pagado").length;
+    const recaudado =
+      pagados * r.precio_boleta +
+      ventas
+        .filter((b) => b.estado !== "pagado")
+        .reduce((s, b) => s + (b.monto_abonado ?? 0), 0);
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    const { error: errLog } = await svc.from("rifas_borradas").insert({
+      rifa_id: r.id,
+      tenant_id: r.tenant_id,
+      nombre: r.nombre,
+      estado: r.estado,
+      numeros_vendidos: ventas.length,
+      numeros_pagados: pagados,
+      recaudado,
+      motivo: nota,
+      borrado_por: user?.id ?? null,
+      borrado_por_email: user?.email ?? null,
+    });
+    // Sin rastro no se borra: es la condición para poder forzarlo.
+    if (errLog) return { success: false, error: `No se pudo registrar el borrado: ${errLog.message}` };
+  }
+
   // Los cobros solo los toca el superadmin por RLS: se anula con service role,
   // y solo el de ESTA rifa (ya se comprobó arriba que es del usuario).
-  await createServiceRoleClient()
+  await svc
     .from("cobros")
     .update({ estado: "anulado" })
     .eq("rifa_id", r.id)
     .eq("estado", "pendiente");
 
-  const { error } = await supabase.from("rifas").delete().eq("id", r.id);
-  if (error) return { success: false, error: error.message };
+  // El borrado forzado va por service role: el trigger de protección solo
+  // frena peticiones de usuario, y aquí ya se validó superadmin + motivo.
+  const { error } = protegida
+    ? await svc.from("rifas").delete().eq("id", r.id)
+    : await supabase.from("rifas").delete().eq("id", r.id);
+  if (error) {
+    const msg = error.message.includes("RIFA_NO_BORRABLE")
+      ? "Una rifa que ya se publicó no se puede borrar: queda archivada."
+      : error.message.includes("RIFA_CON_VENTAS")
+        ? "Tiene números registrados: libéralos primero."
+        : error.message;
+    return { success: false, error: msg };
+  }
 
   invalidarPublica(r.slug_publico);
   revalidatePath("/admin/rifas");

@@ -27,13 +27,20 @@ type Modal = "archivar" | "restaurar" | "borrar" | null;
  */
 export function AccionesRifa({
   rifa,
+  esSuperadmin = false,
 }: {
   rifa: { id: string; nombre: string; estado: EstadoRifa; archivada_at: string | null };
+  /** El superadmin puede borrar rifas publicadas, con motivo obligatorio. */
+  esSuperadmin?: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [modal, setModal] = useState<Modal>(null);
   const [confirmacion, setConfirmacion] = useState("");
+  const [motivo, setMotivo] = useState("");
+  // Publicada: el organizador no la puede borrar; el superadmin sí, con motivo.
+  const publicada = rifa.estado !== "borrador";
+  const pideMotivo = esSuperadmin && publicada;
   const archivada = !!rifa.archivada_at;
   // Una rifa en venta tiene compradores mirando el enlace: se avisa distinto.
   const enVenta = rifa.estado === "activa" || rifa.estado === "cerrada";
@@ -41,6 +48,7 @@ export function AccionesRifa({
   function cerrar() {
     setModal(null);
     setConfirmacion("");
+    setMotivo("");
   }
 
   function ejecutar(
@@ -153,6 +161,31 @@ export function AccionesRifa({
               y el cupo gratis no se recupera.
             </DialogDescription>
           </DialogHeader>
+          {publicada && !esSuperadmin && (
+            <p className="rounded-lg bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
+              Esta rifa ya se publicó: no se puede borrar, queda archivada. Si de verdad hay
+              que borrarla, pídeselo al administrador de la plataforma.
+            </p>
+          )}
+          {pideMotivo && (
+            <div className="flex flex-col gap-2 rounded-lg border border-red-500/40 bg-red-500/5 p-3">
+              <p className="text-xs text-red-700 dark:text-red-300">
+                <b>Borrado de superadministrador.</b> Esta rifa ya se publicó y puede tener
+                compradores y pagos. Se borra todo y queda registrado quién la borró, cuándo y
+                por qué.
+              </p>
+              <label className="text-muted-foreground block text-xs">
+                Motivo (obligatorio, mínimo 10 caracteres)
+              </label>
+              <textarea
+                value={motivo}
+                onChange={(e) => setMotivo(e.target.value)}
+                rows={2}
+                placeholder="Ej. rifa duplicada por error, la real es la otra"
+                className="border-input bg-background w-full rounded-lg border px-3 py-2 text-sm"
+              />
+            </div>
+          )}
           <div>
             <label className="text-muted-foreground mb-1.5 block text-xs">
               Para confirmar, escribe el nombre: <b className="text-foreground">{rifa.nombre}</b>
@@ -170,10 +203,15 @@ export function AccionesRifa({
             </Button>
             <Button
               variant="destructive"
-              disabled={pending || confirmacion.trim() !== rifa.nombre.trim()}
+              disabled={
+                pending ||
+                confirmacion.trim() !== rifa.nombre.trim() ||
+                (publicada && !esSuperadmin) ||
+                (pideMotivo && motivo.trim().length < 10)
+              }
               onClick={() =>
                 ejecutar(
-                  () => eliminarRifa(rifa.id, confirmacion),
+                  () => eliminarRifa(rifa.id, confirmacion, pideMotivo ? motivo : undefined),
                   "Rifa borrada",
                   "/admin/rifas?ver=archivadas",
                 )
