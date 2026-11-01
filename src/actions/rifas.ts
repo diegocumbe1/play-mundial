@@ -170,6 +170,7 @@ const rifaSchema = z.object({
   decoracion: z
     .enum(["ninguna", "floral", "hojas", "geometrico", "confeti", "navidad"])
     .default("floral"),
+  marca_ocupado: z.enum(["chulito", "tachado", "equis"]).default("chulito"),
   imagen_url: z.string().trim().url("La imagen debe ser una URL").nullable().optional().or(z.literal("")),
   imagen_fondo_url: z.string().trim().url("La imagen debe ser una URL").nullable().optional().or(z.literal("")),
   sorteo_bolas: z.number().int().min(1).max(10).default(1),
@@ -209,6 +210,7 @@ function camposRifa(d: z.infer<typeof rifaSchema>) {
     solo_pagadas_juegan: d.solo_pagadas_juegan,
     tema: d.tema,
     decoracion: d.decoracion,
+    marca_ocupado: d.marca_ocupado,
     imagen_url: d.imagen_url || null,
     imagen_fondo_url: d.imagen_fondo_url || null,
     sorteo_bolas: esLoteria ? 1 : d.sorteo_bolas,
@@ -1783,6 +1785,7 @@ export interface RifaPublica {
     | "slug_publico"
     | "tema"
     | "decoracion"
+    | "marca_ocupado"
     | "imagen_url"
     | "imagen_fondo_url"
     | "sorteo_bolas"
@@ -1970,6 +1973,7 @@ async function cargarRifaPublica(slug: string): Promise<ActionResult<RifaPublica
         slug_publico: r.slug_publico,
         tema: r.tema,
         decoracion: r.decoracion,
+        marca_ocupado: r.marca_ocupado,
         imagen_url: r.imagen_url,
         imagen_fondo_url: r.imagen_fondo_url,
         sorteo_bolas: r.sorteo_bolas,

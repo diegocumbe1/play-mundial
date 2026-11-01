@@ -1,5 +1,13 @@
 import { Decoracion } from "@/components/rifa/decoracion-rifa";
-import { conAlfa, getTema, type DecoracionRifa, type TemaRifa } from "@/lib/temas-rifa";
+import { CELDA_LIBRE, CELDA_OCUPADA, NumeroOcupado } from "@/components/rifa/marca-ocupado";
+import {
+  MARCA_OCUPADO_DEFAULT,
+  conAlfa,
+  getTema,
+  type DecoracionRifa,
+  type MarcaOcupado,
+  type TemaRifa,
+} from "@/lib/temas-rifa";
 
 /**
  * Miniatura de la página pública con el tema y la decoración elegidos, para
@@ -9,11 +17,13 @@ import { conAlfa, getTema, type DecoracionRifa, type TemaRifa } from "@/lib/tema
 export function TemaPreview({
   tema,
   decoracion,
+  marcaOcupado = MARCA_OCUPADO_DEFAULT,
   nombre,
   imagenFondoUrl,
 }: {
   tema: TemaRifa;
   decoracion: DecoracionRifa;
+  marcaOcupado?: MarcaOcupado;
   nombre: string;
   imagenFondoUrl?: string;
 }) {
@@ -22,7 +32,21 @@ export function TemaPreview({
   return (
     <div
       className="relative mx-auto w-full max-w-[260px] overflow-hidden rounded-2xl border shadow-sm"
-      style={{ background: t.bg, color: t.text, borderColor: t.line, minHeight: 360 }}
+      style={
+        {
+          background: t.bg,
+          color: t.text,
+          borderColor: t.line,
+          minHeight: 360,
+          // Mismas vars que la página pública: la grilla usa sus estilos de casilla.
+          "--rifa-accent": t.accent,
+          "--rifa-accent-ink": t.accentInk,
+          "--rifa-surface": t.surface,
+          "--rifa-text": t.text,
+          "--rifa-line": t.line,
+          "--rifa-ocupado-ink": t.ocupadoInk,
+        } as React.CSSProperties
+      }
     >
       {imagenFondoUrl && (
         <div className="absolute inset-0">
@@ -58,17 +82,15 @@ export function TemaPreview({
         <div className="grid grid-cols-5 gap-1">
           {Array.from({ length: 15 }, (_, i) => {
             const ocupado = i % 4 === 1;
+            const texto = String(i).padStart(2, "0");
             return (
               <span
                 key={i}
-                className="rounded border py-1 text-[9px] font-semibold"
-                style={{
-                  background: ocupado ? t.ocupadoBg : t.surface,
-                  color: ocupado ? t.ocupadoInk : t.text,
-                  borderColor: t.line,
-                }}
+                className={`flex items-center justify-center rounded py-1 text-[9px] font-semibold ${
+                  ocupado ? CELDA_OCUPADA : CELDA_LIBRE
+                }`}
               >
-                {String(i).padStart(2, "0")}
+                {ocupado ? <NumeroOcupado texto={texto} marca={marcaOcupado} /> : texto}
               </span>
             );
           })}

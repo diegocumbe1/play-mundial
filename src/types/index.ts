@@ -463,6 +463,8 @@ export interface Rifa {
   tema: string;
   /** Motivo decorativo (floral, hojas, geométrico, confeti, ninguna). */
   decoracion: string;
+  /** Cómo se marcan los números vendidos en la grilla pública (chulito, tachado, equis). */
+  marca_ocupado: string;
   /** Foto del premio: portada de la publicación. */
   imagen_url: string | null;
   /** Imagen de fondo de la publicación (se oscurece para que el texto se lea). */
@@ -687,6 +689,7 @@ export interface RifaInput {
   solo_pagadas_juegan: boolean;
   tema?: string;
   decoracion?: string;
+  marca_ocupado?: string;
   imagen_url?: string | null;
   imagen_fondo_url?: string | null;
   sorteo_bolas?: number;

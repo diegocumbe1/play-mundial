@@ -176,6 +176,24 @@ export function esTemaClaro(t: Tema): boolean {
 }
 
 /* -------------------------------------------------------------------------- */
+/* Marca de los números vendidos en la grilla pública                          */
+/* -------------------------------------------------------------------------- */
+
+export type MarcaOcupado = "chulito" | "tachado" | "equis";
+
+export const MARCAS_OCUPADO: { id: MarcaOcupado; nombre: string }[] = [
+  { id: "chulito", nombre: "Chulito ✓" },
+  { id: "tachado", nombre: "Tachado" },
+  { id: "equis", nombre: "Equis ✕" },
+];
+
+export const MARCA_OCUPADO_DEFAULT: MarcaOcupado = "chulito";
+
+export function getMarcaOcupado(m?: string | null): MarcaOcupado {
+  return MARCAS_OCUPADO.some((x) => x.id === m) ? (m as MarcaOcupado) : MARCA_OCUPADO_DEFAULT;
+}
+
+/* -------------------------------------------------------------------------- */
 /* Decoración: motivo de adornos que acompaña a la paleta                      */
 /* -------------------------------------------------------------------------- */
 

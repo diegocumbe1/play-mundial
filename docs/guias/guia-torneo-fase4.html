@@ -1,0 +1,620 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cómo gestionar tu torneo · Torneo Familia Fase 4</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Figtree:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  /* Panel del organizador: fondo casi negro, superficies grafito, amarillo de
+     marca para la acción. Escenario 9:16: título arriba, celular abajo. */
+  --fondo: #0B0D12;
+  --sup: #161A22;
+  --sup-2: #1E232D;
+  --linea: #2A303B;
+  --texto: #EEF0F3;
+  --tenue: #98A1AE;
+  --oro: #F5C518;
+  --tinta: #1A1400;
+  --verde: #10B981;
+  --naranja: #F59E0B;
+  --rojo: #EF4444;
+  --cielo: #38BDF8;
+  --display: "Bricolage Grotesque", "Arial Black", system-ui, sans-serif;
+  --body: "Figtree", system-ui, -apple-system, "Segoe UI", sans-serif;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; margin: 0; }
+html, body { height: 100%; }
+body { background: #050608; color: var(--texto); font-family: var(--body);
+  display: flex; flex-direction: column; align-items: center; gap: 14px; padding: 16px; }
+
+.stage { position: relative; height: min(86vh, 900px); aspect-ratio: 9 / 16; max-width: calc(100vw - 32px);
+  border-radius: 28px; overflow: hidden; container-type: size;
+  background: radial-gradient(circle at 15% 8%, rgba(245,197,24,.13), transparent 42%),
+              radial-gradient(circle at 90% 85%, rgba(56,189,248,.08), transparent 45%), var(--fondo);
+  box-shadow: 0 20px 60px rgba(0,0,0,.5); }
+body.grabando { padding: 0; background: var(--fondo); justify-content: center; }
+body.grabando .stage { height: 100vh; border-radius: 0; max-width: 100vw; box-shadow: none; }
+body.grabando .controles, body.grabando .nota { display: none; }
+
+.barras { position: absolute; top: 3cqh; left: 5cqw; right: 5cqw; display: flex; gap: 1cqw; z-index: 5; }
+.barras span { flex: 1; height: .45cqh; border-radius: 9px; background: rgba(238,240,243,.18); overflow: hidden; }
+.barras span b { display: block; height: 100%; width: 0; background: var(--oro); }
+
+.titulo { position: absolute; top: 5.4cqh; left: 6cqw; right: 6cqw; z-index: 5; }
+.paso { font: 700 2.9cqw/1 var(--body); letter-spacing: .14em; text-transform: uppercase; color: var(--oro); }
+.titulo h1 { font: 800 7.2cqw/1.02 var(--display); margin-top: 1.1cqh; text-wrap: balance; }
+.titulo p { font: 500 3.4cqw/1.3 var(--body); color: var(--tenue); margin-top: .9cqh; text-wrap: balance; }
+
+.cel { position: absolute; left: 50%; bottom: -3cqh; transform: translateX(-50%); width: 80cqw; height: 69cqh;
+  border-radius: 7cqw 7cqw 0 0; border: 1.2cqw solid #000; border-bottom: 0; background: var(--fondo); overflow: hidden;
+  box-shadow: 0 0 0 .4cqw #2b2f37, 0 -10px 40px rgba(0,0,0,.45); }
+.cel::before { content: ""; position: absolute; top: 1.2cqh; left: 50%; transform: translateX(-50%); width: 22cqw; height: 2.6cqh; background: #000; border-radius: 99px; z-index: 30; }
+.pantalla { position: absolute; inset: 0; padding: 5.4cqh 3.4cqw 3cqh; opacity: 0; transition: opacity .45s ease; font-size: 2.8cqw; }
+.pantalla.on { opacity: 1; }
+
+.dedo { position: absolute; width: 9cqw; height: 9cqw; border-radius: 50%; background: rgba(238,240,243,.85);
+  border: .6cqw solid rgba(0,0,0,.4); box-shadow: 0 4px 14px rgba(0,0,0,.5); z-index: 40; opacity: 0;
+  pointer-events: none; transform: translate(-50%,-50%); }
+.dedo.toca { animation: toca .5s ease; }
+@keyframes toca { 40% { transform: translate(-50%,-50%) scale(.78); background: var(--oro); } }
+
+.toast { position: absolute; left: 50%; bottom: 3cqh; transform: translate(-50%, 180%); z-index: 35; max-width: 92%;
+  background: #fff; color: #111; font-weight: 600; font-size: 2.7cqw; border-radius: 2cqw; padding: 1.2cqh 3cqw;
+  display: flex; gap: 1.6cqw; align-items: center; box-shadow: 0 8px 24px rgba(0,0,0,.4); transition: transform .4s cubic-bezier(.2,.9,.3,1.2); }
+.toast.ver { transform: translate(-50%, 0); }
+.toast i { flex: none; width: 4cqw; height: 4cqw; border-radius: 50%; background: var(--verde); color: #fff; display: grid; place-items: center; font-style: normal; font-size: 2.4cqw; }
+
+/* Encabezado del torneo y pestañas */
+.cab h2 { font: 800 4.3cqw/1.1 var(--display); }
+.cab .meta { color: var(--tenue); font-size: 2.3cqw; margin-top: .4cqh; }
+.chip { display: inline-block; padding: .25cqh 1.8cqw; border-radius: 99px; font-size: 2.1cqw; font-weight: 700; vertical-align: middle; }
+.chip.bor { background: rgba(56,189,248,.15); color: #7DD3FC; }
+.chip.ins { background: rgba(16,185,129,.18); color: #6EE7B7; }
+.chip.pen { background: rgba(245,158,11,.18); color: #FCD34D; }
+.chip.cat { background: var(--sup-2); color: var(--texto); }
+.chip.vivo { background: rgba(239,68,68,.18); color: #FCA5A5; }
+.tabs { display: flex; gap: 2.6cqw; border-bottom: 1px solid var(--linea); margin: 1.4cqh 0 1.4cqh; font-size: 2.3cqw; color: var(--tenue); white-space: nowrap; overflow: hidden; }
+.tabs span { padding-bottom: .8cqh; }
+.tabs .si { color: var(--oro); border-bottom: 2px solid var(--oro); }
+
+.caja { background: var(--sup); border: 1px solid var(--linea); border-radius: 2.4cqw; padding: 1.3cqh 2.6cqw; margin-bottom: 1.2cqh; }
+.caja > .t { font-weight: 700; font-size: 2.8cqw; margin-bottom: .9cqh; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1cqh 2cqw; }
+.grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1cqh 1.6cqw; }
+.campo small { display: block; color: var(--tenue); font-size: 2.1cqw; margin-bottom: .4cqh; }
+.input { border: 1px solid var(--linea); border-radius: 1.6cqw; padding: .8cqh 2cqw; min-height: 3.9cqh; font-size: 2.7cqw; background: var(--fondo); color: var(--texto); display: flex; align-items: center; }
+.input.foco { border-color: var(--oro); box-shadow: 0 0 0 .5cqw rgba(245,197,24,.25); }
+.ph { color: #5d6573; }
+.cursor { display: inline-block; width: 2px; height: 1em; background: var(--oro); vertical-align: -.15em; animation: parpadea .8s infinite; }
+@keyframes parpadea { 50% { opacity: 0; } }
+.seg { display: inline-flex; gap: .8cqw; border: 1px solid var(--linea); border-radius: 1.8cqw; padding: .5cqw; }
+.seg span { padding: .7cqh 2.2cqw; border-radius: 1.2cqw; font-size: 2.4cqw; color: var(--tenue); font-weight: 600; transition: background .25s, color .25s; }
+.seg span.si { background: var(--oro); color: var(--tinta); }
+.check { display: flex; align-items: center; gap: 1.6cqw; font-size: 2.5cqw; }
+.check i { width: 3.2cqw; height: 3.2cqw; border-radius: .8cqw; border: 1px solid var(--tenue); display: grid; place-items: center; font-style: normal; font-size: 2.2cqw; color: transparent; transition: background .2s; }
+.check.si i { background: var(--cielo); border-color: var(--cielo); color: #002; }
+.btn { border-radius: 1.8cqw; padding: .9cqh 2.6cqw; font-weight: 700; font-size: 2.6cqw; display: inline-flex; align-items: center; justify-content: center; gap: 1cqw; border: 1px solid var(--linea); background: var(--sup-2); color: var(--texto); white-space: nowrap; }
+.btn.prim { background: var(--oro); color: var(--tinta); border-color: var(--oro); }
+.btn.full { width: 100%; }
+.fila { display: flex; gap: 1.6cqw; align-items: center; }
+.aviso { font-size: 2.3cqw; line-height: 1.35; margin-top: .8cqh; }
+.aviso.am { color: #FCD34D; } .aviso.ok { color: #6EE7B7; } .aviso.az { color: #7DD3FC; }
+.tenue { color: var(--tenue); }
+
+/* modal */
+.velo { position: absolute; inset: 0; background: rgba(0,0,0,.62); }
+.modal { position: absolute; left: 2.4cqw; right: 2.4cqw; top: 6.5cqh; background: var(--sup); border: 1px solid var(--linea); border-radius: 3.4cqw; padding: 1.8cqh 3.4cqw; }
+.modal h3 { font: 800 4cqw/1.1 var(--display); text-transform: uppercase; letter-spacing: .02em; }
+.modal .desc { color: var(--tenue); font-size: 2.4cqw; margin: .5cqh 0 1.4cqh; line-height: 1.3; }
+.pie { display: flex; gap: 1.6cqw; justify-content: flex-end; border-top: 1px solid var(--linea); margin: 1.6cqh -3.4cqw -1.8cqh; padding: 1.4cqh 3.4cqw; }
+
+/* jugadores */
+.jug { background: var(--sup-2); border-radius: 1.8cqw; padding: .9cqh 2cqw; margin-bottom: .8cqh; }
+.jug .fila + .fila { margin-top: .7cqh; }
+.jug .n { width: 3cqw; color: var(--tenue); font-weight: 700; font-size: 2.3cqw; }
+.mini { font-size: 2.3cqw; }
+
+/* equipos */
+.equipo { border: 1px solid var(--linea); border-radius: 2cqw; padding: 1.1cqh 2.4cqw; margin-bottom: 1cqh; }
+.equipo b { font-size: 2.9cqw; }
+.equipo .sub { color: var(--tenue); font-size: 2.2cqw; margin-top: .3cqh; }
+.equipo .acc { display: flex; gap: 1.4cqw; margin-top: .9cqh; }
+.equipo .acc .btn { font-size: 2.3cqw; padding: .7cqh 2cqw; }
+
+/* sets */
+.sets { display: grid; grid-template-columns: 1fr 12cqw 12cqw; gap: .8cqh 1.6cqw; align-items: center; font-size: 2.4cqw; }
+.sets .h { color: var(--tenue); font-size: 2.1cqw; text-align: center; }
+.sets .input { justify-content: center; font-weight: 700; font-variant-numeric: tabular-nums; }
+.juez { background: var(--sup-2); border-radius: 2cqw; padding: 1.1cqh 2.4cqw; margin-bottom: 1.2cqh; }
+.juez .t { font-weight: 700; font-size: 2.6cqw; }
+.enl { font-size: 2.3cqw; display: flex; flex-direction: column; gap: .5cqh; margin-top: .8cqh; }
+.enl span { text-decoration: underline; }
+.wa { color: var(--verde); font-weight: 600; }
+
+/* tabla y llave */
+table { width: 100%; border-collapse: collapse; font-size: 2.3cqw; }
+th { color: var(--tenue); font-weight: 500; padding: .5cqh .8cqw; text-align: center; }
+td { padding: .7cqh .8cqw; border-top: 1px solid var(--linea); text-align: center; font-variant-numeric: tabular-nums; }
+td.eq, th.eq { text-align: left; }
+tr.cl td { background: rgba(16,185,129,.07); }
+tr.cl td:first-child { color: var(--verde); font-weight: 700; }
+.partido { border: 1px solid var(--linea); border-radius: 1.8cqw; padding: .8cqh 2cqw; font-size: 2.4cqw; margin-bottom: .8cqh; }
+.partido .lado { display: flex; justify-content: space-between; }
+.partido .et { color: var(--tenue); font-size: 2cqw; margin-bottom: .3cqh; display: flex; justify-content: space-between; }
+.partido .vivo { color: #FCA5A5; font-weight: 700; }
+
+.podio { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.6cqw; text-align: center; }
+.podio div { background: var(--sup-2); border-radius: 2cqw; padding: 1.2cqh 1cqw; }
+.podio .med { font: 800 5cqw/1 var(--display); }
+.podio b { display: block; font-size: 2.5cqw; margin-top: .5cqh; }
+.podio small { color: var(--tenue); font-size: 2cqw; }
+.kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.4cqw; }
+.kpi { background: var(--sup); border: 1px solid var(--linea); border-radius: 2cqw; padding: 1cqh 2cqw; }
+.kpi small { color: var(--tenue); font-size: 2cqw; }
+.kpi b { display: block; font-size: 3.2cqw; font-variant-numeric: tabular-nums; }
+.consejo { border: 1px dashed var(--linea); border-radius: 2.2cqw; padding: 1.1cqh 2.6cqw; font-size: 2.4cqw; color: var(--tenue); line-height: 1.4; }
+.consejo b { color: var(--texto); }
+
+/* página pública en vivo */
+.pub .url { background: var(--sup-2); border-radius: 99px; padding: .6cqh 2.6cqw; font-size: 2.2cqw; color: var(--tenue); text-align: center; margin-bottom: 1.2cqh; }
+.pub h4 { font: 800 4cqw/1.1 var(--display); }
+.pub .org { color: var(--tenue); font-size: 2.2cqw; margin: .3cqh 0 1.2cqh; }
+.envivo { font-weight: 700; font-size: 2.6cqw; display: flex; align-items: center; gap: 1.4cqw; margin-bottom: .8cqh; }
+.punto { position: relative; width: 1.8cqw; height: 1.8cqw; }
+.punto::before, .punto::after { content: ""; position: absolute; inset: 0; border-radius: 50%; background: var(--rojo); }
+.punto::before { animation: ping 1.4s infinite; }
+@keyframes ping { 75%, 100% { transform: scale(2.4); opacity: 0; } }
+.marc { border: 1px solid rgba(239,68,68,.4); background: rgba(239,68,68,.06); border-radius: 2cqw; padding: 1.1cqh 2.6cqw; margin-bottom: 1.2cqh; }
+.marc .et { color: var(--tenue); font-size: 2.1cqw; display: flex; justify-content: space-between; margin-bottom: .6cqh; }
+.marc .et b { color: #FCA5A5; }
+.marc .lado { display: flex; justify-content: space-between; align-items: center; font-size: 3cqw; padding: .3cqh 0; }
+.marc .pts { display: flex; gap: 1.2cqw; font-variant-numeric: tabular-nums; }
+.marc .pts span { width: 5.4cqw; text-align: center; color: var(--tenue); }
+.marc .pts .ya { color: var(--texto); font-weight: 700; }
+.marc .pts .cur { background: rgba(239,68,68,.18); color: #FCA5A5; font-weight: 800; border-radius: 1cqw; transition: transform .2s; }
+.marc .pts .cur.sube { transform: scale(1.3); }
+.saca { color: var(--oro); font-size: 2.2cqw; margin-left: 1cqw; }
+
+.controles { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+.controles button { font: 600 14px var(--body); color: var(--texto); background: var(--sup); border: 1px solid var(--linea); border-radius: 10px; padding: 10px 14px; min-height: 44px; cursor: pointer; }
+.controles button:focus-visible { outline: 2px solid var(--oro); outline-offset: 2px; }
+.nota { color: var(--tenue); font-size: 13px; max-width: 520px; text-align: center; line-height: 1.45; }
+@media (prefers-reduced-motion: reduce) { .pantalla, .toast { transition: none; } .cursor { animation: none; } }
+</style>
+</head>
+<body>
+  <div class="stage" id="stage">
+    <div class="barras" id="barras"></div>
+    <div class="titulo">
+      <div class="paso" id="paso">Paso 1 de 11</div>
+      <h1 id="h1"></h1>
+      <p id="sub"></p>
+    </div>
+
+    <div class="cel">
+      <div class="dedo" id="dedo"></div>
+      <div class="toast" id="toast"><i>✓</i><span id="toast-txt"></span></div>
+
+      <!-- 1. Categorías y premiación -->
+      <section class="pantalla on">
+        <div class="cab"><h2>Torneo Familia Fase 4 <span class="chip bor">Borrador</span></h2>
+          <div class="meta">Voleiplaya · Arena · mixta · Xtreme Park Fase 4</div></div>
+        <div class="tabs"><span>Resumen</span><span>Equipos</span><span class="si">Categorías y reglas</span><span>Fixture y resultados</span></div>
+        <div class="caja">
+          <div class="t">1 · Categorías y premiación</div>
+          <div class="input" style="font-weight:700;margin-bottom:1cqh">3 vs 3</div>
+          <div class="grid2" style="grid-template-columns:repeat(4,1fr)">
+            <div class="campo"><small>En cancha</small><div class="input">3</div></div>
+            <div class="campo"><small>Máx. inscritos</small><div class="input">5</div></div>
+            <div class="campo"><small>Cupo</small><div class="input">12</div></div>
+            <div class="campo"><small>Inscripción</small><div class="input">200.000</div></div>
+          </div>
+          <div class="campo" style="margin-top:1cqh"><small>Premios en dinero · 1er · 2° · 3er puesto</small>
+            <div class="grid3"><div class="input" id="p1"><span class="ph">000.000</span></div><div class="input" id="p2"><span class="ph">000.000</span></div><div class="input" id="p3"><span class="ph">000.000</span></div></div></div>
+          <div class="aviso am" id="cubrir" style="opacity:0">Premiación de $ 1.550.000: se necesitan <b>8 equipos</b> para cubrirla solo con inscripciones.</div>
+        </div>
+        <div class="caja"><div class="t" style="margin:0">5 vs 5 <span class="tenue mini">· cupo 16 · $ 1.200.000 / $ 800.000 / $ 500.000</span></div></div>
+        <span class="btn prim" id="b-cat">Guardar categorías</span>
+      </section>
+
+      <!-- 2. Reglas -->
+      <section class="pantalla">
+        <div class="tabs" style="margin-top:0"><span>Resumen</span><span>Equipos</span><span class="si">Categorías y reglas</span><span>Fixture</span></div>
+        <div class="caja">
+          <div class="t">2 · Cómo se juega</div>
+          <div class="campo"><small>Sets por partido ⓘ</small><div class="seg"><span>1 set</span><span class="si">Mejor de 3</span><span>Mejor de 5</span></div></div>
+          <div class="aviso tenue">Gana el primero que se lleve 2 sets. Si van 1-1, se juega el set decisivo.</div>
+          <div class="grid2" style="margin-top:1cqh">
+            <div class="campo"><small>Puntos por set</small><div class="input">21</div></div>
+            <div class="campo"><small>Puntos del set decisivo</small><div class="input">15</div></div>
+          </div>
+        </div>
+        <div class="caja">
+          <div class="t">3 · Quién puede jugar</div>
+          <div class="check" id="c-cli"><i>✓</i>Exclusivo para clientes</div>
+          <div class="grid2" style="margin-top:1cqh">
+            <div class="campo"><small>Máximo de externos</small><div class="input" id="r-ext"><span class="ph">Sin límite</span></div></div>
+            <div class="campo"><small>Mínimo de mujeres</small><div class="input" id="r-muj"><span class="ph">0</span></div></div>
+          </div>
+        </div>
+        <span class="btn prim" id="b-reglas">Guardar y redactar reglamento</span>
+      </section>
+
+      <!-- 3. Publicar y compartir -->
+      <section class="pantalla">
+        <div class="cab"><h2>Torneo Familia Fase 4 <span class="chip bor" id="chip3">Borrador</span></h2>
+          <div class="meta">28 equipos · $ 200.000 por inscripción · desde el 4 de noviembre</div></div>
+        <div class="fila" style="margin:1.4cqh 0"><span class="btn">Editar</span><span class="btn prim" id="b-pub">Publicar y abrir inscripciones</span></div>
+        <div class="caja" id="enlace3" style="opacity:.25">
+          <div class="t">Enlace público</div>
+          <div class="input mini">/t/torneo-familia-fase-4</div>
+          <div class="fila" style="margin-top:1cqh"><span class="btn">Copiar enlace</span><span class="btn" id="b-wa3">WhatsApp</span><span class="tenue mini">Abrir</span></div>
+        </div>
+        <div class="consejo">El reglamento queda publicado en el enlace y <b>cada equipo lo acepta</b> al inscribirse.</div>
+      </section>
+
+      <!-- 4. Inscripción pública con jugadores -->
+      <section class="pantalla">
+        <div style="font-weight:700;font-size:3.4cqw;margin-bottom:1cqh">Inscribe tu equipo</div>
+        <div class="grid2">
+          <div class="campo"><small>Nombre del equipo</small><div class="input" id="i-eq"><span class="ph">Los Tigres FC</span></div></div>
+          <div class="campo"><small>Categoría</small><div class="input mini">3 vs 3 · 9 cupos libres</div></div>
+        </div>
+        <div style="font-weight:700;font-size:2.8cqw;margin:1.3cqh 0 .5cqh">Jugadores del equipo</div>
+        <div class="tenue mini" style="margin-bottom:.8cqh">De 3 a 5 jugadores · mínimo 1 mujer · máximo 1 externo.</div>
+        <div class="jug"><div class="fila"><span class="n">1</span><div class="input" style="flex:1" id="j1"><span class="ph">Nombre completo</span></div></div>
+          <div class="fila"><span class="n"></span><div class="input" style="width:24cqw" id="j1d"><span class="ph">Documento</span></div><div class="seg"><span class="si" id="j1m">Mujer</span><span id="j1h">Hombre</span></div></div>
+          <div class="fila"><span class="n"></span><div class="input mini" style="flex:1" id="j1c"><span class="ph">Cliente: número de factura</span></div></div></div>
+        <div class="jug"><div class="fila"><span class="n">2</span><div class="input" style="flex:1">Andrés Gómez</div></div>
+          <div class="fila"><span class="n"></span><div class="input" style="width:24cqw">1077845512</div><div class="seg"><span>Mujer</span><span class="si">Hombre</span></div><div class="check si"><i>✓</i>Externo</div></div></div>
+        <div class="check si" style="margin:1cqh 0"><i>✓</i><span class="mini">Acepto el reglamento y las condiciones del torneo</span></div>
+        <span class="btn prim full" id="b-ins">Inscribir equipo</span>
+      </section>
+
+      <!-- 5. Confirmar y pago dividido -->
+      <section class="pantalla">
+        <div class="tabs" style="margin-top:0"><span>Resumen</span><span class="si">Equipos</span><span>Finanzas</span><span>Fixture</span></div>
+        <div class="equipo"><b>Red Caliente</b> <span class="chip pen" id="est5">Pendiente</span> <span class="chip cat">3 vs 3</span>
+          <div class="sub">Laura Pérez · Pagó $ 0 de $ 200.000 · <span style="color:#FCD34D">debe $ 200.000</span></div>
+          <div class="acc"><span class="btn">4 jugadores</span><span class="btn" id="b-pago">Pago</span><span class="btn" id="b-conf">Confirmar</span></div></div>
+        <div class="velo" id="velo5" style="opacity:0;transition:opacity .3s"></div>
+        <div class="modal" id="modal5" style="opacity:0;transition:opacity .3s">
+          <h3>Pagos de Red Caliente</h3>
+          <div class="desc">Inscripción de $ 200.000 · pagado $ 0 · debe $ 200.000</div>
+          <div class="tenue mini" style="margin-bottom:1cqh">Nuevo abono · si pagó una parte en efectivo y otra por transferencia, llena los dos.</div>
+          <div class="grid2">
+            <div class="campo"><small>En efectivo</small><div class="input" id="pg-e"><span class="ph">0</span></div></div>
+            <div class="campo"><small>Por transferencia</small><div class="input" id="pg-t"><span class="ph">0</span></div></div>
+          </div>
+          <div class="aviso tenue" id="pg-msg">Escribe cuánto pagó.</div>
+          <div class="pie"><span class="btn">Cerrar</span><span class="btn prim" id="b-abono">Registrar abono</span></div>
+        </div>
+      </section>
+
+      <!-- 6. Generar fixture -->
+      <section class="pantalla">
+        <div class="tabs" style="margin-top:0"><span>Equipos</span><span>Categorías</span><span class="si">Fixture y resultados</span></div>
+        <div class="caja">
+          <div class="fila" style="justify-content:space-between"><b style="font-size:3cqw">3 vs 3</b><span class="tenue mini">12 confirmados</span></div>
+          <div class="campo" style="margin-top:1cqh"><small>Formato</small><div class="seg"><span class="si">Grupos + llave</span><span>Liga</span><span>Eliminación</span></div></div>
+          <div class="grid2" style="margin-top:1cqh">
+            <div class="campo"><small>Equipos por grupo</small><div class="input">4</div></div>
+            <div class="campo"><small>Días entre jornadas</small><div class="input">7</div></div>
+            <div class="campo"><small>Primer partido</small><div class="input">04/11/2026</div></div>
+            <div class="campo"><small>Hora</small><div class="input">5:00 p. m.</div></div>
+          </div>
+          <div class="aviso tenue">3 grupos (4, 4, 4 equipos) · 18 partidos. Se reparten en 2 canchas, partidos de 45 min.</div>
+          <div style="margin-top:1.2cqh"><span class="btn prim" id="b-fix">Generar fixture</span></div>
+        </div>
+        <div id="fix6" style="opacity:0;transition:opacity .4s">
+          <div class="partido"><div class="et"><span>Grupo A</span><span>mié 4 nov 5:00 p. m. · Cancha 1</span></div><div class="lado"><span>Red Caliente</span></div><div class="lado"><span>Familia Pérez</span></div></div>
+          <div class="partido"><div class="et"><span>Grupo B</span><span>mié 4 nov 5:00 p. m. · Cancha 2</span></div><div class="lado"><span>Los Arenosos</span></div><div class="lado"><span>Saque Fuerte</span></div></div>
+        </div>
+      </section>
+
+      <!-- 7. Marcador del juez -->
+      <section class="pantalla">
+        <div class="velo"></div>
+        <div class="modal">
+          <h3>Red Caliente vs Familia Pérez</h3>
+          <div class="desc">Grupo A · mejor de 3 a 21 (decisivo a 15)</div>
+          <div class="juez">
+            <div class="t">Marcador del juez (opcional)</div>
+            <div class="tenue mini" style="margin:.5cqh 0 1cqh">El juez marca los puntos en vivo desde su celular. Al terminar, trae el marcador aquí, revisa los sets y confirma.</div>
+            <span class="btn" id="b-abrir">Abrir marcador para el juez</span>
+            <div class="enl" id="enl7" style="display:none"><span>Juez (celular)</span><span>Solo celular, sin TV</span><span>Pantalla / TV</span><b class="wa" id="b-wa7">Enviar al juez por WhatsApp</b></div>
+          </div>
+          <div class="consejo">El juez toca su lado del celular: <b>1 toque suma un punto</b>, 2 toques lo restan. El público lo ve en vivo en el enlace del torneo.</div>
+        </div>
+      </section>
+
+      <!-- 8. Público en vivo -->
+      <section class="pantalla pub">
+        <div class="url">torneo-familia-fase-4 · enlace público</div>
+        <h4>Torneo Familia Fase 4</h4>
+        <div class="org">Organiza Xtreme Park Fase 4 · Grupos + eliminación</div>
+        <div class="envivo"><span class="punto"></span>En vivo</div>
+        <div class="marc">
+          <div class="et"><span>Grupo A · Cancha 1</span><b>● Set 2</b></div>
+          <div class="lado"><span>Red Caliente <span class="saca" id="saca-a">● saca</span></span><span class="pts"><span class="ya">21</span><span class="cur" id="pa">14</span></span></div>
+          <div class="lado"><span>Familia Pérez <span class="saca" id="saca-b" style="visibility:hidden">● saca</span></span><span class="pts"><span>18</span><span class="cur" id="pb">12</span></span></div>
+        </div>
+        <div class="marc" style="border-color:var(--linea);background:transparent">
+          <div class="et"><span>Grupo B · Cancha 2</span><b>● Set 1</b></div>
+          <div class="lado"><span>Los Arenosos</span><span class="pts"><span class="cur" id="pc">9</span></span></div>
+          <div class="lado"><span>Saque Fuerte</span><span class="pts"><span class="cur" id="pd">11</span></span></div>
+        </div>
+        <div class="caja" style="padding:1cqh 1.6cqw">
+          <div class="t" style="padding-left:1cqw;margin-bottom:.4cqh">Posiciones · Grupo A</div>
+          <table>
+            <tr><th>#</th><th class="eq">Equipo</th><th>PJ</th><th>Sets</th><th>Pts</th></tr>
+            <tr class="cl"><td>1</td><td class="eq">Los Tiburones</td><td>2</td><td>4-1</td><td><b>4</b></td></tr>
+            <tr class="cl"><td>2</td><td class="eq">Red Caliente</td><td>1</td><td>2-0</td><td><b>2</b></td></tr>
+          </table>
+        </div>
+        <div class="consejo">Se actualiza sola <b>mientras haya partidos en vivo</b>: jugadores y público siguen el marcador sin recargar.</div>
+      </section>
+
+      <!-- 9. Confirmar resultado -->
+      <section class="pantalla">
+        <div class="velo"></div>
+        <div class="modal">
+          <h3>Red Caliente vs Familia Pérez</h3>
+          <div class="desc">Grupo A · mejor de 3 a 21 (decisivo a 15)</div>
+          <div class="juez"><span class="btn prim" id="b-traer">Traer marcador</span>
+            <div class="aviso az" id="av8" style="opacity:0">El juez terminó el partido. Revisa los sets y confirma con “Finalizar partido”.</div></div>
+          <div class="sets">
+            <span></span><span class="h">Red Caliente</span><span class="h">Familia P.</span>
+            <span class="tenue">Set 1</span><div class="input" id="s1a"></div><div class="input" id="s1b"></div>
+            <span class="tenue">Set 2</span><div class="input" id="s2a"></div><div class="input" id="s2b"></div>
+            <span class="tenue">Set 3 (decisivo)</span><div class="input"></div><div class="input"></div>
+          </div>
+          <div class="aviso am" id="ok8">Escribe los puntos de cada set.</div>
+          <div class="pie"><span class="btn">Guardar en vivo</span><span class="btn prim" id="b-fin">Finalizar partido</span></div>
+        </div>
+      </section>
+
+      <!-- 10. Tabla y eliminatorias -->
+      <section class="pantalla">
+        <div class="tabs" style="margin-top:0"><span>Equipos</span><span>Categorías</span><span class="si">Fixture y resultados</span></div>
+        <div class="caja" style="padding:1cqh 1.6cqw">
+          <div class="t" style="padding-left:1cqw">Posiciones · Grupo A</div>
+          <table>
+            <tr><th>#</th><th class="eq">Equipo</th><th>PJ</th><th>PG</th><th>Sets</th><th>Pts</th></tr>
+            <tr class="cl"><td>1</td><td class="eq">Red Caliente</td><td>3</td><td>3</td><td>6-1</td><td><b>6</b></td></tr>
+            <tr class="cl"><td>2</td><td class="eq">Los Tiburones</td><td>3</td><td>2</td><td>4-3</td><td><b>5</b></td></tr>
+            <tr><td>3</td><td class="eq">Familia Pérez</td><td>3</td><td>1</td><td>3-4</td><td><b>4</b></td></tr>
+            <tr><td>4</td><td class="eq">Punto de Set</td><td>3</td><td>0</td><td>1-6</td><td><b>3</b></td></tr>
+          </table>
+        </div>
+        <span class="btn prim" id="b-elim">Generar eliminatorias</span>
+        <div id="llave9" style="opacity:0;transition:opacity .4s;margin-top:1.2cqh">
+          <div class="tenue mini" style="margin-bottom:.6cqh">CUARTOS DE FINAL</div>
+          <div class="partido"><div class="et"><span>Cuartos</span><span>mié 25 nov · Cancha 1</span></div><div class="lado"><span>Red Caliente</span></div><div class="lado"><span>Los Halcones</span></div></div>
+          <div class="partido"><div class="et"><span>Cuartos</span><span class="vivo">● Set 2</span></div><div class="lado"><b>Saque Fuerte</b><b>21 12</b></div><div class="lado"><span>Los Tiburones</span><span>18 <b style="color:#FCA5A5">9</b></span></div></div>
+        </div>
+      </section>
+
+      <!-- 11. Podio y caja -->
+      <section class="pantalla">
+        <div class="cab"><h2>Torneo Familia Fase 4 <span class="chip ins">Finalizado</span></h2></div>
+        <div class="caja" style="margin-top:1.2cqh">
+          <div class="t">Podio · 3 vs 3</div>
+          <div class="podio">
+            <div><div class="med" style="color:#FBBF24">1</div><b>Red Caliente</b><small>Campeón</small></div>
+            <div><div class="med" style="color:#CBD5E1">2</div><b>Saque Fuerte</b><small>Subcampeón</small></div>
+            <div><div class="med" style="color:#FB923C">3</div><b>Los Arenosos</b><small>Tercer puesto</small></div>
+          </div>
+        </div>
+        <div class="tabs"><span>Equipos</span><span class="si">Finanzas</span><span>Fixture</span></div>
+        <div class="kpis">
+          <div class="kpi"><small>En efectivo</small><b>$ 2.300.000</b></div>
+          <div class="kpi"><small>Por transferencia</small><b>$ 3.700.000</b></div>
+          <div class="kpi"><small>Por cobrar</small><b style="color:var(--verde)">$ 0</b></div>
+        </div>
+        <div class="consejo" style="margin-top:1.4cqh">Todo queda en un solo lugar: <b>inscritos, pagos, resultados y premios</b>, y el público lo sigue en el enlace del torneo.</div>
+      </section>
+    </div>
+  </div>
+
+  <div class="controles">
+    <button id="b-ant" type="button">← Anterior</button>
+    <button id="b-play" type="button">Pausar</button>
+    <button id="b-sig" type="button">Siguiente →</button>
+    <button id="b-grabar" type="button">Modo grabación</button>
+  </div>
+  <p class="nota">Para compartirla como video: activa <b>Modo grabación</b> (pantalla limpia, desde el paso 1) y graba la pantalla. Toca el escenario para salir.</p>
+
+<script>
+(() => {
+  const PASOS = [
+    { h: "Arma las categorías", p: "En Categorías y reglas: cupo, inscripción y premios de cada categoría." },
+    { h: "Responde las reglas", p: "Sets, puntos y quién puede jugar. El reglamento se redacta solo." },
+    { h: "Publica y comparte", p: "Publica el torneo y manda el enlace por WhatsApp." },
+    { h: "Los equipos se inscriben", p: "Cada equipo registra a sus jugadores con documento y acepta el reglamento." },
+    { h: "Confirma y cobra", p: "Confirma el cupo y registra el pago, aunque sea dividido en efectivo y transferencia." },
+    { h: "Genera el fixture", p: "Con un botón: grupos, fechas, horas y canchas sin choques." },
+    { h: "El juez marca en vivo", p: "Abre el marcador del partido y envíale el enlace al juez." },
+    { h: "Todos lo ven en vivo", p: "En el enlace del torneo el público sigue el marcador del juez, sin recargar." },
+    { h: "Confirma el resultado", p: "Trae el marcador del juez, revisa los sets y finaliza el partido." },
+    { h: "La tabla se arma sola", p: "Al cerrar los grupos, genera las eliminatorias: los ganadores avanzan solos." },
+    { h: "Cierra con el podio", p: "Campeones por categoría y la caja cuadrada: efectivo, transferencia y por cobrar." },
+  ];
+  const DUR = 5600;
+  const reducido = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const $ = (id) => document.getElementById(id);
+  const pantallas = [...document.querySelectorAll(".pantalla")];
+  const cel = document.querySelector(".cel");
+  const dedo = $("dedo");
+  $("barras").innerHTML = PASOS.map(() => "<span><b></b></span>").join("");
+  const barras = [...$("barras").children];
+
+  let paso = 0, timers = [], pausado = reducido, inicio = 0;
+  const t = (fn, ms) => timers.push(setTimeout(fn, reducido ? 0 : ms));
+  const limpiar = () => { timers.forEach(clearTimeout); timers = []; };
+
+  function tocar(el, ms) {
+    t(() => {
+      const a = el.getBoundingClientRect(), c = cel.getBoundingClientRect();
+      dedo.style.left = (a.left - c.left + a.width / 2) + "px";
+      dedo.style.top = (a.top - c.top + a.height / 2) + "px";
+      dedo.style.transition = "opacity .25s"; dedo.style.opacity = 1;
+      dedo.classList.remove("toca"); void dedo.offsetWidth; dedo.classList.add("toca");
+      t(() => (dedo.style.opacity = 0), 700);
+    }, ms);
+  }
+  function escribir(el, texto, desde, cada = 80) {
+    t(() => { el.classList.add("foco"); el.innerHTML = '<span class="cursor"></span>'; }, desde - 150);
+    [...texto].forEach((_, i) => t(() => (el.innerHTML = texto.slice(0, i + 1) + '<span class="cursor"></span>'), desde + i * cada));
+    t(() => { el.textContent = texto; el.classList.remove("foco"); }, desde + texto.length * cada + 250);
+  }
+  function aviso(txt, ms) {
+    t(() => { $("toast-txt").textContent = txt; $("toast").classList.add("ver"); }, ms);
+    t(() => $("toast").classList.remove("ver"), ms + 1800);
+  }
+  const vacio = (el, ph) => (el.innerHTML = `<span class="ph">${ph}</span>`);
+  const ver = (el, si) => (el.style.opacity = si ? 1 : 0);
+
+  const ESCENAS = [
+    () => {
+      ["p1", "p2", "p3"].forEach((id) => vacio($(id), "000.000")); ver($("cubrir"), 0);
+      escribir($("p1"), "900.000", 900, 70);
+      escribir($("p2"), "400.000", 1700, 70);
+      escribir($("p3"), "250.000", 2500, 70);
+      t(() => { $("cubrir").style.transition = "opacity .4s"; ver($("cubrir"), 1); }, 3200);
+      tocar($("b-cat"), 3900);
+      aviso("Categorías y premiación guardadas", 4200);
+    },
+    () => {
+      $("c-cli").classList.remove("si"); vacio($("r-ext"), "Sin límite"); vacio($("r-muj"), "0");
+      tocar($("c-cli"), 800);
+      t(() => $("c-cli").classList.add("si"), 1000);
+      escribir($("r-ext"), "1", 1700);
+      escribir($("r-muj"), "1", 2400);
+      tocar($("b-reglas"), 3300);
+      aviso("Reglas guardadas y reglamento redactado", 3600);
+    },
+    () => {
+      $("chip3").className = "chip bor"; $("chip3").textContent = "Borrador";
+      $("enlace3").style.transition = "opacity .4s"; $("enlace3").style.opacity = .25;
+      tocar($("b-pub"), 900);
+      t(() => { $("chip3").className = "chip ins"; $("chip3").textContent = "Inscripciones abiertas"; $("enlace3").style.opacity = 1; }, 1300);
+      aviso("¡Torneo publicado! Ya puedes compartir el enlace de inscripción.", 1300);
+      tocar($("b-wa3"), 3600);
+    },
+    () => {
+      vacio($("i-eq"), "Los Tigres FC"); vacio($("j1"), "Nombre completo"); vacio($("j1d"), "Documento"); vacio($("j1c"), "Cliente: número de factura");
+      escribir($("i-eq"), "Red Caliente", 500, 60);
+      escribir($("j1"), "Laura Pérez", 1400, 55);
+      escribir($("j1d"), "1075234981", 2200, 45);
+      tocar($("j1m"), 2800);
+      escribir($("j1c"), "FAC-20431", 3200, 50);
+      tocar($("b-ins"), 4300);
+      aviso("Tu solicitud fue enviada", 4600);
+    },
+    () => {
+      $("est5").className = "chip pen"; $("est5").textContent = "Pendiente";
+      ver($("velo5"), 0); ver($("modal5"), 0); vacio($("pg-e"), "0"); vacio($("pg-t"), "0");
+      $("pg-msg").className = "aviso tenue"; $("pg-msg").textContent = "Escribe cuánto pagó.";
+      tocar($("b-conf"), 700);
+      t(() => { $("est5").className = "chip ins"; $("est5").textContent = "Confirmado"; }, 950);
+      aviso("Equipo confirmado", 950);
+      tocar($("b-pago"), 1900);
+      t(() => { ver($("velo5"), 1); ver($("modal5"), 1); }, 2150);
+      escribir($("pg-e"), "100.000", 2600, 50);
+      escribir($("pg-t"), "100.000", 3200, 50);
+      t(() => { $("pg-msg").className = "aviso ok"; $("pg-msg").textContent = "Abono de $ 200.000: queda al día."; }, 3700);
+      tocar($("b-abono"), 4200);
+      aviso("Pago completo", 4500);
+    },
+    () => {
+      ver($("fix6"), 0);
+      tocar($("b-fix"), 1400);
+      aviso("Fixture de 3 vs 3: 18 partidos", 1700);
+      t(() => ver($("fix6"), 1), 1800);
+    },
+    () => {
+      $("b-abrir").style.display = ""; $("enl7").style.display = "none";
+      tocar($("b-abrir"), 1000);
+      t(() => { $("b-abrir").style.display = "none"; $("enl7").style.display = "flex"; }, 1300);
+      aviso("Marcador listo: compártelo con el juez", 1300);
+      tocar($("b-wa7"), 3600);
+    },
+    () => {
+      // Puntos que entran en vivo desde el marcador del juez.
+      const marcador = { pa: 14, pb: 12, pc: 9, pd: 11 };
+      Object.entries(marcador).forEach(([id, v]) => ($(id).textContent = v));
+      $("saca-a").style.visibility = "visible"; $("saca-b").style.visibility = "hidden";
+      const punto = (id, ms) => t(() => {
+        marcador[id] += 1; const el = $(id);
+        el.textContent = marcador[id]; el.classList.add("sube");
+        setTimeout(() => el.classList.remove("sube"), 220);
+        if (id === "pa" || id === "pb") {
+          $("saca-a").style.visibility = id === "pa" ? "visible" : "hidden";
+          $("saca-b").style.visibility = id === "pb" ? "visible" : "hidden";
+        }
+      }, ms);
+      [["pa", 700], ["pc", 1100], ["pb", 1600], ["pa", 2200], ["pd", 2500], ["pa", 3000], ["pc", 3400], ["pb", 3800], ["pa", 4400], ["pd", 4700]]
+        .forEach(([id, ms]) => punto(id, ms));
+    },
+    () => {
+      ["s1a", "s1b", "s2a", "s2b"].forEach((id) => ($(id).textContent = "")); ver($("av8"), 0);
+      $("ok8").className = "aviso am"; $("ok8").textContent = "Escribe los puntos de cada set.";
+      tocar($("b-traer"), 900);
+      t(() => {
+        $("s1a").textContent = "21"; $("s1b").textContent = "18"; $("s2a").textContent = "21"; $("s2b").textContent = "17";
+        $("av8").style.transition = "opacity .3s"; ver($("av8"), 1);
+        $("ok8").className = "aviso ok"; $("ok8").textContent = "Marcador completo: puedes finalizar el partido.";
+      }, 1300);
+      tocar($("b-fin"), 3700);
+      aviso("Partido finalizado", 4000);
+    },
+    () => {
+      ver($("llave9"), 0);
+      tocar($("b-elim"), 1500);
+      aviso("Eliminatorias de 3 vs 3 listas", 1800);
+      t(() => ver($("llave9"), 1), 1900);
+    },
+    () => {},
+  ];
+
+  function ir(i) {
+    limpiar();
+    paso = (i + PASOS.length) % PASOS.length;
+    pantallas.forEach((p, k) => p.classList.toggle("on", k === paso));
+    barras.forEach((b, k) => (b.firstChild.style.width = k < paso ? "100%" : "0"));
+    $("paso").textContent = `Paso ${paso + 1} de ${PASOS.length}`;
+    $("h1").textContent = PASOS[paso].h;
+    $("sub").textContent = PASOS[paso].p;
+    dedo.style.opacity = 0; $("toast").classList.remove("ver");
+    ESCENAS[paso]();
+    inicio = performance.now();
+  }
+  function tick(ahora) {
+    if (!pausado) {
+      const avance = Math.min(1, (ahora - inicio) / DUR);
+      barras[paso].firstChild.style.width = (avance * 100) + "%";
+      if (avance >= 1) ir(paso + 1);
+    } else {
+      inicio = ahora - (parseFloat(barras[paso].firstChild.style.width) || 0) / 100 * DUR;
+    }
+    requestAnimationFrame(tick);
+  }
+
+  $("b-sig").onclick = () => ir(paso + 1);
+  $("b-ant").onclick = () => ir(paso - 1);
+  $("b-play").onclick = () => { pausado = !pausado; $("b-play").textContent = pausado ? "Reproducir" : "Pausar"; };
+  $("b-grabar").onclick = () => { document.body.classList.add("grabando"); pausado = false; $("b-play").textContent = "Pausar"; ir(0); };
+  $("stage").onclick = () => document.body.classList.remove("grabando");
+  if (pausado) $("b-play").textContent = "Reproducir";
+  ir(0);
+  requestAnimationFrame(tick);
+})();
+</script>
+</body>
+</html>

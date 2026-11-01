@@ -32,9 +32,10 @@ import {
 } from "@/lib/rifa";
 import { formatFechaCO } from "@/lib/fecha-co";
 import { labelCuentaPago, llavesBreB } from "@/lib/pagos";
-import { conAlfa, esTemaClaro, getDecoracion, getTema } from "@/lib/temas-rifa";
+import { conAlfa, esTemaClaro, getDecoracion, getMarcaOcupado, getTema } from "@/lib/temas-rifa";
 import { waLink } from "@/lib/whatsapp";
 import { Decoracion } from "@/components/rifa/decoracion-rifa";
+import { CELDA_LIBRE, CELDA_OCUPADA, NumeroOcupado } from "@/components/rifa/marca-ocupado";
 import { ImagenZoom } from "@/components/rifa/imagen-zoom";
 import { SorteoAnimado } from "@/components/rifa/sorteo-animado";
 import { SorteoDemo } from "@/components/rifa/sorteo-demo";
@@ -85,6 +86,7 @@ export function RifaPublicaView({
   const cuentaPagoLabel = labelCuentaPago(pago?.cuenta_tipo ?? (pago?.nequi_llave ? "nequi" : null));
   const tema = getTema(rifa.tema);
   const t = tema.web;
+  const marcaOcupado = getMarcaOcupado(rifa.marca_ocupado);
   // Sobre la foto de fondo: un tema claro (texto oscuro) necesita más velo para
   // que el texto se lea; uno oscuro deja lucir mucho más la imagen.
   const claro = esTemaClaro(tema);
@@ -727,10 +729,10 @@ export function RifaPublicaView({
             const cls = mio && c.ocupado
               ? "bg-[var(--rifa-accent)] text-[var(--rifa-accent-ink)] ring-2 ring-[var(--rifa-accent)]"
               : c.ocupado
-              ? "line-through cursor-not-allowed bg-[var(--rifa-ocupado)] text-[var(--rifa-ocupado-ink)]"
+              ? `cursor-not-allowed ${CELDA_OCUPADA}`
               : sel
                 ? "bg-[var(--rifa-accent)] text-[var(--rifa-accent-ink)] ring-2 ring-[var(--rifa-accent)]"
-                : "cursor-pointer border bg-[var(--rifa-surface)] border-[var(--rifa-line)] hover:border-[var(--rifa-accent)]";
+                : `cursor-pointer ${CELDA_LIBRE} hover:border-[var(--rifa-accent)]`;
             return (
               <button
                 key={c.numero}
@@ -742,15 +744,27 @@ export function RifaPublicaView({
                   esBuscado ? "relative z-[1] scale-110 ring-2 ring-[var(--rifa-accent)] ring-offset-2 ring-offset-[var(--rifa-surface)] animate-pulse" : ""
                 }`}
               >
-                {formatNumero(c.numero, ancho)}
+                {c.ocupado && !mio ? (
+                  <NumeroOcupado texto={formatNumero(c.numero, ancho)} marca={marcaOcupado} />
+                ) : (
+                  formatNumero(c.numero, ancho)
+                )}
               </button>
             );
           })}
         </div>
 
         <div className="mb-4 flex justify-center gap-4 text-[11px] text-[var(--rifa-muted)]">
-          <span className="inline-flex items-center gap-1.5"><i className="size-3 rounded border bg-[var(--rifa-surface)] border-[var(--rifa-line)]" /> Libre</span>
-          <span className="inline-flex items-center gap-1.5"><i className="size-3 rounded bg-[var(--rifa-ocupado)]" /> Ocupado</span>
+          <span className="inline-flex items-center gap-1.5">
+            <i className={`flex size-5 items-center justify-center rounded text-[8px] font-bold not-italic ${CELDA_LIBRE}`}>07</i>
+            Libre
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <i className={`flex size-5 items-center justify-center rounded text-[8px] font-bold not-italic ${CELDA_OCUPADA}`}>
+              <NumeroOcupado texto="07" marca={marcaOcupado} />
+            </i>
+            Vendido
+          </span>
         </div>
 
         {!abierta && (

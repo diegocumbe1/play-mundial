@@ -16,8 +16,11 @@ import { CalculadoraGanancias } from "@/components/precios/calculadora-ganancias
 import type { ConfigCobroRifa } from "@/lib/cobro-rifa";
 import {
   DECORACIONES,
+  MARCAS_OCUPADO,
   TEMAS,
+  getMarcaOcupado,
   type DecoracionRifa,
+  type MarcaOcupado,
   type TemaRifa,
 } from "@/lib/temas-rifa";
 import {
@@ -103,6 +106,7 @@ export function RifaForm({
   const [decoracion, setDecoracion] = useState<DecoracionRifa>(
     (rifa?.decoracion as DecoracionRifa) ?? "floral",
   );
+  const [marcaOcupado, setMarcaOcupado] = useState<MarcaOcupado>(getMarcaOcupado(rifa?.marca_ocupado));
   const [imagenUrl, setImagenUrl] = useState(rifa?.imagen_url ?? "");
   const [imagenFondoUrl, setImagenFondoUrl] = useState(rifa?.imagen_fondo_url ?? "");
   const [sorteoBolas, setSorteoBolas] = useState(String(rifa?.sorteo_bolas ?? 1));
@@ -216,6 +220,7 @@ export function RifaForm({
       solo_pagadas_juegan: soloPagadas,
       tema,
       decoracion,
+      marca_ocupado: marcaOcupado,
       imagen_url: imagenUrl || null,
       imagen_fondo_url: imagenFondoUrl || null,
       sorteo_bolas: bolasNum,
@@ -703,12 +708,33 @@ export function RifaForm({
             </button>
           ))}
         </div>
+
+        <Label className="text-muted-foreground mt-3 text-xs font-medium">
+          Números vendidos en el enlace público
+        </Label>
+        <div className="flex flex-wrap gap-2">
+          {MARCAS_OCUPADO.map((m) => (
+            <button
+              key={m.id}
+              type="button"
+              onClick={() => setMarcaOcupado(m.id)}
+              aria-pressed={marcaOcupado === m.id}
+              className={
+                "rounded-lg border px-3 py-2 text-xs font-medium transition-colors " +
+                (marcaOcupado === m.id ? "border-primary ring-primary/30 ring-2" : "border-border hover:bg-muted")
+              }
+            >
+              {m.nombre}
+            </button>
+          ))}
+        </div>
       </div>
       <div className="flex flex-col gap-1.5">
         <Label className="text-muted-foreground text-xs font-medium">Vista previa</Label>
         <TemaPreview
           tema={tema}
           decoracion={decoracion}
+          marcaOcupado={marcaOcupado}
           nombre={nombre}
           imagenFondoUrl={imagenFondoUrl || undefined}
         />
