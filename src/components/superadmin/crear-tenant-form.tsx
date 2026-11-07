@@ -17,10 +17,16 @@ export function CrearTenantForm() {
   const [nombre, setNombre] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [incluirTorneos, setIncluirTorneos] = useState(false);
 
   function crear() {
     startTransition(async () => {
-      const r = await crearTenantConOwner({ nombre: nombre.trim(), email: email.trim(), password });
+      const r = await crearTenantConOwner({
+        nombre: nombre.trim(),
+        email: email.trim(),
+        password,
+        incluirTorneos,
+      });
       if (!r.success) {
         toast.error(r.error);
         return;
@@ -29,6 +35,7 @@ export function CrearTenantForm() {
       setNombre("");
       setEmail("");
       setPassword("");
+      setIncluirTorneos(false);
       router.refresh();
     });
   }
@@ -47,6 +54,15 @@ export function CrearTenantForm() {
         <Label className="text-muted-foreground mb-1.5 block text-xs">Contraseña</Label>
         <Input value={password} onChange={(e) => setPassword(e.target.value)} placeholder="mínimo 6 caracteres" type="password" autoComplete="new-password" />
       </div>
+      <label className="flex min-h-11 items-center gap-2 text-sm sm:col-span-3">
+        <input
+          type="checkbox"
+          checked={incluirTorneos}
+          onChange={(e) => setIncluirTorneos(e.target.checked)}
+          className="size-4"
+        />
+        Incluir torneos deportivos
+      </label>
       <div className="sm:col-span-3">
         <Button onClick={crear} disabled={pending || !nombre.trim() || !email.trim() || password.length < 6}>
           <UserPlus className="size-4" /> Crear organizador

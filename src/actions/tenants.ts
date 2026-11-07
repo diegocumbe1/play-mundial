@@ -190,6 +190,8 @@ const nuevoTenantSchema = z.object({
   nombre: z.string().trim().min(1, "El nombre del organizador es obligatorio"),
   email: z.string().email("Email inválido"),
   password: z.string().min(6, "La contraseña debe tener al menos 6 caracteres"),
+  /** Torneos es por invitación: solo se habilita si el superadmin lo pide aquí. */
+  incluirTorneos: z.boolean().optional(),
 });
 
 /**
@@ -206,7 +208,7 @@ export async function crearTenantConOwner(
   if (!parsed.success) {
     return { success: false, error: parsed.error.issues[0].message };
   }
-  const { nombre, email, password } = parsed.data;
+  const { nombre, email, password, incluirTorneos } = parsed.data;
 
   const svc = createServiceRoleClient();
 
@@ -236,8 +238,7 @@ export async function crearTenantConOwner(
   if (errMem) return { success: false, error: errMem.message };
 
   await svc.from("tenant_pago_config").insert({ tenant_id: tenantId });
-  // Todo organizador nuevo nace con las verticales disponibles habilitadas.
-  await habilitarProductosIniciales(tenantId);
+  await habilitarProductosIniciales(tenantId, incluirTorneos ? ["rifas", "torneos"] : ["rifas"]);
 
   revalidatePath("/superadmin");
   return { success: true, data: { tenantId } };
@@ -308,6 +309,11 @@ export async function setEstadoTenant(
   for (const { slug_publico } of (rifas as { slug_publico: string }[]) ?? []) {
     revalidatePath(`/r/${slug_publico}`);
     updateTag(tagRifaPublica(slug_publico));
+  }
+  // Sus torneos siguen visibles, pero cierran inscripciones y ocultan el cobro.
+  const { data: torneos } = await svc.from("torneos").select("slug_publico").eq("tenant_id", tenantId);
+  for (const { slug_publico } of (torneos as { slug_publico: string }[]) ?? []) {
+    revalidatePath(`/t/${slug_publico}`);
   }
 
   revalidatePath("/superadmin");

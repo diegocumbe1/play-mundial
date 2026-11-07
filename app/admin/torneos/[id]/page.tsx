@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { ArrowLeft, Pencil } from "lucide-react";
 
 import { getTorneo } from "@/actions/torneos";
-import { getMiPagoConfig } from "@/actions/tenants";
+import { getMiPagoConfig, getTenants } from "@/actions/tenants";
 import { getMembership } from "@/lib/auth";
 import { formatFechaCO } from "@/lib/fecha-co";
 import {
@@ -19,6 +19,7 @@ import { PagoConfigForm } from "@/components/rifa/pago-config-form";
 import { ActivarTorneoButton } from "@/components/torneo/activar-torneo-button";
 import { EstadoTorneoBadge } from "@/components/torneo/estado-torneo-badge";
 import { EstadoTorneoControl } from "@/components/torneo/estado-torneo-control";
+import { ReasignarTorneo } from "@/components/torneo/reasignar-torneo";
 import { ShareTorneo } from "@/components/torneo/share-torneo";
 import { AvisosTorneoPanel } from "@/components/torneo/avisos-torneo-panel";
 import { TorneoTabs } from "@/components/torneo/torneo-tabs";
@@ -63,6 +64,8 @@ export default async function TorneoDetallePage({
 
   const pagoRes = await getMiPagoConfig();
   const pago = pagoRes.success ? pagoRes.data : null;
+  const tenantsRes = membership.rol === "superadmin" ? await getTenants() : null;
+  const tenants = tenantsRes?.success ? tenantsRes.data : [];
   const pagoIncompleto =
     !(pago?.cuenta_numero ?? pago?.nequi_llave) && !pago?.llave && !pago?.qr_url;
 
@@ -146,6 +149,19 @@ export default async function TorneoDetallePage({
             slug={torneo.slug_publico}
             nombre={torneo.nombre}
             detalle={resumenParaCompartir}
+          />
+        </section>
+      )}
+
+      {/* Responsable del torneo (solo superadmin) */}
+      {tenants.length > 0 && (
+        <section className="border-border mb-6 rounded-2xl border p-4">
+          <p className="mb-3 text-sm font-semibold">Responsable del torneo</p>
+          <ReasignarTorneo
+            torneoId={torneo.id}
+            tenantActualId={torneo.tenant_id}
+            tenantActualNombre={tenants.find((t) => t.id === torneo.tenant_id)?.nombre ?? "—"}
+            tenants={tenants.filter((t) => t.estado === "activo")}
           />
         </section>
       )}

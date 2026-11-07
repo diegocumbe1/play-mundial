@@ -49,6 +49,7 @@ export function TorneoPublicoView({ datos }: { datos: TorneoPublicoDetalle }) {
     equipos,
     cuposDisponibles,
     inscripcionesAbiertas,
+    inscripcionesPausadas,
     pago,
     organizador,
   } = datos;
@@ -262,7 +263,7 @@ export function TorneoPublicoView({ datos }: { datos: TorneoPublicoDetalle }) {
         <section className="border-border bg-muted/30 mb-5 rounded-2xl border border-dashed p-5 text-center">
           <p className="text-sm font-semibold">Las inscripciones están cerradas</p>
           <p className="text-muted-foreground mt-1 text-sm">
-            {cuposDisponibles === 0
+            {cuposDisponibles === 0 && !inscripcionesPausadas
               ? "Este torneo ya completó su cupo de equipos."
               : "Este torneo no está recibiendo nuevas solicitudes."}
           </p>

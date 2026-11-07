@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import { getMembership } from "@/lib/auth";
+import { ESTADOS_TENANT_BLOQUEADO } from "@/lib/errores";
 import {
   borrarSalaMarcador,
   crearSalaMarcador,
@@ -20,7 +21,7 @@ import {
   guardarConstanciaJuez,
 } from "@/lib/torneo-avisos";
 import { resolverActivacion } from "@/lib/planes";
-import { tieneProductoHabilitado } from "@/lib/productos";
+import { habilitarProductosIniciales, tieneProductoHabilitado } from "@/lib/productos";
 import {
   calcularDashboardTorneo,
   construirEquiposPublicos,
@@ -145,6 +146,11 @@ async function torneoDelUsuario(
     return null;
   }
   return torneo;
+}
+
+/** ¿Ese estado de cuenta significa que el superadmin bloqueó al organizador? */
+function esEstadoBloqueado(estado: string | undefined): boolean {
+  return (ESTADOS_TENANT_BLOQUEADO as readonly string[]).includes(estado ?? "");
 }
 
 function revalidarTorneo(torneo: Pick<Torneo, "id" | "slug_publico">): void {
@@ -542,8 +548,74 @@ export async function crearTorneo(
 
   if (error) return { success: false, error: error.message };
 
+  // Delegado a otro organizador: sin el módulo no podría abrir su propio torneo.
+  if (tenantId !== acceso.membership.tenant_id) {
+    await habilitarProductosIniciales(tenantId, ["torneos"]);
+  }
+
   revalidatePath("/admin/torneos");
   return { success: true, data: { id: (data as { id: string }).id } };
+}
+
+/**
+ * Pasa un torneo y todo lo suyo a otro organizador. Solo superadmin. El enlace
+ * público no cambia, pero desde ahí se muestran los datos de cobro del nuevo.
+ *
+ * Quedan donde están los cobros ya pagados (los pagó el organizador anterior),
+ * el cupo gratis que consumió y las suscripciones de avisos, que son de cada
+ * dispositivo. El torneo se mueve de último: si algo falla a mitad de camino,
+ * sigue siendo del organizador anterior y se puede reintentar.
+ */
+export async function reasignarTorneo(
+  torneoId: string,
+  tenantId: string,
+): Promise<ActionResult> {
+  const membership = await getMembership();
+  if (membership?.rol !== "superadmin") {
+    return { success: false, error: "Solo el superadmin puede reasignar torneos" };
+  }
+
+  const svc = createServiceRoleClient();
+  const torneo = await torneoDelUsuario(torneoId, membership);
+  if (!torneo) return { success: false, error: "Torneo no encontrado" };
+
+  const { data: destino } = await svc
+    .from("tenants")
+    .select("estado")
+    .eq("id", tenantId)
+    .maybeSingle();
+  if ((destino as { estado: string } | null)?.estado !== "activo") {
+    return { success: false, error: "Ese organizador no está activo" };
+  }
+
+  for (const tabla of [
+    "equipos_torneo",
+    "gastos_torneo",
+    "premios_torneo",
+    "categorias_torneo",
+    "encuentros",
+    "pagos_equipo_torneo",
+    "jugadores_torneo",
+  ]) {
+    const { error } = await svc.from(tabla).update({ tenant_id: tenantId }).eq("torneo_id", torneoId);
+    if (error) return { success: false, error: error.message };
+  }
+
+  // Lo que falta por pagar ahora lo debe el nuevo responsable.
+  const { error: errCobros } = await svc
+    .from("cobros")
+    .update({ tenant_id: tenantId })
+    .eq("torneo_id", torneoId)
+    .eq("estado", "pendiente");
+  if (errCobros) return { success: false, error: errCobros.message };
+
+  await habilitarProductosIniciales(tenantId, ["torneos"]);
+
+  const { error } = await svc.from("torneos").update({ tenant_id: tenantId }).eq("id", torneoId);
+  if (error) return { success: false, error: error.message };
+
+  revalidarTorneo(torneo);
+  return { success: true, data: undefined };
 }
 
 /** Actualiza la configuración de un torneo. */
@@ -1340,6 +1412,8 @@ export interface TorneoPublicoDetalle {
   cuposDisponibles: number;
   /** Si en este momento se pueden enviar solicitudes de inscripción. */
   inscripcionesAbiertas: boolean;
+  /** El superadmin bloqueó al organizador: se ve el torneo, pero no se inscribe ni se cobra. */
+  inscripcionesPausadas: boolean;
   /** Datos de contacto/cobro del organizador (ya son públicos por diseño). */
   pago: TenantPagoConfig | null;
   organizador: string;
@@ -1381,7 +1455,7 @@ export async function getTorneoPublico(
       .select("*")
       .eq("tenant_id", torneo.tenant_id)
       .maybeSingle(),
-    svc.from("tenants").select("nombre").eq("id", torneo.tenant_id).maybeSingle(),
+    svc.from("tenants").select("nombre, estado").eq("id", torneo.tenant_id).maybeSingle(),
     svc.from("categorias_torneo").select("*").eq("torneo_id", torneo.id).order("orden"),
     svc
       .from("encuentros")
@@ -1393,6 +1467,8 @@ export async function getTorneoPublico(
       .order("orden"),
   ]);
 
+  const tenant = tenantData as { nombre: string; estado: string } | null;
+  const bloqueado = esEstadoBloqueado(tenant?.estado);
   const equipos = (equiposData as EquipoTorneo[]) ?? [];
   const vigentes = equiposVigentes(equipos);
   const categorias = ((categoriasData as CategoriaTorneo[]) ?? []).map((c) => ({
@@ -1441,9 +1517,10 @@ export async function getTorneoPublico(
       equipos: construirEquiposPublicos(equipos),
       equiposConfirmados: vigentes.filter((e) => e.estado === "confirmado").length,
       cuposDisponibles: Math.max(0, torneo.cupo_equipos - vigentes.length),
-      inscripcionesAbiertas: inscripcionesVigentes(torneo, vigentes.length),
-      pago: (pagoData as TenantPagoConfig | null) ?? null,
-      organizador: (tenantData as { nombre: string } | null)?.nombre ?? "El organizador",
+      inscripcionesAbiertas: !bloqueado && inscripcionesVigentes(torneo, vigentes.length),
+      inscripcionesPausadas: bloqueado,
+      pago: bloqueado ? null : ((pagoData as TenantPagoConfig | null) ?? null),
+      organizador: tenant?.nombre ?? "El organizador",
     },
   };
 }
@@ -1529,7 +1606,15 @@ export async function inscribirEquipoPublico(
     .eq("torneo_id", torneo.id);
   const vigentes = equiposVigentes((equiposData as EquipoTorneo[]) ?? []);
 
-  if (torneo.estado !== "inscripciones") {
+  const { data: tenantData } = await svc
+    .from("tenants")
+    .select("estado")
+    .eq("id", torneo.tenant_id)
+    .maybeSingle();
+  if (
+    torneo.estado !== "inscripciones" ||
+    esEstadoBloqueado((tenantData as { estado: string } | null)?.estado)
+  ) {
     return { success: false, error: "Este torneo no está recibiendo inscripciones" };
   }
   if (
