@@ -35,11 +35,95 @@ export async function getCobros(): Promise<ActionResult<Cobro[]>> {
   return { success: true, data: (data as Cobro[]) ?? [] };
 }
 
+const cobroManualSchema = z.object({
+  tenantId: z.string().uuid(),
+  producto: z.enum(["rifas", "torneos"]),
+  monto: z.number().int().min(1, "El monto debe ser mayor a 0"),
+  meses: z.number().int().min(1).max(24),
+  nota: z.string().trim().max(300).optional(),
+});
+
+/**
+ * El superadmin registra un cobro acordado por fuera (precio negociado, varios
+ * meses, etc.). Queda PENDIENTE: el acceso pago se activa al confirmar el pago.
+ *
+ * Si es de torneos, además habilita el módulo: el organizador ya acordó pagar
+ * por él y necesita entrar a armar su torneo mientras paga.
+ */
+export async function registrarCobroManual(
+  input: z.infer<typeof cobroManualSchema>,
+): Promise<ActionResult> {
+  if (!(await esSuperadmin())) {
+    return { success: false, error: "Solo el superadmin puede registrar cobros" };
+  }
+  const parsed = cobroManualSchema.safeParse(input);
+  if (!parsed.success) {
+    return { success: false, error: parsed.error.issues[0].message };
+  }
+  const { tenantId, producto, monto, meses, nota } = parsed.data;
+
+  const svc = createServiceRoleClient();
+  // Periodo en hora de Colombia: a las 8 p. m. del último día UTC ya es otro mes.
+  const periodo = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Bogota",
+    year: "numeric",
+    month: "2-digit",
+  })
+    .format(new Date())
+    .slice(0, 7);
+
+  const { error } = await svc.from("cobros").insert({
+    tenant_id: tenantId,
+    producto,
+    tipo: "suscripcion",
+    monto,
+    meses,
+    nota: nota || null,
+    estado: "pendiente",
+    periodo,
+  });
+  if (error) return { success: false, error: error.message };
+
+  if (producto === "torneos") {
+    const { error: errProd } = await svc
+      .from("tenant_productos")
+      .upsert(
+        { tenant_id: tenantId, producto: "torneos", habilitado: true },
+        { onConflict: "tenant_id,producto" },
+      );
+    if (errProd) return { success: false, error: errProd.message };
+  }
+
+  revalidatePath("/superadmin");
+  revalidatePath("/admin");
+  return { success: true, data: undefined };
+}
+
+/** Anula un cobro pendiente registrado por error. Solo superadmin. */
+export async function anularCobro(cobroId: string): Promise<ActionResult> {
+  if (!(await esSuperadmin())) {
+    return { success: false, error: "Solo el superadmin puede anular cobros" };
+  }
+  const svc = createServiceRoleClient();
+  const { data, error } = await svc
+    .from("cobros")
+    .update({ estado: "anulado" })
+    .eq("id", cobroId)
+    .eq("estado", "pendiente")
+    .select("id");
+  if (error) return { success: false, error: error.message };
+  if (!data?.length) return { success: false, error: "El cobro ya no está pendiente" };
+
+  revalidatePath("/superadmin");
+  return { success: true, data: undefined };
+}
+
 /**
  * Confirma un cobro (prepago manual vía Nequi). Solo superadmin.
  * - pago_rifa → activa la rifa asociada.
- * - suscripcion de rifas → extiende `suscripcion_vence_at` un mes y marca el plan.
- * - suscripcion de torneos → extiende `suscripcion_torneos_vence_at` un mes.
+ * - suscripcion de rifas → extiende `suscripcion_vence_at` los `meses` del
+ *   cobro (1 por defecto) y marca el plan.
+ * - suscripcion de torneos → extiende `suscripcion_torneos_vence_at` igual.
  */
 export async function confirmarCobro(
   cobroId: string,
@@ -80,7 +164,7 @@ export async function confirmarCobro(
       actual && new Date(actual).getTime() > Date.now()
         ? new Date(actual)
         : new Date();
-    base.setMonth(base.getMonth() + 1);
+    base.setMonth(base.getMonth() + (c.meses ?? 1));
     // `plan_actual` describe el plan de rifas: la suscripción de torneos no lo toca.
     await svc
       .from("tenants")

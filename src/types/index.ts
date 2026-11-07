@@ -675,6 +675,10 @@ export interface Cobro {
   estado: EstadoCobro;
   periodo: string | null;
   comprobante: string | null;
+  /** Meses de suscripción que cubre el cobro al confirmarse (default 1). */
+  meses: number;
+  /** Detalle del acuerdo cuando el superadmin registra el cobro a mano. */
+  nota: string | null;
   created_at: string;
   pagado_at: string | null;
 }

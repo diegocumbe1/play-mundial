@@ -7,6 +7,7 @@ import { Ban, CheckCircle2, Gift, KeyRound, Lock, Settings, Unlock } from "lucid
 import { toast } from "sonner";
 
 import { restablecerPasswordOwner, setEstadoTenant, setPlanTenant } from "@/actions/tenants";
+import { RegistrarCobroForm } from "@/components/superadmin/registrar-cobro-form";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -136,6 +137,12 @@ export function TenantPlanControls({
                   : " · sin vencimiento"}
                 {bloqueado ? " · bloqueado" : " · activo"}
               </p>
+              {tenant.suscripcion_torneos_vence_at && (
+                <p className="text-muted-foreground text-xs">
+                  Torneos: vence{" "}
+                  {new Date(tenant.suscripcion_torneos_vence_at).toLocaleDateString("es-CO")}
+                </p>
+              )}
             </div>
 
             {metric && (
@@ -166,6 +173,8 @@ export function TenantPlanControls({
                 {bloqueado ? "Reactivar" : "Bloquear"}
               </Button>
             </div>
+
+            {!bloqueado && <RegistrarCobroForm tenantId={tenant.id} />}
 
             {!esSuper && (
               <div className="border-border rounded-xl border p-3">

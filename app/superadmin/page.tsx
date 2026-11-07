@@ -9,7 +9,10 @@ import { getCobros } from "@/actions/cobros";
 import { formatCOP } from "@/lib/rifa";
 import { buttonVariants } from "@/components/ui/button";
 import { CrearTenantForm } from "@/components/superadmin/crear-tenant-form";
-import { ConfirmarCobroButton } from "@/components/superadmin/confirmar-cobro-button";
+import {
+  AnularCobroButton,
+  ConfirmarCobroButton,
+} from "@/components/superadmin/confirmar-cobro-button";
 import { SuperadminOrganizadoresTable } from "@/components/superadmin/superadmin-organizadores-table";
 import {
   SolicitudesCuenta,
@@ -68,6 +71,7 @@ export default async function SuperadminPage({
   const tenants = dashboard?.tenants.map((m) => m.tenant) ?? [];
   const cobros = cobrosRes.success ? cobrosRes.data : [];
   const pendientes = cobros.filter((c) => c.estado === "pendiente");
+  const nombreTenant = Object.fromEntries(tenants.map((t) => [t.id, t.nombre]));
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-8">
@@ -138,15 +142,25 @@ export default async function SuperadminPage({
         ) : (
           <ul className="flex flex-col gap-2">
             {pendientes.map((c) => (
-              <li key={c.id} className="border-border flex items-center justify-between gap-3 rounded-xl border p-3">
-                <div>
-                  <p className="text-sm font-semibold">{formatCOP(c.monto)}</p>
+              <li key={c.id} className="border-border flex flex-wrap items-center justify-between gap-3 rounded-xl border p-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold">
+                    {formatCOP(c.monto)}
+                    {nombreTenant[c.tenant_id] && (
+                      <span className="text-muted-foreground font-normal"> · {nombreTenant[c.tenant_id]}</span>
+                    )}
+                  </p>
                   <p className="text-muted-foreground text-xs">
                     {labelCobro(c)}
+                    {c.tipo === "suscripcion" && (c.meses ?? 1) > 1 ? ` · ${c.meses} meses` : ""}
                     {c.periodo ? ` · ${c.periodo}` : ""}
                   </p>
+                  {c.nota && <p className="text-muted-foreground mt-0.5 text-xs italic">{c.nota}</p>}
                 </div>
-                <ConfirmarCobroButton cobroId={c.id} />
+                <div className="flex gap-1">
+                  <AnularCobroButton cobroId={c.id} />
+                  <ConfirmarCobroButton cobroId={c.id} />
+                </div>
               </li>
             ))}
           </ul>
