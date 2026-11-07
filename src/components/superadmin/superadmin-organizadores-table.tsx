@@ -185,6 +185,15 @@ export function SuperadminOrganizadoresTable({
                   <TableCell>
                     <div className="font-medium">{PLAN_LABEL[t.plan_actual] ?? t.plan_actual}</div>
                     <div className="text-muted-foreground text-xs">{duracionPlan(t, nowMs)}</div>
+                    {t.suscripcion_torneos_vence_at &&
+                      new Date(t.suscripcion_torneos_vence_at).getTime() >= nowMs && (
+                        <div className="text-muted-foreground text-xs">
+                          Torneos: hasta{" "}
+                          {new Date(t.suscripcion_torneos_vence_at).toLocaleDateString("es-CO", {
+                            timeZone: "America/Bogota",
+                          })}
+                        </div>
+                      )}
                   </TableCell>
                   <TableCell>
                     <TenantProductosControls

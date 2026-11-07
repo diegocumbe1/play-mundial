@@ -74,7 +74,7 @@ export function ActivarTorneoButton({ torneoId }: { torneoId: string }) {
               disabled={pending}
               onClick={() =>
                 startTransition(async () => {
-                  const r = await solicitarSuscripcion();
+                  const r = await solicitarSuscripcion("torneos");
                   if (!r.success) {
                     toast.error(r.error);
                     return;

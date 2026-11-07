@@ -2,11 +2,13 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { Check } from "lucide-react";
 
-import { getMembership } from "@/lib/auth";
+import { getMembership, getTenantActual } from "@/lib/auth";
 import { getPlataformaConfig } from "@/lib/tenant-config";
 import { MARCA } from "@/lib/marca";
+import { tieneProductoHabilitado } from "@/lib/productos";
 import { formatCOP } from "@/lib/rifa";
 import { porcentajeDelRecaudo, precioEscalon } from "@/lib/planes";
+import { buttonVariants } from "@/components/ui/button";
 import { PlanActionButton } from "@/components/precios/plan-action-button";
 import { CalculadoraGanancias } from "@/components/precios/calculadora-ganancias";
 import { configCobroRifa } from "@/lib/cobro-rifa";
@@ -15,6 +17,21 @@ export const dynamic = "force-dynamic";
 
 export default async function PreciosPage() {
   const [c, membership] = await Promise.all([getPlataformaConfig(), getMembership()]);
+
+  // Torneos es por invitación: solo ve sus precios quien tiene el módulo.
+  const veTorneos =
+    !!membership &&
+    (membership.rol === "superadmin" ||
+      (await tieneProductoHabilitado(membership.tenant_id, "torneos")));
+  const venceTorneos = veTorneos ? (await getTenantActual())?.suscripcion_torneos_vence_at : null;
+  // eslint-disable-next-line react-hooks/purity -- hora actual evaluada por request (server)
+  const suscripcionTorneosVigente = !!venceTorneos && new Date(venceTorneos).getTime() > Date.now();
+  const escalonesTorneo = [
+    { label: "Hasta 8 equipos", precio: c.precio_torneo_8 },
+    { label: "9 a 16 equipos", precio: c.precio_torneo_16 },
+    { label: "17 a 32 equipos", precio: c.precio_torneo_32 },
+    { label: "Más de 32 equipos", precio: c.precio_torneo_mas },
+  ];
 
   const porPorcentaje = c.cobro_rifa_modo === "porcentaje";
   const porBoleta = c.cobro_rifa_modo !== "escalones";
@@ -145,7 +162,8 @@ export default async function PreciosPage() {
         "Sin marca de agua",
         "Export de imagen en alta",
         "Soporte prioritario",
-      ],
+        veTorneos ? "Solo cubre rifas: torneos va aparte" : "",
+      ].filter(Boolean),
     },
   ];
 
@@ -200,6 +218,73 @@ export default async function PreciosPage() {
           </div>
         ))}
       </div>
+
+      {veTorneos && (
+        <section id="torneos" className="mt-10 scroll-mt-4">
+          <h2 className="text-xl font-bold">Torneos</h2>
+          <p className="text-muted-foreground mt-1 text-sm">
+            Gratis hasta {c.free_max_equipos} equipos: {c.free_torneos_total} torneos en total
+            (máx. {c.free_torneos_por_mes} por mes). Después, eliges cómo pagar.
+          </p>
+          <div className="mt-4 grid gap-4 sm:grid-cols-2">
+            <div className="border-border flex flex-col rounded-2xl border p-5">
+              <p className="text-sm font-semibold">Por torneo</p>
+              <p className="text-muted-foreground text-xs">
+                pago único según el cupo de equipos
+              </p>
+              <ul className="mb-5 mt-4 flex flex-col gap-2">
+                {escalonesTorneo.map((e) => (
+                  <li key={e.label} className="flex items-baseline justify-between gap-3 text-sm">
+                    <span>{e.label}</span>
+                    <b>{e.precio > 0 ? formatCOP(e.precio) : "Por definir"}</b>
+                  </li>
+                ))}
+              </ul>
+              <Link
+                href="/admin/torneos/nuevo"
+                className={buttonVariants({ className: "mt-auto w-full" })}
+              >
+                Crear torneo
+              </Link>
+            </div>
+
+            {c.precio_suscripcion_torneos_mes > 0 && (
+              <div className="border-border flex flex-col rounded-2xl border p-5">
+                <p className="text-sm font-semibold">Mensual</p>
+                <p className="mt-1 text-2xl font-bold">
+                  {formatCOP(c.precio_suscripcion_torneos_mes)}
+                </p>
+                <p className="text-muted-foreground text-xs">por mes</p>
+                <ul className="mb-5 mt-4 flex flex-col gap-2">
+                  <li className="flex items-start gap-2 text-sm">
+                    <Check className="text-primary mt-0.5 size-4 shrink-0" />
+                    <span>Torneos ilimitados mientras esté activa</span>
+                  </li>
+                  <li className="flex items-start gap-2 text-sm">
+                    <Check className="text-primary mt-0.5 size-4 shrink-0" />
+                    <span>Aparte de la suscripción de rifas</span>
+                  </li>
+                </ul>
+                {suscripcionTorneosVigente && (
+                  <p className="text-muted-foreground mb-3 text-xs">
+                    Tu suscripción va hasta el{" "}
+                    {new Date(venceTorneos as string).toLocaleDateString("es-CO", {
+                      timeZone: "America/Bogota",
+                    })}
+                    .
+                  </p>
+                )}
+                <PlanActionButton
+                  plan="suscripcion"
+                  producto="torneos"
+                  logueado
+                  montoSuscripcion={c.precio_suscripcion_torneos_mes}
+                />
+              </div>
+            )}
+          </div>
+        </section>
+      )}
 
       {/* Cuentas claras: el costo real y a qué porcentaje del recaudo equivale. */}
       {porBoleta && (

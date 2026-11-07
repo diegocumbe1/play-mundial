@@ -54,6 +54,7 @@ export async function getPlataformaConfig(): Promise<PlataformaConfig> {
     precio_torneo_16: 0,
     precio_torneo_32: 0,
     precio_torneo_mas: 0,
+    precio_suscripcion_torneos_mes: 0,
     free_torneos_por_mes: 1,
     free_torneos_total: 2,
     free_max_equipos: 8,

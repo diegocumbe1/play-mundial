@@ -18,16 +18,19 @@ import {
 import { formatCOP } from "@/lib/rifa";
 import { labelCuentaPago } from "@/lib/pagos";
 import { waLink } from "@/lib/whatsapp";
-import type { PlataformaPagoConfig } from "@/types";
+import type { PlataformaPagoConfig, ProductoPlataforma } from "@/types";
 
 export function PlanActionButton({
   plan,
   logueado,
   montoSuscripcion,
+  producto = "rifas",
 }: {
   plan: "gratis" | "pago_rifa" | "suscripcion";
   logueado: boolean;
   montoSuscripcion: number;
+  /** De qué producto es la suscripción que se solicita. */
+  producto?: ProductoPlataforma;
 }) {
   const [pending, startTransition] = useTransition();
   const [pago, setPago] = useState<PlataformaPagoConfig | null>(null);
@@ -67,7 +70,7 @@ export function PlanActionButton({
         className="mt-auto w-full"
         onClick={() =>
           startTransition(async () => {
-            const r = await solicitarSuscripcion();
+            const r = await solicitarSuscripcion(producto);
             if (!r.success) {
               toast.error(r.error);
               return;

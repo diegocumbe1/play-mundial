@@ -25,6 +25,8 @@ export type PushPayload = {
   body: string;
   url?: string;
   tag?: string;
+  /** Nombre del torneo: public/sw.js lo muestra como título de la notificación. */
+  torneo?: string;
 };
 
 /**

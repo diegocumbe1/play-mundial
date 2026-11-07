@@ -110,8 +110,9 @@ export function avisarPartidosNuevos(torneo: TorneoAviso, titulo: string): Promi
   return seguro(async () => {
     const subs = (await suscripciones(torneo.tenant_id)).filter((s) => s.partido_nuevo);
     await enviar(subs, {
+      torneo: torneo.nombre,
       title: titulo,
-      body: torneo.nombre,
+      body: "",
       url: `/admin/torneos/${torneo.id}`,
       tag: `torneo-${torneo.id}-nuevos`,
     });
@@ -128,8 +129,9 @@ export function avisarEnVivo(torneo: TorneoAviso, e: Encuentro): Promise<void> {
     if (subs.length === 0) return;
     const nombre = await nombresDe([e]);
     await enviar(subs, {
+      torneo: torneo.nombre,
       title: `En vivo: ${nombre(e.equipo_a_id)} vs ${nombre(e.equipo_b_id)}`,
-      body: [torneo.nombre, e.cancha ? `Cancha ${e.cancha}` : null].filter(Boolean).join(" · "),
+      body: e.cancha ? `Cancha ${e.cancha}` : "",
       url: enlacePartido(torneo.id, e.id),
       tag: `partido-${e.id}`,
     });
@@ -157,6 +159,7 @@ export function avisarFinalizado(torneo: TorneoAviso, e: Encuentro): Promise<voi
 
     if (subs.length > 0) {
       await enviar(subs, {
+        torneo: torneo.nombre,
         title: `Partido finalizado: ${partido}`,
         body:
           e.estado === "wo"
@@ -170,6 +173,7 @@ export function avisarFinalizado(torneo: TorneoAviso, e: Encuentro): Promise<voi
     const paraSiguiente = await sinAvisoPrevio(todas.filter((s) => s.siguiente), sig.id, "siguiente");
     if (paraSiguiente.length === 0) return;
     await enviar(paraSiguiente, {
+      torneo: torneo.nombre,
       title: `Sigue: ${nombre(sig.equipo_a_id)} vs ${nombre(sig.equipo_b_id)}`,
       body: cuandoYDonde(sig.programado_at, sig.cancha),
       url: enlacePartido(torneo.id, sig.id),
@@ -205,8 +209,9 @@ async function enviarRecordatorios(ahora: Date, torneos: Map<string, TorneoAviso
     if (subs.length === 0) continue;
     enviados += subs.length;
     await enviar(subs, {
+      torneo: torneo.nombre,
       title: `En ${minutosParaEmpezar(e.programado_at as string, ahora)} min: ${nombre(e.equipo_a_id)} vs ${nombre(e.equipo_b_id)}`,
-      body: [torneo.nombre, cuandoYDonde(e.programado_at, e.cancha)].filter(Boolean).join(" · "),
+      body: cuandoYDonde(e.programado_at, e.cancha),
       url: enlacePartido(torneo.id, e.id),
       tag: `partido-${e.id}`,
     });
@@ -240,6 +245,7 @@ async function revisarMarcadores(torneos: Map<string, TorneoAviso>): Promise<num
         "por_aprobar",
       );
       await enviar(subs, {
+        torneo: torneo.nombre,
         title: `Resultado por aprobar: ${nombre(e.equipo_a_id)} vs ${nombre(e.equipo_b_id)}`,
         body: leido.setSinTerminar
           ? "El juez cerró el partido antes de terminar. Toca para corregirlo."

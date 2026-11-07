@@ -1,4 +1,7 @@
-// Service worker para Web Push del admin.
+// Service worker para Web Push del panel.
+
+// Es un archivo estático: no puede importar `MARCA` de src/lib/marca.ts.
+const MARCA = "Play Mundial";
 
 self.addEventListener("push", function (event) {
   if (!event.data) return;
@@ -7,14 +10,19 @@ self.addEventListener("push", function (event) {
   try {
     data = event.data.json();
   } catch {
-    data = { title: "Polla Mundial 2026", body: event.data.text() };
+    data = { body: event.data.text() };
   }
 
-  const title = data.title || "Polla Mundial 2026";
+  // Un aviso de torneo lleva su nombre arriba; lo que pasó queda en el cuerpo.
+  const title = data.torneo ? `🏆 ${data.torneo}` : data.title || MARCA;
+  const body = data.torneo
+    ? [data.title, data.body].filter(Boolean).join("\n")
+    : data.body || "";
+
   const options = {
-    body: data.body || "",
-    icon: data.icon || "/icon.svg",
-    badge: "/icon.svg",
+    body,
+    icon: data.icon || "/icons/icon-192.png",
+    badge: "/icons/icon-192.png",
     vibrate: [100, 50, 100],
     tag: data.tag,
     data: { url: data.url || "/admin" },

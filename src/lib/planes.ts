@@ -107,6 +107,7 @@ const CONFIG_DEFAULT: PlataformaConfig = {
   precio_torneo_16: 0,
   precio_torneo_32: 0,
   precio_torneo_mas: 0,
+  precio_suscripcion_torneos_mes: 0,
   free_torneos_por_mes: 1,
   free_torneos_total: 2,
   free_max_equipos: 8,
@@ -154,7 +155,7 @@ export async function resolverActivacion(params: {
   const svc = createServiceRoleClient();
 
   const [{ data: tenant }, { data: cfg }, { data: pagoData }] = await Promise.all([
-    svc.from("tenants").select("suscripcion_vence_at, estado").eq("id", tenantId).maybeSingle(),
+    svc.from("tenants").select("*").eq("id", tenantId).maybeSingle(),
     svc.from("plataforma_config").select("*").limit(1).maybeSingle(),
     svc.from("plataforma_pago_config").select("*").limit(1).maybeSingle(),
   ]);
@@ -180,10 +181,22 @@ export async function resolverActivacion(params: {
     };
   }
 
-  // 1) PRO (suscripción) vigente: cubre la activación hasta el tope del ciclo.
+  // 1a) Suscripción de torneos vigente: cubre todos los torneos, sin tope. PRO no
+  // los cubre: cada producto tiene su propia suscripción.
+  const venceTorneos = (tenant as { suscripcion_torneos_vence_at?: string | null } | null)
+    ?.suscripcion_torneos_vence_at;
+  if (
+    producto === "torneos" &&
+    venceTorneos &&
+    new Date(venceTorneos).getTime() > Date.now()
+  ) {
+    return { activada: true, cobroTipo: "suscripcion", pendiente: false, monto: 0, pago };
+  }
+
+  // 1b) PRO (suscripción de rifas) vigente: cubre la activación hasta el tope del ciclo.
   const venceAt = (tenant as { suscripcion_vence_at: string | null } | null)
     ?.suscripcion_vence_at;
-  if (venceAt && new Date(venceAt).getTime() > Date.now()) {
+  if (producto === "rifas" && venceAt && new Date(venceAt).getTime() > Date.now()) {
     // El ciclo es el mes que termina en `suscripcion_vence_at`.
     const desde = new Date(venceAt);
     desde.setMonth(desde.getMonth() - 1);
@@ -306,6 +319,7 @@ export async function creditoCicloPro(
     .select("monto")
     .eq("tenant_id", tenantId)
     .eq("tipo", "pago_rifa")
+    .eq("producto", "rifas")
     .eq("estado", "pagado")
     .gte("pagado_at", desde.toISOString());
 

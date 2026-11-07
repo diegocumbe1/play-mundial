@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import { esSuperadmin, getMembership } from "@/lib/auth";
+import { tieneProductoHabilitado } from "@/lib/productos";
 import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
 import type {
   ActionResult,
@@ -11,6 +12,7 @@ import type {
   PlanTenant,
   PlataformaConfig,
   PlataformaPagoConfig,
+  ProductoPlataforma,
 } from "@/types";
 
 /**
@@ -36,7 +38,8 @@ export async function getCobros(): Promise<ActionResult<Cobro[]>> {
 /**
  * Confirma un cobro (prepago manual vía Nequi). Solo superadmin.
  * - pago_rifa → activa la rifa asociada.
- * - suscripcion → extiende `suscripcion_vence_at` un mes y marca el plan.
+ * - suscripcion de rifas → extiende `suscripcion_vence_at` un mes y marca el plan.
+ * - suscripcion de torneos → extiende `suscripcion_torneos_vence_at` un mes.
  */
 export async function confirmarCobro(
   cobroId: string,
@@ -65,21 +68,26 @@ export async function confirmarCobro(
   if (c.tipo === "pago_rifa") {
     await activarEntidadDelCobro(svc, c, "pago_rifa", ahora);
   } else if (c.tipo === "suscripcion") {
+    const esTorneos = c.producto === "torneos";
+    const columna = esTorneos ? "suscripcion_torneos_vence_at" : "suscripcion_vence_at";
     const { data: tenant } = await svc
       .from("tenants")
-      .select("suscripcion_vence_at")
+      .select("*")
       .eq("id", c.tenant_id)
       .maybeSingle();
-    const actual = (tenant as { suscripcion_vence_at: string | null } | null)
-      ?.suscripcion_vence_at;
+    const actual = (tenant as Record<string, string | null> | null)?.[columna];
     const base =
       actual && new Date(actual).getTime() > Date.now()
         ? new Date(actual)
         : new Date();
     base.setMonth(base.getMonth() + 1);
+    // `plan_actual` describe el plan de rifas: la suscripción de torneos no lo toca.
     await svc
       .from("tenants")
-      .update({ plan_actual: "suscripcion", suscripcion_vence_at: base.toISOString() })
+      .update({
+        [columna]: base.toISOString(),
+        ...(esTorneos ? {} : { plan_actual: "suscripcion" }),
+      })
       .eq("id", c.tenant_id);
     // Activa la entidad que quedó pendiente por falta de plan, si la hay.
     await activarEntidadDelCobro(svc, c, "suscripcion", ahora);
@@ -120,20 +128,37 @@ async function activarEntidadDelCobro(
 }
 
 /** El owner solicita una suscripción → crea un cobro pendiente (lo confirma el superadmin). */
-export async function solicitarSuscripcion(): Promise<ActionResult<{ pago: PlataformaPagoConfig | null }>> {
+export async function solicitarSuscripcion(
+  producto: ProductoPlataforma = "rifas",
+): Promise<ActionResult<{ pago: PlataformaPagoConfig | null }>> {
   const membership = await getMembership();
   if (!membership) return { success: false, error: "Sin sesión" };
+  if (
+    producto === "torneos" &&
+    membership.rol !== "superadmin" &&
+    !(await tieneProductoHabilitado(membership.tenant_id, "torneos"))
+  ) {
+    return { success: false, error: "Tu cuenta no tiene habilitado el módulo de torneos deportivos" };
+  }
 
   const svc = createServiceRoleClient();
   const [{ data: cfg }, { data: pago }] = await Promise.all([
-    svc.from("plataforma_config").select("precio_suscripcion_mes").limit(1).maybeSingle(),
+    svc.from("plataforma_config").select("*").limit(1).maybeSingle(),
     svc.from("plataforma_pago_config").select("*").limit(1).maybeSingle(),
   ]);
-  const monto = (cfg as { precio_suscripcion_mes: number } | null)?.precio_suscripcion_mes ?? 0;
+  const config = cfg as Partial<PlataformaConfig> | null;
+  const monto =
+    (producto === "torneos"
+      ? config?.precio_suscripcion_torneos_mes
+      : config?.precio_suscripcion_mes) ?? 0;
+  if (monto <= 0) {
+    return { success: false, error: "Esta suscripción todavía no tiene precio" };
+  }
 
   const periodo = new Date().toISOString().slice(0, 7); // YYYY-MM
   const { error } = await svc.from("cobros").insert({
     tenant_id: membership.tenant_id,
+    producto,
     tipo: "suscripcion",
     monto,
     estado: "pendiente",
@@ -169,6 +194,7 @@ const configSchema = z.object({
   precio_torneo_16: z.number().int().min(0),
   precio_torneo_32: z.number().int().min(0),
   precio_torneo_mas: z.number().int().min(0),
+  precio_suscripcion_torneos_mes: z.number().int().min(0).default(0),
   free_torneos_por_mes: z.number().int().min(0),
   free_torneos_total: z.number().int().min(0),
   free_max_equipos: z.number().int().min(1),

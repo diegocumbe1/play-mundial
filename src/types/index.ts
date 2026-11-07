@@ -335,6 +335,8 @@ export interface Tenant {
   nota_admin: string | null;
   plan_actual: PlanTenant;
   suscripcion_vence_at: string | null;
+  /** Vencimiento de la suscripción de torneos, aparte de PRO (rifas). */
+  suscripcion_torneos_vence_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -425,6 +427,7 @@ export interface PlataformaConfig {
   precio_torneo_16: number;
   precio_torneo_32: number;
   precio_torneo_mas: number;
+  precio_suscripcion_torneos_mes: number;
   free_torneos_por_mes: number;
   free_torneos_total: number;
   free_max_equipos: number;

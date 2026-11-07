@@ -38,6 +38,7 @@ export function PlataformaConfigForm({ inicial }: { inicial: PlataformaConfig })
     precio_torneo_16: String(inicial.precio_torneo_16),
     precio_torneo_32: String(inicial.precio_torneo_32),
     precio_torneo_mas: String(inicial.precio_torneo_mas),
+    precio_suscripcion_torneos_mes: String(inicial.precio_suscripcion_torneos_mes ?? 0),
     free_torneos_por_mes: String(inicial.free_torneos_por_mes),
     free_torneos_total: String(inicial.free_torneos_total),
     free_max_equipos: String(inicial.free_max_equipos),
@@ -77,6 +78,7 @@ export function PlataformaConfigForm({ inicial }: { inicial: PlataformaConfig })
         precio_torneo_16: Number(f.precio_torneo_16) || 0,
         precio_torneo_32: Number(f.precio_torneo_32) || 0,
         precio_torneo_mas: Number(f.precio_torneo_mas) || 0,
+        precio_suscripcion_torneos_mes: Number(f.precio_suscripcion_torneos_mes) || 0,
         free_torneos_por_mes: Number(f.free_torneos_por_mes) || 0,
         free_torneos_total: Number(f.free_torneos_total) || 0,
         free_max_equipos: Number(f.free_max_equipos) || 1,
@@ -159,13 +161,17 @@ export function PlataformaConfigForm({ inicial }: { inicial: PlataformaConfig })
       <div>
         <p className="mb-2 text-sm font-semibold">Torneos — precios (COP)</p>
         <p className="text-muted-foreground mb-2 text-xs">
-          El escalón se decide por el cupo de equipos del torneo.
+          El escalón se decide por el cupo de equipos del torneo. También alimenta las
+          propuestas comerciales. Un escalón en $0 no tiene precio: el torneo que pase el
+          tope gratis queda en borrador con un cobro de $0. La suscripción en $0 no se
+          ofrece, ni en precios ni en las propuestas.
         </p>
         <div className="grid gap-3 sm:grid-cols-2">
           <CampoMoneda label="Torneo hasta 8 equipos" value={f.precio_torneo_8} onChange={(v) => set("precio_torneo_8", v)} />
           <CampoMoneda label="Torneo 9–16 equipos" value={f.precio_torneo_16} onChange={(v) => set("precio_torneo_16", v)} />
           <CampoMoneda label="Torneo 17–32 equipos" value={f.precio_torneo_32} onChange={(v) => set("precio_torneo_32", v)} />
           <CampoMoneda label="Torneo de más de 32 equipos" value={f.precio_torneo_mas} onChange={(v) => set("precio_torneo_mas", v)} />
+          <CampoMoneda label="Suscripción de torneos / mes (aparte de PRO)" value={f.precio_suscripcion_torneos_mes} onChange={(v) => set("precio_suscripcion_torneos_mes", v)} />
         </div>
       </div>
       <div>

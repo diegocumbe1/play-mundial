@@ -6,12 +6,18 @@ import {
   getPropuesta,
   type Disponibilidad,
 } from "@/lib/propuestas";
+import { precioEscalon } from "@/lib/planes";
+import { getPlataformaConfig } from "@/lib/tenant-config";
 import { formatCOP, labelPuesto } from "@/lib/torneos";
+
+// El precio del torneo se edita en /superadmin/settings y debe verse de inmediato.
+export const dynamic = "force-dynamic";
 
 /**
  * Propuesta comercial para presentar en vivo al cliente. Los valores salen de
- * `src/lib/propuestas.ts`: esta página no tiene ningún número escrito a mano.
- * Fuera de buscadores: el enlace solo lo tiene quien está en la reunión.
+ * `src/lib/propuestas.ts` y de la config de plataforma: esta página no tiene
+ * ningún número escrito a mano.
+ * Fuera de buscadores: el enlace solo lo tiene quien lo recibe.
  */
 export async function generateMetadata({
   params,
@@ -71,6 +77,18 @@ export default async function PropuestaPage({
     0,
   );
   const whatsapp = p.contacto.whatsapp.replace(/\D/g, "");
+  const config = await getPlataformaConfig();
+  const planes = p.planes
+    .map((plan) => ({
+      ...plan,
+      precio:
+        plan.precio === "torneo"
+          ? precioEscalon(config, "torneos", p.evento.cupoEquipos)
+          : plan.precio === "torneo_mensual"
+            ? config.precio_suscripcion_torneos_mes
+            : plan.precio,
+    }))
+    .filter((plan) => plan.precio || plan.destacado);
 
   return (
     <main className="mx-auto w-full max-w-4xl flex-1 px-5 py-10">
@@ -216,7 +234,7 @@ export default async function PropuestaPage({
       {/* --- Inversión --- */}
       <Seccion numero="06" titulo="Inversión">
         <div className="grid gap-4 sm:grid-cols-2">
-          {p.planes.map((plan) => (
+          {planes.map((plan) => (
             <div
               key={plan.nombre}
               className={`rounded-2xl border p-6 ${
@@ -227,7 +245,7 @@ export default async function PropuestaPage({
             >
               <p className="text-sm font-semibold text-white">{plan.nombre}</p>
               <p className="font-heading mt-2 text-4xl tracking-wide text-white">
-                {plan.precio == null ? "Por definir" : formatCOP(plan.precio)}
+                {plan.precio ? formatCOP(plan.precio) : "Por definir"}
               </p>
               <p className="text-polla-muted text-xs">{plan.unidad}</p>
               <p className="text-polla-muted mt-3 text-sm">{plan.detalle}</p>

@@ -33,6 +33,9 @@ function labelCobro(cobro: Cobro): string {
   if (cobro.tipo === "pago_rifa") {
     return cobro.producto === "torneos" ? "Pago por torneo" : "Pago por rifa";
   }
+  if (cobro.tipo === "suscripcion" && cobro.producto === "torneos") {
+    return "Suscripción de torneos";
+  }
   return TIPO_LABEL[cobro.tipo] ?? cobro.tipo;
 }
 

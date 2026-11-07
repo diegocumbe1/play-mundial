@@ -2,15 +2,16 @@
  * Propuestas comerciales que se presentan en vivo al cliente desde
  * `/propuesta/[slug]`.
  *
- * TODO lo que cambia entre una propuesta y otra vive aquí: precios, fechas,
- * premios, textos. La página solo pinta. Para ajustar un valor antes de una
- * reunión basta con editar este archivo; para una propuesta nueva, copiar el
- * objeto de Fase 4 con otro `slug`.
+ * Lo que cambia entre una propuesta y otra vive aquí: fechas, premios, textos.
+ * Los precios del plan se editan en /superadmin/settings. La página solo pinta.
+ * Para una propuesta nueva, copiar el objeto de Fase 4 con otro `slug`.
  *
  * Modelo de negocio: SUSCRIPCIÓN al software. El organizador gestiona su
  * torneo él mismo con la guía paso a paso; no se vende la plataforma ni se
  * opera el torneo por él.
  */
+
+import { MARCA } from "@/lib/marca";
 
 export type Disponibilidad = "incluido" | "proximamente";
 
@@ -26,13 +27,19 @@ export interface Propuesta {
     fechas: string;
     /** Valor de inscripción por equipo (COP). */
     inscripcion: number;
+    /** Equipos estimados: decide el escalón de precio del torneo en settings. */
+    cupoEquipos: number;
   };
   /** Cada categoría con sus premios en orden: [1er, 2°, 3er…] (COP). */
   categorias: { nombre: string; detalle: string; premios: number[] }[];
-  /** Planes de suscripción. `precio: null` se muestra como "Por definir". */
+  /**
+   * Planes. `"torneo"` toma de /superadmin/settings el escalón según el cupo y
+   * `"torneo_mensual"`, la suscripción de torneos. Sin precio, el plan destacado
+   * dice "Por definir" y los demás no se muestran.
+   */
   planes: {
     nombre: string;
-    precio: number | null;
+    precio: number | "torneo" | "torneo_mensual" | null;
     unidad: string;
     detalle: string;
     destacado?: boolean;
@@ -50,13 +57,14 @@ export interface Propuesta {
 export const PROPUESTAS: Propuesta[] = [
   {
     slug: "xtreme-park-fase-4",
-    marca: "DC Sport Score",
+    marca: MARCA.nombre,
     cliente: { nombre: "Xtreme Park Fase 4", ciudad: "Garzón, Huila" },
     evento: {
       nombre: "Torneo Familia Fase 4",
       deporte: "Voleiplaya mixto",
       fechas: "4 al 27 de noviembre de 2026",
       inscripcion: 200_000,
+      cupoEquipos: 30,
     },
     categorias: [
       {
@@ -73,14 +81,14 @@ export const PROPUESTAS: Propuesta[] = [
     planes: [
       {
         nombre: "Por torneo",
-        precio: null,
+        precio: "torneo",
         unidad: "por torneo",
         detalle: "Todo el torneo, del primer inscrito al informe final.",
         destacado: true,
       },
       {
         nombre: "Mensual",
-        precio: null,
+        precio: "torneo_mensual",
         unidad: "al mes",
         detalle: "Torneos ilimitados mientras la suscripción esté activa.",
       },
@@ -219,7 +227,7 @@ export const PROPUESTAS: Propuesta[] = [
       "Si la premiación se paga completa o depende de un mínimo de equipos.",
       "Logos de los patrocinadores.",
     ],
-    contacto: { nombre: "Diego Cumbe", whatsapp: "" },
+    contacto: { nombre: "Diego Cumbe", whatsapp: "+573002528399" },
     vigencia: "Valores válidos hasta el 15 de noviembre de 2026.",
   },
 ];

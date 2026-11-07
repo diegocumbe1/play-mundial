@@ -4,20 +4,20 @@
 
 ## Respuesta corta
 
-- **$100.000 a Fase 4 no es mucho.** Es razonable, incluso algo bajo. Cóbralos.
-- **Preséntalo como precio de fundador:** precio normal $150.000, y $100.000 por ser el primero.
+- **Decisión: $130.000 para Fase 4.** Se edita en `/superadmin/settings`, escalón "Torneo 17–32 equipos", y la propuesta lo toma de ahí.
+- **Tampoco es mucho:** queda por debajo de los $150.000 sugeridos para ese tamaño.
 - **No compitas contra lo gratis.** Cobra por lo que las herramientas gratis no suelen resolver juntas: el partido en vivo y las cuentas del torneo.
 
-## Por qué $100.000 es razonable para Fase 4
+## Por qué $130.000 es razonable para Fase 4
 
 Con los datos de la propuesta: inscripción de $200.000 por equipo y $4.050.000 en premios.
 
-| Si inscribe | Recauda | Los $100.000 equivalen a |
+| Si inscribe | Recauda | Los $130.000 equivalen a |
 |---|---|---|
-| 21 equipos (cubre premios) | $4.200.000 | 2,4% del recaudo |
-| 30 equipos (ejemplo de la demo) | $6.000.000 | 1,7% del recaudo |
+| 21 equipos (cubre premios) | $4.200.000 | 3,1% del recaudo |
+| 30 equipos (ejemplo de la demo) | $6.000.000 | 2,2% del recaudo |
 
-Dicho de forma simple: **cuesta medio cupo de un equipo**, o unos $3.400 por equipo si son 30.
+Dicho de forma simple: **cuesta menos que un cupo de un equipo**, o unos $4.300 por equipo si son 30.
 
 Ojo: esos 30 equipos vienen de la demo, no de inscritos reales.
 
@@ -33,7 +33,7 @@ Precios tomados de listados y comparadores, sin confirmar en cada proveedor. Con
 | TorneoPro | USD 7 a 15 al mes | $28.000 a $60.000 al mes |
 | LeagueRepublic | USD 17,90 al mes | $72.000 al mes |
 
-**Lectura:** por torneo, $100.000 a $150.000 queda en la zona de lo que ya se paga afuera. Lo que no encontré son precios de competidores en Colombia: eso se valida hablando con organizadores.
+**Lectura:** por torneo, $130.000 a $150.000 queda en la zona de lo que ya se paga afuera. Lo que no encontré son precios de competidores en Colombia: eso se valida hablando con organizadores.
 
 ## Cómo entrar a competir
 
@@ -74,12 +74,12 @@ No digas que nadie más lo hace: algunas plataformas ya ofrecen resultados en vi
 ## Antes de vender: tres cosas por resolver
 
 1. **Precios en cero:** hoy todos los escalones de torneo están en $0. Defínelos en `/superadmin/settings`.
-2. **La suscripción actual es demasiado barata para esto:** los $59.900 al mes también cubren torneos, así que un torneo de 30 equipos saldría más barato que el plan Mediano. Súbela o sepárala de la de rifas.
+2. **Suscripción de torneos:** ya es aparte de la de rifas, con su propio precio en `/superadmin/settings`. Mientras esté en $0 no se ofrece, ni en `/precios` ni en las propuestas.
 3. **El marcador debe estar estable en producción:** DC Sport es una beta (v0.1.0), guarda en un archivo y permite 1 pantalla y 2 controles por partido. La integración necesita `DC_SPORT_SCORE_URL`, que no está en `.env.local`: confirma que esté configurada en producción y pruébalo con varios partidos a la vez antes de cobrar por eso.
 
 ## Próximos pasos
 
-1. Cerrar Fase 4 en $100.000, pagados antes de publicar.
+1. Cerrar Fase 4 en $130.000, pagados antes de publicar.
 2. Grabar el marcador funcionando durante el torneo.
 3. Hablar con 3 a 5 organizadores de Garzón y mostrarles el video.
 4. Ofrecerles los precios de arriba y ajustar: si nadie objeta, están bajos; si todos dicen que no, están altos o falta valor.
