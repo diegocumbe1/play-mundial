@@ -2720,7 +2720,8 @@ export async function abrirMarcador(
 
 /**
  * Trae lo que lleva el juez en el marcador para que el organizador lo revise.
- * NO guarda nada: el resultado oficial se confirma (o se corrige) en el panel.
+ * No toca el resultado oficial, que se confirma (o se corrige) en el panel: solo
+ * deja constancia de lo que reportó el juez cuando terminó.
  */
 export async function traerMarcador(
   encuentroId: string,
@@ -2734,5 +2735,25 @@ export async function traerMarcador(
   }
   const leido = await leerMarcador(p.e.sala_marcador, 5000);
   if (!leido) return { success: false, error: "No se pudo leer el marcador. ¿Está encendido?" };
+  // Precedente: lo que reportó el juez queda aquí aunque luego se corrija o se borre la sala.
+  // Si falla, no afecta la lectura: el organizador igual ve el resultado.
+  if (leido.terminado) {
+    const reportado = JSON.stringify({ sets: leido.sets, set_sin_terminar: leido.setSinTerminar });
+    const anterior = p.e.resultado_juez
+      ? JSON.stringify({ sets: p.e.resultado_juez.sets, set_sin_terminar: p.e.resultado_juez.set_sin_terminar })
+      : null;
+    if (reportado !== anterior) {
+      await createServiceRoleClient()
+        .from("encuentros")
+        .update({
+          resultado_juez: {
+            sets: leido.sets,
+            set_sin_terminar: leido.setSinTerminar,
+            leido_at: new Date().toISOString(),
+          },
+        })
+        .eq("id", p.e.id);
+    }
+  }
   return { success: true, data: { ...leido, enlaces: enlacesMarcador(p.e.sala_marcador) } };
 }

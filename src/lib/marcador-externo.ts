@@ -91,6 +91,7 @@ export async function crearSalaMarcador(
           { name: nombreB.slice(0, 20), color: COLORES[1] },
         ],
         ...config,
+        torneo: true, // Sin música y el juez no puede borrar el partido desde el control.
       }),
       signal: AbortSignal.timeout(5000),
       cache: "no-store",

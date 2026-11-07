@@ -361,6 +361,21 @@ function ResultadoModal({
     };
   }, [leerAlAbrir, aplicarLectura]);
 
+  // Con el modal abierto se revisa si el juez ya terminó (o si deshizo y sigue jugando).
+  // Solo cambia la propuesta: nunca pisa lo que el organizador esté escribiendo.
+  const vigilar = marcadorDisponible && enlaces && !corrigiendo && encuentro ? encuentro.id : null;
+  useEffect(() => {
+    if (!vigilar) return;
+    const t = setInterval(() => {
+      traerMarcador(vigilar)
+        .then((r) => {
+          if (r.success) setPropuesta(r.data.terminado ? r.data : null);
+        })
+        .catch(() => {});
+    }, 5000);
+    return () => clearInterval(t);
+  }, [vigilar]);
+
   if (!encuentro) return null;
 
   const numericos = sets
@@ -453,12 +468,23 @@ function ResultadoModal({
             </Button>
           </div>
         )}
+        {encuentro.resultado_juez && (
+          <p className="text-muted-foreground text-xs">
+            El juez reportó:{" "}
+            {encuentro.resultado_juez.sets.length > 0
+              ? encuentro.resultado_juez.sets.map(([x, y]) => `${x}-${y}`).join(", ")
+              : "ningún set terminado"}
+            {encuentro.resultado_juez.set_sin_terminar
+              ? ` (un set quedó ${encuentro.resultado_juez.set_sin_terminar.join("-")} sin terminar)`
+              : ""}
+          </p>
+        )}
         {marcadorDisponible && !corrigiendo && (
           <div className="bg-muted/40 flex flex-col gap-2 rounded-xl p-3">
             <p className="text-sm font-semibold">Marcador del juez (opcional)</p>
             <p className="text-muted-foreground text-xs">
-              El juez marca los puntos en vivo desde su celular. Cuando termine, al abrir este
-              partido verás su resultado para aceptarlo o corregirlo.
+              El juez marca los puntos en vivo desde su celular. Cuando termine, aquí aparecerá
+              su resultado para aceptarlo o corregirlo.
             </p>
             <div className="flex flex-wrap gap-2">
               {!encuentro.sala_marcador && !enlaces ? (

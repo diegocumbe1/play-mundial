@@ -208,7 +208,9 @@ Luego, el mismo día:
   y de la TV. Al abrir un partido en vivo se lee `GET /api/rooms/:sala`; si el
   juez ya terminó, el organizador solo ve su resultado con "Aceptar" o
   "Corregir" (un cierre anticipado no se puede aceptar, hay que corregirlo o
-  declarar W.O.). dc-sport-score nunca escribe aquí. La
+  declarar W.O.). Lo que reportó el juez queda en `encuentros.resultado_juez`
+  aunque se corrija. Las salas son temporales: se borran con el resultado oficial,
+  y el control no puede reiniciarlas (`torneo: true`). dc-sport-score nunca escribe aquí. La
   página pública lee los puntos en vivo del marcador en cada refresco. Sin
   cambios en dc-sport-score. Variables: `DC_SPORT_SCORE_URL`,
   `DC_SPORT_SCORE_PUBLIC_URL`.

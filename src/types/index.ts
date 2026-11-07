@@ -819,8 +819,17 @@ export interface Encuentro {
   ganador_id: string | null;
   /** Código de sala del marcador en vivo (dc-sport-score). */
   sala_marcador: string | null;
+  /** Lo que reportó el juez al terminar; el oficial es `sets`. */
+  resultado_juez?: ResultadoJuez | null;
   created_at: string;
   updated_at: string;
+}
+
+/** Constancia del marcador del juez, aunque el resultado se corrija después. */
+export interface ResultadoJuez {
+  sets: [number, number][];
+  set_sin_terminar: [number, number] | null;
+  leido_at: string;
 }
 
 /** Partido en vistas públicas: sin ids de tenant. */
