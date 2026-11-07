@@ -17,6 +17,7 @@ import type { ReglasTorneo } from "@/lib/torneo-reglas";
 
 const URL_INTERNA = process.env.DC_SPORT_SCORE_URL?.replace(/\/$/, "") || null;
 const URL_PUBLICA = process.env.DC_SPORT_SCORE_PUBLIC_URL?.replace(/\/$/, "") || URL_INTERNA;
+const ADMIN_PIN = process.env.DC_SPORT_SCORE_ADMIN_PIN || null;
 
 export const marcadorDisponible = (): boolean => !!URL_INTERNA;
 
@@ -57,7 +58,9 @@ export function salaDePartido(encuentroId: string): string {
 
 export function enlacesMarcador(sala: string) {
   return {
-    /** Celular del juez: control de los dos equipos. */
+    /** Celular del juez: un toque suma al instante y corrige con «Deshacer». */
+    juez: `${URL_PUBLICA}/control?sala=${sala}&modo=juez`,
+    /** Control de los dos equipos: un toque suma, dos toques restan. */
     control: `${URL_PUBLICA}/control?sala=${sala}`,
     /** Solo celular (control + marcador + voz) cuando no hay TV. */
     soloCelular: `${URL_PUBLICA}/control?sala=${sala}&modo=uno`,
@@ -101,18 +104,43 @@ export async function crearSalaMarcador(
   }
 }
 
+/**
+ * Borra la sala temporal cuando el partido ya tiene resultado oficial: el
+ * histórico vive en `encuentros`. Si falla, la sala expira sola en el marcador.
+ * Sin PIN no se intenta, para no sumar intentos fallidos en el marcador.
+ */
+export async function borrarSalaMarcador(sala: string): Promise<void> {
+  if (!URL_INTERNA || !ADMIN_PIN) return;
+  try {
+    await fetch(`${URL_INTERNA}/api/rooms/${sala}`, {
+      method: "DELETE",
+      headers: { "x-admin-pin": ADMIN_PIN },
+      signal: AbortSignal.timeout(3000),
+      cache: "no-store",
+    });
+  } catch {
+    // El resultado ya quedó guardado: no se molesta al organizador por esto.
+  }
+}
+
 /** Estado de dc-sport-score, solo lo que se usa. */
 interface EstadoSala {
   court: number[];
   points: number[];
-  phase: "playing" | "setOver" | "matchOver";
+  /** `matchOver`: alguien ganó los sets necesarios. `finished`: el juez lo cerró a mano. */
+  phase: "playing" | "setOver" | "matchOver" | "finished";
   setResults: { teams: number[]; points: number[] }[];
+  /** Set a medias cuando el juez finalizó el partido: no cuenta en el resultado. */
+  openSet?: { teams: number[]; points: number[] } | null;
 }
 
 export interface MarcadorLeido {
   /** Sets con el puntaje de A y B (incluye el set en curso si ya tiene puntos). */
   sets: [number, number][];
+  /** El juez ya no va a marcar más: falta que el organizador acepte o corrija. */
   terminado: boolean;
+  /** Set que quedó a medias al finalizar; no está en `sets`. */
+  setSinTerminar: [number, number] | null;
 }
 
 /**
@@ -128,7 +156,14 @@ export function estadoASets(e: EstadoSala): MarcadorLeido {
   );
   const [a, b] = [deEquipo(e.court, e.points, 0), deEquipo(e.court, e.points, 1)];
   if (e.phase === "playing" && (a > 0 || b > 0)) sets.push([a, b]);
-  return { sets, terminado: e.phase === "matchOver" };
+  const abierto = e.phase === "finished" ? e.openSet : null;
+  return {
+    sets,
+    terminado: e.phase === "matchOver" || e.phase === "finished",
+    setSinTerminar: abierto
+      ? [deEquipo(abierto.teams, abierto.points, 0), deEquipo(abierto.teams, abierto.points, 1)]
+      : null,
+  };
 }
 
 /** Lee el marcador de una sala. `null` si no responde (no rompe la página). */

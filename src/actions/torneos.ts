@@ -5,11 +5,13 @@ import { z } from "zod";
 
 import { getMembership } from "@/lib/auth";
 import {
+  borrarSalaMarcador,
   crearSalaMarcador,
   enlacesMarcador,
   leerMarcador,
   marcadorDisponible,
   salaDePartido,
+  type MarcadorLeido,
 } from "@/lib/marcador-externo";
 import { resolverActivacion } from "@/lib/planes";
 import { tieneProductoHabilitado } from "@/lib/productos";
@@ -2621,8 +2623,16 @@ export async function guardarResultado(
     }
   }
 
+  // Con resultado oficial la sala del marcador ya no hace falta: el histórico queda aquí.
+  const salaTerminada =
+    e.sala_marcador && (cambios.estado === "finalizado" || cambios.estado === "wo")
+      ? e.sala_marcador
+      : null;
+  if (salaTerminada) cambios.sala_marcador = null;
+
   const { error } = await svc.from("encuentros").update(cambios).eq("id", encuentroId);
   if (error) return { success: false, error: error.message };
+  if (salaTerminada) await borrarSalaMarcador(salaTerminada);
 
   // Si el partido de la llave quedó sin ganador, se libera su lugar en el siguiente.
   if (e.fase !== "grupos" && e.ganador_id && !actualizado.ganador_id) {
@@ -2714,7 +2724,7 @@ export async function abrirMarcador(
  */
 export async function traerMarcador(
   encuentroId: string,
-): Promise<ActionResult<{ sets: [number, number][]; terminado: boolean; enlaces: ReturnType<typeof enlacesMarcador> }>> {
+): Promise<ActionResult<MarcadorLeido & { enlaces: ReturnType<typeof enlacesMarcador> }>> {
   const acceso = await accesoTorneos();
   if (!acceso.ok) return { success: false, error: acceso.error };
   const p = await partidoDelUsuario(encuentroId, acceso.membership);

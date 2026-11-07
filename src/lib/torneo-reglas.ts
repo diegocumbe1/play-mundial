@@ -193,6 +193,15 @@ function textoSets(j: ReglasTorneo["juego"]): string {
   );
 }
 
+/** La regla de alargue en una frase (reglamento y carga de resultados). */
+export function textoAlargue(j: ReglasTorneo["juego"]): string {
+  if (!j.diferencia_dos) return "Sin alargue: gana el set quien llegue primero al puntaje.";
+  if (!j.tope_puntos) return "Con alargue sin tope: el set se gana con 2 puntos de diferencia.";
+  const decisivo =
+    j.sets > 1 ? ` (${j.puntos_decisivo + j.tope_puntos - j.puntos_set} en el set decisivo)` : "";
+  return `Con alargue: el set se gana con 2 puntos de diferencia, con tope de ${j.tope_puntos} puntos${decisivo}.`;
+}
+
 /**
  * Redacta el reglamento y las condiciones del torneo a partir de las
  * respuestas del organizador. Es texto plano: la página pública lo muestra
@@ -234,11 +243,7 @@ export function generarReglamento(
 
   seccion("Sistema de juego", [
     textoSets(juego),
-    juego.diferencia_dos
-      ? juego.tope_puntos
-        ? `Se gana el set con 2 puntos de diferencia, con tope de ${juego.tope_puntos} puntos.`
-        : "Se gana el set con 2 puntos de diferencia, sin tope."
-      : "Gana el set quien llegue primero al puntaje, sin necesidad de diferencia.",
+    textoAlargue(juego),
     juego.cambio_lado_cada
       ? `Los equipos cambian de lado cada ${juego.cambio_lado_cada} puntos.`
       : null,

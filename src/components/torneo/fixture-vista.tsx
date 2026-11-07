@@ -258,7 +258,7 @@ function TarjetaPartido({
         >
           {!id && directo ? "Pasa directo" : nombre(id)}
           {e.estado === "wo" && !directo && gano && (
-            <span className="text-muted-foreground ml-1 text-[10px] font-normal">(gana por W.O.)</span>
+            <span className="text-muted-foreground ml-1 text-[10px] font-normal">(W.O.: el rival no se presentó)</span>
           )}
         </span>
         <span className="flex shrink-0 gap-1 font-mono text-sm tabular-nums">

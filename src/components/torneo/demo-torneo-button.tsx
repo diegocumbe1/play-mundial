@@ -32,7 +32,7 @@ const OPCIONES: {
     id: "en_juego",
     titulo: "Torneo en juego",
     detalle:
-      "30 equipos inscritos con jugadores y pagos, fase de grupos con tabla y partidos en vivo, y página pública activa.",
+      "30 equipos inscritos con jugadores y pagos, fase de grupos con tabla y partidos en vivo, y página pública activa. Abre un partido programado para probar el marcador del juez.",
     icono: Radio,
   },
   {

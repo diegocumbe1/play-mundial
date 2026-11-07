@@ -205,8 +205,10 @@ Luego, el mismo día:
 - Marcador del juez (dc-sport-score, opcional, `src/lib/marcador-externo.ts`):
   en "Cargar resultado" → "Abrir marcador para el juez" crea la sala con los
   equipos y las reglas (`POST /api/rooms/:sala/setup`) y da los enlaces del juez
-  y de la TV; "Traer marcador" (`GET /api/rooms/:sala`) llena los sets para que
-  el organizador los confirme o corrija. dc-sport-score nunca escribe aquí. La
+  y de la TV. Al abrir un partido en vivo se lee `GET /api/rooms/:sala`; si el
+  juez ya terminó, el organizador solo ve su resultado con "Aceptar" o
+  "Corregir" (un cierre anticipado no se puede aceptar, hay que corregirlo o
+  declarar W.O.). dc-sport-score nunca escribe aquí. La
   página pública lee los puntos en vivo del marcador en cada refresco. Sin
   cambios en dc-sport-score. Variables: `DC_SPORT_SCORE_URL`,
   `DC_SPORT_SCORE_PUBLIC_URL`.

@@ -35,6 +35,17 @@ interface CategoriaDraft {
 const num = (v: string) => (v.trim() ? Number(v) : null);
 
 /** Qué significa la opción de sets elegida, en una línea. */
+/** Ejemplo concreto de la regla de alargue con los puntos configurados. */
+function explicacionAlargue(j: ReglasTorneo["juego"]): string {
+  const p = j.puntos_set;
+  if (!j.diferencia_dos) return `Gana quien llegue primero a ${p}, aunque quede ${p}-${p - 1}.`;
+  const empate = `Si llegan a ${p - 1}-${p - 1} se sigue hasta sacar 2 de ventaja`;
+  if (!j.tope_puntos) return `${empate} (${p + 1}-${p - 1}, ${p + 2}-${p}…), sin límite de puntos.`;
+  const extra = j.tope_puntos - p;
+  const decisivo = j.sets > 1 ? ` En el set decisivo el máximo es ${j.puntos_decisivo + extra}.` : "";
+  return `${empate}, con máximo ${j.tope_puntos}: quien llegue ahí gana, aunque quede ${j.tope_puntos}-${j.tope_puntos - 1}.${decisivo}`;
+}
+
 const EXPLICACION_SETS: Record<1 | 3 | 5, string> = {
   1: "Un solo set decide el partido. Es lo más rápido.",
   3: "Gana el primero que se lleve 2 sets. Si van 1-1, se juega el set decisivo.",
@@ -323,7 +334,12 @@ export function ConfigTorneoPanel({
           <CampoNumero
             label="Puntos por set"
             value={juego.puntos_set}
-            onChange={(v) => set("juego", { puntos_set: v ?? 21 })}
+            onChange={(v) => {
+              const puntos = v ?? 21;
+              // El alargue son puntos extra: el tope se mueve junto con los puntos del set.
+              const extra = juego.tope_puntos ? juego.tope_puntos - juego.puntos_set : null;
+              set("juego", { puntos_set: puntos, tope_puntos: extra === null ? null : puntos + extra });
+            }}
             info="Puntos que hay que alcanzar para ganar un set. En voleiplaya lo habitual es 21; en torneos con poco tiempo se usa 15."
           />
           {juego.sets > 1 && (
@@ -334,12 +350,35 @@ export function ConfigTorneoPanel({
               info={`El set decisivo es el último posible (el ${juego.sets}° set), y solo se juega si el partido va empatado en sets. Se juega más corto para no alargar el partido: lo habitual es 15.`}
             />
           )}
-          <Interruptor
-            label="Se gana el set con 2 puntos de diferencia"
-            checked={juego.diferencia_dos}
-            onChange={(v) => set("juego", { diferencia_dos: v })}
-            info="Si está activo, un set a 21 que va 20-20 no termina en 21-20: se sigue jugando hasta que un equipo saque 2 puntos de ventaja (22-20, 23-21…). Si está apagado, gana quien llegue primero a 21."
-          />
+          <Campo
+            label="Alargue"
+            className="sm:col-span-2"
+            ayuda={explicacionAlargue(juego)}
+            info="El alargue es lo que pasa cuando el set llega empatado a un punto del final. Define si se sigue jugando hasta sacar 2 puntos de ventaja y si eso tiene un límite. El marcador del juez usa esta misma regla, así que defínela antes de empezar."
+          >
+            <Segmentado
+              value={
+                !juego.diferencia_dos
+                  ? "no"
+                  : juego.tope_puntos
+                    ? String(juego.tope_puntos - juego.puntos_set)
+                    : "sin_tope"
+              }
+              onChange={(v) =>
+                set("juego", {
+                  diferencia_dos: v !== "no",
+                  tope_puntos: v === "no" || v === "sin_tope" ? null : juego.puntos_set + Number(v),
+                })
+              }
+              options={[
+                { value: "no", label: "Sin alargue" },
+                { value: "sin_tope", label: "Sin tope" },
+                { value: "2", label: "Hasta +2" },
+                { value: "4", label: "Hasta +4" },
+                { value: "6", label: "Hasta +6" },
+              ]}
+            />
+          </Campo>
           <CampoNumero
             label="Cambio de lado cada (puntos)"
             value={juego.cambio_lado_cada}

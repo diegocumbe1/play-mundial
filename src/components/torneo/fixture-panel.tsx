@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useCallback, useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { CalendarPlus, Copy, Download, MessageCircle, Monitor, Smartphone, Trophy } from "lucide-react";
+import { CalendarPlus, Check, Copy, Download, MessageCircle, Monitor, Pencil, Smartphone, Trophy } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -13,7 +13,7 @@ import {
   traerMarcador,
   type OpcionesFixture,
 } from "@/actions/torneos";
-import { Campo, Segmentado } from "@/components/torneo/campos";
+import { Campo, InfoToggle, Segmentado } from "@/components/torneo/campos";
 import { FixtureVista } from "@/components/torneo/fixture-vista";
 import { Button } from "@/components/ui/button";
 import {
@@ -26,7 +26,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { armarGrupos, labelFase, todosContraTodos, validarSets } from "@/lib/torneo-fixture";
-import type { ReglasTorneo } from "@/lib/torneo-reglas";
+import { textoAlargue, type ReglasTorneo } from "@/lib/torneo-reglas";
 import type { CategoriaTorneo, Encuentro, EncuentroPublico, EquipoTorneo, Torneo } from "@/types";
 
 type Modo = OpcionesFixture["modo"];
@@ -273,7 +273,19 @@ function ControlCategoria({
   );
 }
 
-/** Carga del marcador por sets, con validación en vivo según las reglas. */
+type LecturaMarcador = Extract<Awaited<ReturnType<typeof traerMarcador>>, { success: true }>["data"];
+type EnlacesMarcador = LecturaMarcador["enlaces"];
+
+const filasDeSets = (sets: [number, number][], total: number): [string, string][] =>
+  Array.from({ length: total }, (_, i) => {
+    const s = sets[i];
+    return s ? [String(s[0]), String(s[1])] : ["", ""];
+  });
+
+/**
+ * Carga del marcador por sets, con validación en vivo según las reglas. Si el
+ * juez ya terminó, solo se ofrece aceptar su resultado o corregirlo.
+ */
 function ResultadoModal({
   encuentro,
   nombre,
@@ -291,19 +303,64 @@ function ResultadoModal({
   const [pending, startTransition] = useTransition();
   const [sets, setSets] = useState<[string, string][]>([]);
   const [ultimoId, setUltimoId] = useState<string | null>(null);
-  const [enlaces, setEnlaces] = useState<{ control: string; soloCelular: string; pantalla: string } | null>(null);
+  const [enlaces, setEnlaces] = useState<EnlacesMarcador | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
+  /** Resultado que el juez dio por terminado, pendiente de aceptar o corregir. */
+  const [propuesta, setPropuesta] = useState<LecturaMarcador | null>(null);
+  const [corrigiendo, setCorrigiendo] = useState(false);
+  const [leyendo, setLeyendo] = useState(false);
+
+  // Partido en vivo con sala: al abrirlo se lee solo lo que lleva el juez.
+  const leerAlAbrir =
+    marcadorDisponible && encuentro?.estado === "en_vivo" && encuentro.sala_marcador
+      ? encuentro.id
+      : null;
+
   if (encuentro && encuentro.id !== ultimoId) {
     setUltimoId(encuentro.id);
     setEnlaces(null);
     setAviso(null);
-    setSets(
-      Array.from({ length: juego.sets }, (_, i) => {
-        const s = encuentro.sets[i];
-        return s ? [String(s[0]), String(s[1])] : ["", ""];
-      }),
-    );
+    setPropuesta(null);
+    setCorrigiendo(false);
+    setLeyendo(!!leerAlAbrir);
+    setSets(filasDeSets(encuentro.sets, juego.sets));
+  } else if (!encuentro && ultimoId) {
+    // Al cerrar se olvida todo: al reabrirlo debe reflejar lo último guardado.
+    setUltimoId(null);
   }
+
+  const aplicarLectura = useCallback(
+    (d: LecturaMarcador) => {
+      setEnlaces(d.enlaces);
+      setCorrigiendo(false);
+      // Sala aún sin puntos: se conserva lo que ya estuviera guardado.
+      if (d.sets.length > 0) setSets(filasDeSets(d.sets, juego.sets));
+      setPropuesta(d.terminado ? d : null);
+      setAviso(d.terminado ? null : "Partido en curso. Puedes guardar el parcial con “Guardar en vivo”.");
+    },
+    [juego.sets],
+  );
+
+  useEffect(() => {
+    if (!leerAlAbrir) return;
+    let vigente = true;
+    traerMarcador(leerAlAbrir)
+      .then((r) => {
+        if (!vigente) return;
+        if (r.success) aplicarLectura(r.data);
+        else setAviso(`${r.error} Puedes cargar el resultado a mano.`);
+      })
+      .catch(() => {
+        if (vigente) setAviso("No se pudo leer el marcador. Puedes cargar el resultado a mano.");
+      })
+      .finally(() => {
+        if (vigente) setLeyendo(false);
+      });
+    return () => {
+      vigente = false;
+    };
+  }, [leerAlAbrir, aplicarLectura]);
+
   if (!encuentro) return null;
 
   const numericos = sets
@@ -341,19 +398,16 @@ function ResultadoModal({
     startTransition(async () => {
       const r = await traerMarcador(encuentro.id);
       if (!r.success) return void toast.error(r.error);
-      setEnlaces(r.data.enlaces);
-      setSets(
-        Array.from({ length: juego.sets }, (_, i) => {
-          const s = r.data.sets[i];
-          return s ? [String(s[0]), String(s[1])] : ["", ""];
-        }),
-      );
-      setAviso(
-        r.data.terminado
-          ? "El juez terminó el partido. Revisa los sets y confirma con “Finalizar partido”."
-          : "Partido en curso. Puedes guardar el parcial con “Guardar en vivo”.",
-      );
+      aplicarLectura(r.data);
     });
+  }
+
+  function corregir() {
+    if (!propuesta) return;
+    // El set a medias se incluye para completarlo; si no se jugó, se borra.
+    const conAbierto = propuesta.setSinTerminar ? [...propuesta.sets, propuesta.setSinTerminar] : propuesta.sets;
+    setSets(filasDeSets(conAbierto, juego.sets));
+    setCorrigiendo(true);
   }
 
   const setNum = (i: number, lado: 0 | 1, v: string) =>
@@ -371,16 +425,40 @@ function ResultadoModal({
           <DialogDescription>
             {encuentro.fase === "grupos" ? `Grupo ${encuentro.grupo}` : labelFase(encuentro.fase)} ·
             {juego.sets === 1 ? " 1 set" : ` mejor de ${juego.sets}`} a {juego.puntos_set}
-            {juego.sets > 1 ? ` (decisivo a ${juego.puntos_decisivo})` : ""}
+            {juego.sets > 1 ? ` (decisivo a ${juego.puntos_decisivo})` : ""}. {textoAlargue(juego)}
           </DialogDescription>
         </DialogHeader>
 
-        {marcadorDisponible && (
+        {leyendo ? (
+          <p className="text-muted-foreground py-6 text-center text-sm">Leyendo el marcador del juez…</p>
+        ) : propuesta && !corrigiendo ? (
+          <PropuestaJuez
+            propuesta={propuesta}
+            juego={juego}
+            equipoA={a}
+            equipoB={b}
+            pending={pending}
+            onAceptar={() =>
+              enviar({ tipo: "sets", sets: propuesta.sets, estado: "finalizado" }, "Resultado aceptado")
+            }
+            onCorregir={corregir}
+          />
+        ) : (
+          <>
+        {corrigiendo && (
+          <div className="bg-muted/40 flex items-center justify-between gap-2 rounded-xl p-3">
+            <p className="text-xs">Estás corrigiendo el resultado del juez. El oficial será el que guardes aquí.</p>
+            <Button size="sm" variant="ghost" onClick={() => setCorrigiendo(false)} disabled={pending}>
+              Volver
+            </Button>
+          </div>
+        )}
+        {marcadorDisponible && !corrigiendo && (
           <div className="bg-muted/40 flex flex-col gap-2 rounded-xl p-3">
             <p className="text-sm font-semibold">Marcador del juez (opcional)</p>
             <p className="text-muted-foreground text-xs">
-              El juez marca los puntos en vivo desde su celular. Al terminar, trae el marcador
-              aquí, revisa los sets y confirma.
+              El juez marca los puntos en vivo desde su celular. Cuando termine, al abrir este
+              partido verás su resultado para aceptarlo o corregirlo.
             </p>
             <div className="flex flex-wrap gap-2">
               {!encuentro.sala_marcador && !enlaces ? (
@@ -428,12 +506,19 @@ function ResultadoModal({
         </p>
 
         <div className="flex flex-wrap gap-2 border-t pt-3">
-          <span className="text-muted-foreground self-center text-xs">W.O. (no se presentó):</span>
+          <span className="text-muted-foreground flex w-full flex-wrap items-center gap-1 text-xs">
+            Declarar W.O.
+            <InfoToggle>
+              <b>W.O.</b> (walkover) significa perder el partido por no presentarse: el rival gana
+              sin jugar. Marca aquí qué equipo no se presentó. Si el partido sí se jugó, usa los
+              sets de arriba.
+            </InfoToggle>
+          </span>
           <Button size="sm" variant="outline" disabled={pending} onClick={() => enviar({ tipo: "wo", ganador: "b" }, `Gana ${b} por W.O.`)}>
-            {a}
+            No se presentó {a}
           </Button>
           <Button size="sm" variant="outline" disabled={pending} onClick={() => enviar({ tipo: "wo", ganador: "a" }, `Gana ${a} por W.O.`)}>
-            {b}
+            No se presentó {b}
           </Button>
           {encuentro.estado !== "programado" && (
             <Button size="sm" variant="ghost" disabled={pending} onClick={() => enviar({ tipo: "reiniciar" }, "Partido reiniciado")}>
@@ -454,13 +539,91 @@ function ResultadoModal({
           </Button>
           <Button
             disabled={pending || !!problemaFinal}
-            onClick={() => enviar({ tipo: "sets", sets: numericos, estado: "finalizado" }, "Partido finalizado")}
+            onClick={() =>
+              enviar(
+                { tipo: "sets", sets: numericos, estado: "finalizado" },
+                corrigiendo ? "Resultado corregido" : "Partido finalizado",
+              )
+            }
           >
-            Finalizar partido
+            {corrigiendo ? "Guardar corrección" : "Finalizar partido"}
           </Button>
         </DialogFooter>
+          </>
+        )}
       </DialogContent>
     </Dialog>
+  );
+}
+
+/** Lo que reportó el juez: el organizador lo acepta tal cual o lo corrige. */
+function PropuestaJuez({
+  propuesta,
+  juego,
+  equipoA,
+  equipoB,
+  pending,
+  onAceptar,
+  onCorregir,
+}: {
+  propuesta: LecturaMarcador;
+  juego: ReglasTorneo["juego"];
+  equipoA: string;
+  equipoB: string;
+  pending: boolean;
+  onAceptar: () => void;
+  onCorregir: () => void;
+}) {
+  const { sets, setSinTerminar } = propuesta;
+  const problema = validarSets(sets, juego, true);
+  const setsA = sets.filter(([x, y]) => x > y).length;
+  const setsB = sets.length - setsA;
+  const ganador = setsA > setsB ? equipoA : equipoB;
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="bg-muted/40 flex flex-col gap-2 rounded-xl p-3">
+        <p className="text-sm font-semibold">Resultado del juez</p>
+        {sets.length === 0 ? (
+          <p className="text-muted-foreground text-xs">El juez no alcanzó a terminar ningún set.</p>
+        ) : (
+          <div className="grid grid-cols-[1fr_auto_auto] items-center gap-x-4 gap-y-1 text-sm">
+            <span />
+            <span className="text-muted-foreground max-w-24 truncate text-center text-xs">{equipoA}</span>
+            <span className="text-muted-foreground max-w-24 truncate text-center text-xs">{equipoB}</span>
+            {sets.map(([x, y], i) => (
+              <div key={i} className="contents">
+                <span className="text-muted-foreground text-xs">Set {i + 1}</span>
+                <span className={x > y ? "text-center font-semibold" : "text-center"}>{x}</span>
+                <span className={y > x ? "text-center font-semibold" : "text-center"}>{y}</span>
+              </div>
+            ))}
+          </div>
+        )}
+        {setSinTerminar && (
+          <p className="text-muted-foreground text-xs">
+            Un set quedó {setSinTerminar[0]}-{setSinTerminar[1]} sin terminar y no cuenta.
+          </p>
+        )}
+      </div>
+
+      <p className={problema ? "text-sm text-amber-600 dark:text-amber-400" : "text-sm font-medium text-emerald-600 dark:text-emerald-400"}>
+        {problema
+          ? `El juez finalizó antes de tiempo y este resultado no se puede aceptar. ${problema} Corrígelo para continuar.`
+          : `Gana ${ganador} ${Math.max(setsA, setsB)}-${Math.min(setsA, setsB)} en sets.`}
+      </p>
+
+      <DialogFooter>
+        <Button variant={problema ? "default" : "outline"} disabled={pending} onClick={onCorregir}>
+          <Pencil className="size-3.5" /> Corregir
+        </Button>
+        {!problema && (
+          <Button disabled={pending} onClick={onAceptar}>
+            <Check className="size-3.5" /> Aceptar resultado
+          </Button>
+        )}
+      </DialogFooter>
+    </div>
   );
 }
 
@@ -469,13 +632,14 @@ function EnlacesJuez({
   enlaces,
   partido,
 }: {
-  enlaces: { control: string; soloCelular: string; pantalla: string };
+  enlaces: EnlacesMarcador;
   partido: string;
 }) {
   const copiar = (url: string) =>
     navigator.clipboard.writeText(url).then(() => toast.success("Enlace copiado"));
   const filas = [
-    { icono: Smartphone, label: "Juez (celular)", url: enlaces.control },
+    { icono: Smartphone, label: "Juez (celular, modo juez)", url: enlaces.juez },
+    { icono: Smartphone, label: "Control con doble toque", url: enlaces.control },
     { icono: Smartphone, label: "Solo celular, sin TV", url: enlaces.soloCelular },
     { icono: Monitor, label: "Pantalla / TV", url: enlaces.pantalla },
   ];
@@ -496,7 +660,7 @@ function EnlacesJuez({
         );
       })}
       <a
-        href={`https://wa.me/?text=${encodeURIComponent(`Marcador de ${partido}: ${enlaces.control}`)}`}
+        href={`https://wa.me/?text=${encodeURIComponent(`Marcador de ${partido}: ${enlaces.juez}`)}`}
         target="_blank"
         rel="noreferrer"
         className="inline-flex items-center gap-1 self-start text-xs font-medium text-emerald-600 dark:text-emerald-400"

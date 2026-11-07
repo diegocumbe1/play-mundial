@@ -239,6 +239,11 @@ function setSimulado(objetivo: number, reglas: ReglasTorneo["juego"], rng: () =>
     p = objetivo - 1 + Math.floor(rng() * 3); // 20-22, 21-23…
     ganador = p + 2;
   }
+  const tope = topeDelSet(objetivo, reglas);
+  if (tope && ganador > tope) {
+    ganador = tope;
+    p = tope - 1;
+  }
   return rng() < 0.5 ? [ganador, p] : [p, ganador];
 }
 
@@ -269,6 +274,16 @@ export function simularEnVivo(reglas: ReglasTorneo["juego"], rng: () => number):
 // ---------------------------------------------------------------------------
 // Validación de resultados
 // ---------------------------------------------------------------------------
+/**
+ * Puntaje máximo de un set con alargue limitado (`null` = no hay tope). Los
+ * puntos extra son los mismos en todos los sets: a 21 con tope 25 son +4, así
+ * que el decisivo a 15 topa en 19. El marcador del juez aplica la misma regla.
+ */
+function topeDelSet(objetivo: number, juego: ReglasTorneo["juego"]): number | null {
+  if (!juego.diferencia_dos || !juego.tope_puntos) return null;
+  return objetivo + (juego.tope_puntos - juego.puntos_set);
+}
+
 /** ¿Este set está terminado según las reglas? */
 function setTerminado(
   [a, b]: [number, number],
@@ -277,7 +292,8 @@ function setTerminado(
 ): boolean {
   const alto = Math.max(a, b);
   const bajo = Math.min(a, b);
-  if (juego.tope_puntos && alto >= juego.tope_puntos) return alto > bajo;
+  const tope = topeDelSet(objetivo, juego);
+  if (tope && alto >= tope) return alto > bajo;
   if (alto < objetivo) return false;
   return juego.diferencia_dos ? alto - bajo >= 2 : alto > bajo;
 }
@@ -291,7 +307,8 @@ function setPosible(
   const alto = Math.max(a, b);
   const bajo = Math.min(a, b);
   if (a < 0 || b < 0) return false;
-  if (juego.tope_puntos && alto > juego.tope_puntos) return false;
+  const tope = topeDelSet(objetivo, juego);
+  if (tope && alto > tope) return false;
   if (alto <= objetivo) return true;
   // Por encima del objetivo solo se llega con alargue: ganando por exactamente 2.
   return juego.diferencia_dos && alto - bajo <= 2 && bajo >= objetivo - 1;
