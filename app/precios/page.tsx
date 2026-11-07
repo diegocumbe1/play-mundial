@@ -4,6 +4,7 @@ import { Check } from "lucide-react";
 
 import { getMembership } from "@/lib/auth";
 import { getPlataformaConfig } from "@/lib/tenant-config";
+import { MARCA } from "@/lib/marca";
 import { formatCOP } from "@/lib/rifa";
 import { porcentajeDelRecaudo, precioEscalon } from "@/lib/planes";
 import { PlanActionButton } from "@/components/precios/plan-action-button";
@@ -284,7 +285,7 @@ export default async function PreciosPage() {
       )}
 
       <p className="text-muted-foreground mt-4 text-center text-xs">
-        Rifamos es una herramienta de gestión y organización: no organiza ni opera rifas. Los
+        {MARCA.nombre} es una herramienta de gestión y organización: no organiza ni opera rifas. Los
         permisos, impuestos y la entrega del premio son responsabilidad de quien crea la rifa.
       </p>
 

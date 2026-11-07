@@ -1,12 +1,13 @@
 import type { MetadataRoute } from "next";
 
+import { MARCA } from "@/lib/marca";
+
 /** Manifest PWA: permite "Agregar a inicio" (requisito de push en iOS). */
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "Rifas — organiza y vende tu rifa",
-    short_name: "Rifas",
-    description:
-      "Crea tu rifa, comparte el enlace en vivo y lleva el control de quién pagó.",
+    name: `${MARCA.nombre} — ${MARCA.tagline}`,
+    short_name: MARCA.nombre,
+    description: MARCA.promesa,
     start_url: "/",
     display: "standalone",
     background_color: "#0F1115",
@@ -17,6 +18,14 @@ export default function manifest(): MetadataRoute.Manifest {
         sizes: "any",
         type: "image/svg+xml",
         purpose: "any",
+      },
+      { src: "/icons/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any" },
+      { src: "/icons/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any" },
+      {
+        src: "/icons/icon-maskable-512.png",
+        sizes: "512x512",
+        type: "image/png",
+        purpose: "maskable",
       },
     ],
   };

@@ -50,6 +50,7 @@ export function FixturePanel({
   encuentros,
   reglas,
   marcadorDisponible = false,
+  partidoInicial,
 }: {
   torneo: Torneo;
   categorias: CategoriaTorneo[];
@@ -58,8 +59,17 @@ export function FixturePanel({
   reglas: ReglasTorneo;
   /** Si dc-sport-score está configurado: el juez puede marcar en vivo. */
   marcadorDisponible?: boolean;
+  /** Partido que se abre al entrar (enlace de una notificación). */
+  partidoInicial?: string;
 }) {
-  const [editando, setEditando] = useState<EncuentroPublico | null>(null);
+  const [editando, setEditando] = useState<EncuentroPublico | null>(
+    () => encuentros.find((e) => e.id === partidoInicial && e.equipo_a_id && e.equipo_b_id) ?? null,
+  );
+  function cerrarPartido() {
+    setEditando(null);
+    // Sin esto, recargar la página volvería a abrir el partido de la notificación.
+    if (partidoInicial) window.history.replaceState(null, "", window.location.pathname);
+  }
   // Sin categorías, el torneo entero es una sola "categoría".
   const grupos: { id: string | null; nombre: string }[] =
     categorias.length > 0 ? categorias : [{ id: null, nombre: "Torneo" }];
@@ -97,7 +107,7 @@ export function FixturePanel({
         nombre={nombre}
         juego={reglas.juego}
         marcadorDisponible={marcadorDisponible}
-        onCerrar={() => setEditando(null)}
+        onCerrar={cerrarPartido}
       />
     </div>
   );
@@ -276,6 +286,8 @@ function ControlCategoria({
 type LecturaMarcador = Extract<Awaited<ReturnType<typeof traerMarcador>>, { success: true }>["data"];
 type EnlacesMarcador = LecturaMarcador["enlaces"];
 
+const setsEnTexto = (sets: [number, number][]) => sets.map(([x, y]) => `${x}-${y}`).join(", ");
+
 const filasDeSets = (sets: [number, number][], total: number): [string, string][] =>
   Array.from({ length: total }, (_, i) => {
     const s = sets[i];
@@ -284,7 +296,8 @@ const filasDeSets = (sets: [number, number][], total: number): [string, string][
 
 /**
  * Carga del marcador por sets, con validación en vivo según las reglas. Si el
- * juez ya terminó, solo se ofrece aceptar su resultado o corregirlo.
+ * juez ya terminó, solo se ofrece aceptar su resultado o corregirlo. Un partido
+ * finalizado se muestra como resumen: cambiarlo es una corrección que se confirma.
  */
 function ResultadoModal({
   encuentro,
@@ -309,6 +322,12 @@ function ResultadoModal({
   const [propuesta, setPropuesta] = useState<LecturaMarcador | null>(null);
   const [corrigiendo, setCorrigiendo] = useState(false);
   const [leyendo, setLeyendo] = useState(false);
+  /** Cambio que afecta un resultado ya guardado, a la espera de confirmación. */
+  const [confirmar, setConfirmar] = useState<{
+    texto: string;
+    input: Parameters<typeof guardarResultado>[1];
+    ok: string;
+  } | null>(null);
 
   // Partido en vivo con sala: al abrirlo se lee solo lo que lleva el juez.
   const leerAlAbrir =
@@ -322,6 +341,7 @@ function ResultadoModal({
     setAviso(null);
     setPropuesta(null);
     setCorrigiendo(false);
+    setConfirmar(null);
     setLeyendo(!!leerAlAbrir);
     setSets(filasDeSets(encuentro.sets, juego.sets));
   } else if (!encuentro && ultimoId) {
@@ -385,6 +405,51 @@ function ResultadoModal({
   const problemaVivo = validarSets(numericos, juego, false);
   const a = nombre(encuentro.equipo_a_id);
   const b = nombre(encuentro.equipo_b_id);
+  const terminado = encuentro.estado === "finalizado" || encuentro.estado === "wo";
+  const guardados = encuentro.sets;
+  const sinCambios =
+    encuentro.estado === "finalizado" && setsEnTexto(numericos) === setsEnTexto(guardados);
+
+  /** Avisa qué se va a recalcular antes de cambiar un resultado ya guardado. */
+  const consecuencias =
+    encuentro.fase === "grupos"
+      ? "La tabla de posiciones se recalculará."
+      : "La llave se actualizará: si cambia el ganador, también cambia quién avanza.";
+  const resultadoActual =
+    encuentro.estado === "wo"
+      ? `W.O., gana ${nombre(encuentro.ganador_id)}`
+      : `${setsEnTexto(guardados)}, gana ${nombre(encuentro.ganador_id)}`;
+
+  function guardarFinal() {
+    const input = { tipo: "sets" as const, sets: numericos, estado: "finalizado" as const };
+    if (!terminado) {
+      return enviar(input, corrigiendo ? "Resultado corregido" : "Partido finalizado");
+    }
+    const ganaA = numericos.filter(([x, y]) => x > y).length * 2 > numericos.length;
+    setConfirmar({
+      texto: `Resultado actual: ${resultadoActual}. Nuevo resultado: ${setsEnTexto(numericos)}, gana ${ganaA ? a : b}. ${consecuencias}`,
+      input,
+      ok: "Resultado corregido",
+    });
+  }
+
+  function declararWO(ganador: "a" | "b") {
+    const nombreGanador = ganador === "a" ? a : b;
+    const input = { tipo: "wo" as const, ganador };
+    const ok = `Gana ${nombreGanador} por W.O.`;
+    if (!terminado) return enviar(input, ok);
+    setConfirmar({
+      texto: `Resultado actual: ${resultadoActual}. Nuevo resultado: gana ${nombreGanador} por W.O. y se borran los sets. ${consecuencias}`,
+      input,
+      ok,
+    });
+  }
+
+  function volverAlResumen() {
+    setCorrigiendo(false);
+    setConfirmar(null);
+    if (terminado) setSets(filasDeSets(guardados, juego.sets));
+  }
 
   function enviar(input: Parameters<typeof guardarResultado>[1], ok: string) {
     if (!encuentro) return;
@@ -444,7 +509,16 @@ function ResultadoModal({
           </DialogDescription>
         </DialogHeader>
 
-        {leyendo ? (
+        {terminado && !corrigiendo ? (
+          <ResumenPartido
+            encuentro={encuentro}
+            ganador={nombre(encuentro.ganador_id)}
+            equipoA={a}
+            equipoB={b}
+            pending={pending}
+            onCorregir={() => setCorrigiendo(true)}
+          />
+        ) : leyendo ? (
           <p className="text-muted-foreground py-6 text-center text-sm">Leyendo el marcador del juez…</p>
         ) : propuesta && !corrigiendo ? (
           <PropuestaJuez
@@ -462,22 +536,15 @@ function ResultadoModal({
           <>
         {corrigiendo && (
           <div className="bg-muted/40 flex items-center justify-between gap-2 rounded-xl p-3">
-            <p className="text-xs">Estás corrigiendo el resultado del juez. El oficial será el que guardes aquí.</p>
-            <Button size="sm" variant="ghost" onClick={() => setCorrigiendo(false)} disabled={pending}>
+            <p className="text-xs">
+              {terminado
+                ? "Estás corrigiendo un partido ya finalizado. Nada cambia hasta que lo confirmes."
+                : "Estás corrigiendo el resultado del juez. El oficial será el que guardes aquí."}
+            </p>
+            <Button size="sm" variant="ghost" onClick={volverAlResumen} disabled={pending}>
               Volver
             </Button>
           </div>
-        )}
-        {encuentro.resultado_juez && (
-          <p className="text-muted-foreground text-xs">
-            El juez reportó:{" "}
-            {encuentro.resultado_juez.sets.length > 0
-              ? encuentro.resultado_juez.sets.map(([x, y]) => `${x}-${y}`).join(", ")
-              : "ningún set terminado"}
-            {encuentro.resultado_juez.set_sin_terminar
-              ? ` (un set quedó ${encuentro.resultado_juez.set_sin_terminar.join("-")} sin terminar)`
-              : ""}
-          </p>
         )}
         {marcadorDisponible && !corrigiendo && (
           <div className="bg-muted/40 flex flex-col gap-2 rounded-xl p-3">
@@ -528,9 +595,24 @@ function ResultadoModal({
         <p className={problemaFinal ? "text-xs text-amber-600 dark:text-amber-400" : "text-xs text-emerald-600 dark:text-emerald-400"}>
           {numericos.length === 0
             ? "Escribe los puntos de cada set."
-            : problemaFinal ?? "Marcador completo: puedes finalizar el partido."}
+            : problemaFinal ?? (terminado ? "El marcador es válido." : "Marcador completo: puedes finalizar el partido.")}
         </p>
 
+        {confirmar ? (
+          <div className="flex flex-col gap-3 rounded-xl border border-amber-500/40 bg-amber-500/10 p-3">
+            <p className="text-sm font-semibold">¿Confirmas este cambio?</p>
+            <p className="text-xs leading-relaxed">{confirmar.texto}</p>
+            <div className="flex flex-wrap justify-end gap-2">
+              <Button size="sm" variant="ghost" disabled={pending} onClick={() => setConfirmar(null)}>
+                Cancelar
+              </Button>
+              <Button size="sm" disabled={pending} onClick={() => enviar(confirmar.input, confirmar.ok)}>
+                Sí, confirmar
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <>
         <div className="flex flex-wrap gap-2 border-t pt-3">
           <span className="text-muted-foreground flex w-full flex-wrap items-center gap-1 text-xs">
             Declarar W.O.
@@ -540,45 +622,132 @@ function ResultadoModal({
               sets de arriba.
             </InfoToggle>
           </span>
-          <Button size="sm" variant="outline" disabled={pending} onClick={() => enviar({ tipo: "wo", ganador: "b" }, `Gana ${b} por W.O.`)}>
+          <Button size="sm" variant="outline" disabled={pending} onClick={() => declararWO("b")}>
             No se presentó {a}
           </Button>
-          <Button size="sm" variant="outline" disabled={pending} onClick={() => enviar({ tipo: "wo", ganador: "a" }, `Gana ${a} por W.O.`)}>
+          <Button size="sm" variant="outline" disabled={pending} onClick={() => declararWO("a")}>
             No se presentó {b}
           </Button>
           {encuentro.estado !== "programado" && (
-            <Button size="sm" variant="ghost" disabled={pending} onClick={() => enviar({ tipo: "reiniciar" }, "Partido reiniciado")}>
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={pending}
+              onClick={() =>
+                setConfirmar({
+                  texto: `Se borrará el resultado guardado y el partido volverá a quedar programado. ${consecuencias}`,
+                  input: { tipo: "reiniciar" },
+                  ok: "Partido reiniciado",
+                })
+              }
+            >
               Reiniciar
             </Button>
           )}
         </div>
 
         <DialogFooter>
-          <Button
-            variant="outline"
-            disabled={pending || numericos.length === 0 || !!problemaVivo}
-            onClick={() =>
-              enviar({ tipo: "sets", sets: numericos, estado: "en_vivo" }, "Marcador en vivo guardado")
-            }
-          >
-            Guardar en vivo
-          </Button>
-          <Button
-            disabled={pending || !!problemaFinal}
-            onClick={() =>
-              enviar(
-                { tipo: "sets", sets: numericos, estado: "finalizado" },
-                corrigiendo ? "Resultado corregido" : "Partido finalizado",
-              )
-            }
-          >
+          {!terminado && (
+            <Button
+              variant="outline"
+              disabled={pending || numericos.length === 0 || !!problemaVivo}
+              onClick={() =>
+                enviar({ tipo: "sets", sets: numericos, estado: "en_vivo" }, "Marcador en vivo guardado")
+              }
+            >
+              Guardar en vivo
+            </Button>
+          )}
+          <Button disabled={pending || !!problemaFinal || sinCambios} onClick={guardarFinal}>
             {corrigiendo ? "Guardar corrección" : "Finalizar partido"}
           </Button>
         </DialogFooter>
           </>
         )}
+          </>
+        )}
       </DialogContent>
     </Dialog>
+  );
+}
+
+/** Sets de un partido, de solo lectura, con el ganador de cada uno resaltado. */
+function TablaSets({
+  sets,
+  equipoA,
+  equipoB,
+}: {
+  sets: [number, number][];
+  equipoA: string;
+  equipoB: string;
+}) {
+  return (
+    <div className="grid grid-cols-[1fr_auto_auto] items-center gap-x-4 gap-y-1 text-sm">
+      <span />
+      <span className="text-muted-foreground max-w-24 truncate text-center text-xs">{equipoA}</span>
+      <span className="text-muted-foreground max-w-24 truncate text-center text-xs">{equipoB}</span>
+      {sets.map(([x, y], i) => (
+        <div key={i} className="contents">
+          <span className="text-muted-foreground text-xs">Set {i + 1}</span>
+          <span className={x > y ? "text-center font-semibold" : "text-center"}>{x}</span>
+          <span className={y > x ? "text-center font-semibold" : "text-center"}>{y}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** Partido terminado: solo se consulta. Cambiarlo es una acción aparte. */
+function ResumenPartido({
+  encuentro,
+  ganador,
+  equipoA,
+  equipoB,
+  pending,
+  onCorregir,
+}: {
+  encuentro: EncuentroPublico;
+  ganador: string;
+  equipoA: string;
+  equipoB: string;
+  pending: boolean;
+  onCorregir: () => void;
+}) {
+  const { sets, resultado_juez: juez } = encuentro;
+  const setsA = sets.filter(([x, y]) => x > y).length;
+  const setsB = sets.length - setsA;
+  const perdedor = ganador === equipoA ? equipoB : equipoA;
+  const coincide = juez && encuentro.estado === "finalizado" && setsEnTexto(juez.sets) === setsEnTexto(sets);
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="bg-muted/40 flex flex-col gap-2 rounded-xl p-3">
+        <p className="text-sm font-semibold">Partido finalizado</p>
+        {encuentro.estado === "finalizado" && <TablaSets sets={sets} equipoA={equipoA} equipoB={equipoB} />}
+      </div>
+
+      <p className="text-sm font-medium text-emerald-600 dark:text-emerald-400">
+        {encuentro.estado === "wo"
+          ? `Gana ${ganador} por W.O.: ${perdedor} no se presentó.`
+          : `Gana ${ganador} ${Math.max(setsA, setsB)}-${Math.min(setsA, setsB)} en sets.`}
+      </p>
+
+      {juez && (
+        <p className="text-muted-foreground text-xs">
+          {coincide
+            ? "Coincide con lo que reportó el juez."
+            : `Corregido por el organizador. El juez reportó: ${
+                juez.sets.length > 0 ? setsEnTexto(juez.sets) : "ningún set terminado"
+              }${juez.set_sin_terminar ? ` (un set quedó ${juez.set_sin_terminar.join("-")} sin terminar)` : ""}.`}
+        </p>
+      )}
+
+      <DialogFooter>
+        <Button variant="outline" disabled={pending} onClick={onCorregir}>
+          <Pencil className="size-3.5" /> Corregir resultado
+        </Button>
+      </DialogFooter>
+    </div>
   );
 }
 
@@ -613,18 +782,7 @@ function PropuestaJuez({
         {sets.length === 0 ? (
           <p className="text-muted-foreground text-xs">El juez no alcanzó a terminar ningún set.</p>
         ) : (
-          <div className="grid grid-cols-[1fr_auto_auto] items-center gap-x-4 gap-y-1 text-sm">
-            <span />
-            <span className="text-muted-foreground max-w-24 truncate text-center text-xs">{equipoA}</span>
-            <span className="text-muted-foreground max-w-24 truncate text-center text-xs">{equipoB}</span>
-            {sets.map(([x, y], i) => (
-              <div key={i} className="contents">
-                <span className="text-muted-foreground text-xs">Set {i + 1}</span>
-                <span className={x > y ? "text-center font-semibold" : "text-center"}>{x}</span>
-                <span className={y > x ? "text-center font-semibold" : "text-center"}>{y}</span>
-              </div>
-            ))}
-          </div>
+          <TablaSets sets={sets} equipoA={equipoA} equipoB={equipoB} />
         )}
         {setSinTerminar && (
           <p className="text-muted-foreground text-xs">

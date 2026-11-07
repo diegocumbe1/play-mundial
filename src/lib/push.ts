@@ -27,6 +27,28 @@ export type PushPayload = {
   tag?: string;
 };
 
+/**
+ * Envía a un solo dispositivo. "muerta" = la suscripción ya no existe y hay que
+ * borrarla; quien llama sabe de qué tabla salió.
+ */
+export async function enviarPushDispositivo(
+  sub: { endpoint: string; p256dh: string; auth: string },
+  payload: PushPayload,
+): Promise<"ok" | "muerta" | "error" | "sin-llaves"> {
+  if (!configurar()) return "sin-llaves";
+  try {
+    await webpush.sendNotification(
+      { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
+      JSON.stringify(payload),
+      { timeout: 5000 },
+    );
+    return "ok";
+  } catch (err) {
+    const code = (err as { statusCode?: number }).statusCode;
+    return code === 404 || code === 410 ? "muerta" : "error";
+  }
+}
+
 /** Envía una notificación a todos los dispositivos del admin suscritos. */
 export async function enviarPushAdmins(payload: PushPayload): Promise<void> {
   if (!configurar()) return;

@@ -210,10 +210,19 @@ Luego, el mismo día:
   "Corregir" (un cierre anticipado no se puede aceptar, hay que corregirlo o
   declarar W.O.). Lo que reportó el juez queda en `encuentros.resultado_juez`
   aunque se corrija. Las salas son temporales: se borran con el resultado oficial,
-  y el control no puede reiniciarlas (`torneo: true`). dc-sport-score nunca escribe aquí. La
+  y el control no puede reiniciarlas (`torneo: true`). Un partido terminado se
+  muestra como resumen; corregirlo o reiniciarlo pide confirmación con el antes y
+  el después. dc-sport-score nunca escribe aquí. La
   página pública lee los puntos en vivo del marcador en cada refresco. Sin
   cambios en dc-sport-score. Variables: `DC_SPORT_SCORE_URL`,
   `DC_SPORT_SCORE_PUBLIC_URL`.
+
+- Notificaciones del organizador (`src/lib/torneo-avisos.ts`): se activan por
+  dispositivo en Configuración, con recordatorio de X minutos y avisos de partidos
+  nuevos, en vivo, resultado por aprobar, finalizado y siguiente partido. Abren el
+  partido con `?partido=`. Tabla propia por organizador; los recordatorios y los
+  resultados por aprobar salen de `/api/torneos/avisos`, que corre cada minuto
+  (`supabase/pg_cron_avisos_torneo.sql`, se aplica a mano).
 
 Pendiente: editor de plantillas en `/superadmin`, edad mínima (no se pide fecha
 de nacimiento), reprogramar un partido, proteger el control del juez (hoy

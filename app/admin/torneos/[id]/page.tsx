@@ -20,16 +20,21 @@ import { ActivarTorneoButton } from "@/components/torneo/activar-torneo-button";
 import { EstadoTorneoBadge } from "@/components/torneo/estado-torneo-badge";
 import { EstadoTorneoControl } from "@/components/torneo/estado-torneo-control";
 import { ShareTorneo } from "@/components/torneo/share-torneo";
+import { AvisosTorneoPanel } from "@/components/torneo/avisos-torneo-panel";
 import { TorneoTabs } from "@/components/torneo/torneo-tabs";
 
 export const dynamic = "force-dynamic";
 
 export default async function TorneoDetallePage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  /** `partido`: abre ese partido, por ejemplo al tocar una notificación. */
+  searchParams: Promise<{ partido?: string }>;
 }) {
   const { id } = await params;
+  const { partido: partidoInicial } = await searchParams;
   const membership = await getMembership();
   if (!membership) {
     return (
@@ -146,6 +151,7 @@ export default async function TorneoDetallePage({
       )}
 
       <TorneoTabs
+        partidoInicial={partidoInicial}
         torneo={torneo}
         equipos={equipos}
         gastos={gastos}
@@ -161,6 +167,7 @@ export default async function TorneoDetallePage({
         pasos={pasos}
         configuracion={
           <div className="flex flex-col gap-6">
+            <AvisosTorneoPanel />
             <section className="border-border rounded-2xl border p-4">
               <p className="mb-1 text-sm font-semibold">Datos del torneo</p>
               <p className="text-muted-foreground mb-3 text-xs">

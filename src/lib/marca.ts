@@ -13,12 +13,20 @@
  */
 export const MARCA = {
   /** Nombre corto. Es lo que se dicta por WhatsApp: fácil de oír y escribir. */
-  nombre: "Rifamos",
+  nombre: "Play Mundial",
   /** Debajo del nombre, en header y pie. Máximo una línea. */
-  tagline: "Tu rifa lista en minutos",
+  tagline: "Rifas y torneos en un solo lugar",
   /** La promesa, para landing y metadatos. */
   promesa:
-    "Arma tu rifa, compártela por WhatsApp y lleva el control de quién pagó. Tú cobras, sin comisiones por venta.",
+    "Organiza rifas y torneos, compártelos por WhatsApp y lleva el control de quién pagó. Tú cobras, sin comisiones por venta.",
   /** Firma en el flyer y en el pie de la página pública. */
-  firma: "Hecho con Rifamos",
+  firma: "Hecho con Play Mundial",
 } as const;
+
+/**
+ * Símbolo de la marca: una "P" cuyo hueco es un triángulo de play. Trazo en un
+ * lienzo de 64x64, con regla `evenodd` para que el triángulo quede calado.
+ * `app/icon.svg` es estático y repite este trazo: si cambia, actualizar ambos.
+ */
+export const MARCA_SIMBOLO_PATH =
+  "M16.5 10H35A15 15 0 0 1 35 40H26V51.5Q26 54 23.5 54H16.5Q14 54 14 51.5V12.5Q14 10 16.5 10ZM25 19.5Q25 17 27.2 18.18L37.8 23.82Q40 25 37.8 26.18L27.2 31.82Q25 33 25 30.5Z";

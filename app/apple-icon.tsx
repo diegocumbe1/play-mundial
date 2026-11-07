@@ -1,6 +1,8 @@
 import { ImageResponse } from "next/og";
 
-/** Ícono para "Agregar a inicio" en iOS (apple-touch-icon): boleta de rifa. */
+import { MARCA_SIMBOLO_PATH } from "@/lib/marca";
+
+/** Ícono para "Agregar a inicio" en iOS (apple-touch-icon): el símbolo de la marca. */
 export const size = { width: 180, height: 180 };
 export const contentType = "image/png";
 
@@ -18,36 +20,12 @@ export default function AppleIcon() {
           alignItems: "center",
           justifyContent: "center",
           background: FONDO,
-          position: "relative",
         }}
       >
-        {/* Cuerpo de la boleta */}
-        <div
-          style={{ display: "flex", width: 128, height: 76, borderRadius: 18, background: ORO }}
-        />
-        {/* Muescas: círculos del color del fondo montados sobre los bordes */}
-        <div
-          style={{
-            position: "absolute", top: 37, left: 75,
-            width: 30, height: 30, borderRadius: 15, background: FONDO,
-          }}
-        />
-        <div
-          style={{
-            position: "absolute", top: 113, left: 75,
-            width: 30, height: 30, borderRadius: 15, background: FONDO,
-          }}
-        />
-        {/* Perforación central */}
-        {[0, 1, 2].map((i) => (
-          <div
-            key={i}
-            style={{
-              position: "absolute", top: 74 + i * 14, left: 87.5,
-              width: 5, height: 9, borderRadius: 3, background: FONDO,
-            }}
-          />
-        ))}
+        {/* iOS redondea las esquinas por su cuenta: aquí el fondo va a sangre. */}
+        <svg width="180" height="180" viewBox="0 0 64 64">
+          <path fill={ORO} fillRule="evenodd" d={MARCA_SIMBOLO_PATH} />
+        </svg>
       </div>
     ),
     { ...size },

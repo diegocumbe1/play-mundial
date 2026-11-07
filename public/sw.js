@@ -30,11 +30,16 @@ self.addEventListener("notificationclick", function (event) {
   event.waitUntil(
     clients
       .matchAll({ type: "window", includeUncontrolled: true })
-      .then((lista) => {
+      .then(async (lista) => {
         for (const client of lista) {
           if ("focus" in client) {
-            client.navigate(url);
-            return client.focus();
+            try {
+              // Falla en ventanas que este service worker aún no controla.
+              await client.navigate(url);
+              return client.focus();
+            } catch {
+              break;
+            }
           }
         }
         if (clients.openWindow) return clients.openWindow(url);

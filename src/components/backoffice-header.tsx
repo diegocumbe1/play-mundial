@@ -7,6 +7,7 @@ import { Home, LayoutGrid, Settings, Ticket, Trophy } from "lucide-react";
 import { LogoutButton } from "@/components/admin/logout-button";
 import { NuevoMenu } from "@/components/admin/nuevo-menu";
 import { SesionViva } from "@/components/admin/sesion-viva";
+import { MarcaSimbolo } from "@/components/marca-simbolo";
 import { MARCA } from "@/lib/marca";
 import { cn } from "@/lib/utils";
 
@@ -75,9 +76,7 @@ export function BackofficeHeader({
       <header className="border-border bg-background/85 sticky top-0 z-40 hidden border-b backdrop-blur-xl sm:block">
       <div className="mx-auto flex h-14 max-w-5xl items-center justify-between gap-4 px-4">
         <Link href="/" className="flex min-w-0 items-center gap-2">
-          <span className="bg-primary text-primary-foreground flex size-8 shrink-0 items-center justify-center rounded-full font-bold">
-            P
-          </span>
+          <MarcaSimbolo className="text-primary size-8 shrink-0" />
           <span className="truncate text-sm font-bold">{MARCA.nombre}</span>
         </Link>
 

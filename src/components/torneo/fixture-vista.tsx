@@ -313,7 +313,11 @@ function TarjetaPartido({
       </div>
       {editable && (
         <p className="text-primary mt-1.5 text-[11px] font-medium">
-          {e.estado === "programado" ? "Cargar resultado" : "Editar resultado"}
+          {e.estado === "programado"
+            ? "Cargar resultado"
+            : e.estado === "en_vivo"
+              ? "Editar resultado"
+              : "Ver resultado"}
         </p>
       )}
     </Contenedor>

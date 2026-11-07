@@ -13,6 +13,12 @@ import {
   salaDePartido,
   type MarcadorLeido,
 } from "@/lib/marcador-externo";
+import {
+  avisarEnVivo,
+  avisarFinalizado,
+  avisarPartidosNuevos,
+  guardarConstanciaJuez,
+} from "@/lib/torneo-avisos";
 import { resolverActivacion } from "@/lib/planes";
 import { tieneProductoHabilitado } from "@/lib/productos";
 import {
@@ -2490,6 +2496,8 @@ export async function generarFixture(
     await svc.from("torneos").update({ estado: "programado" }).eq("id", torneoId);
   }
 
+  await avisarPartidosNuevos(torneo, `Fixture listo: ${filas.length} partidos`);
+
   revalidarTorneo(torneo);
   return { success: true, data: { partidos: filas.length } };
 }
@@ -2545,6 +2553,7 @@ export async function generarEliminatorias(
   for (const e of ((creados as Encuentro[]) ?? []).filter((m) => m.estado === "wo")) {
     await avanzarLlave(e);
   }
+  await avisarPartidosNuevos(torneo, "Eliminatorias listas");
 
   revalidarTorneo(torneo);
   return { success: true, data: undefined };
@@ -2589,6 +2598,10 @@ export async function guardarResultado(
   if (!torneo) return { success: false, error: "No autorizado" };
   if (!e.equipo_a_id || !e.equipo_b_id) {
     return { success: false, error: "El cruce todavía no está definido." };
+  }
+  // Un partido terminado no vuelve a "en vivo" por accidente: se corrige o se reinicia.
+  if (d.tipo === "sets" && d.estado === "en_vivo" && (e.estado === "finalizado" || e.estado === "wo")) {
+    return { success: false, error: "Este partido ya terminó: corrige el resultado o reinícialo." };
   }
 
   let cambios: Partial<Encuentro>;
@@ -2658,6 +2671,14 @@ export async function guardarResultado(
     await svc.from("torneos").update({ estado: "en_curso" }).eq("id", torneo.id);
   }
 
+  // Corregir un resultado ya oficial no vuelve a notificar: solo el cambio de estado.
+  const yaTerminado = e.estado === "finalizado" || e.estado === "wo";
+  if (actualizado.estado === "en_vivo" && e.estado !== "en_vivo") {
+    await avisarEnVivo(torneo, actualizado);
+  } else if ((actualizado.estado === "finalizado" || actualizado.estado === "wo") && !yaTerminado) {
+    await avisarFinalizado(torneo, actualizado);
+  }
+
   revalidarTorneo(torneo);
   return { success: true, data: undefined };
 }
@@ -2713,6 +2734,7 @@ export async function abrirMarcador(
   if (p.torneo.estado === "inscripciones" || p.torneo.estado === "programado") {
     await svc.from("torneos").update({ estado: "en_curso" }).eq("id", p.torneo.id);
   }
+  if (p.e.estado !== "en_vivo") await avisarEnVivo(p.torneo, p.e);
 
   revalidarTorneo(p.torneo);
   return { success: true, data: enlacesMarcador(sala) };
@@ -2737,23 +2759,6 @@ export async function traerMarcador(
   if (!leido) return { success: false, error: "No se pudo leer el marcador. ¿Está encendido?" };
   // Precedente: lo que reportó el juez queda aquí aunque luego se corrija o se borre la sala.
   // Si falla, no afecta la lectura: el organizador igual ve el resultado.
-  if (leido.terminado) {
-    const reportado = JSON.stringify({ sets: leido.sets, set_sin_terminar: leido.setSinTerminar });
-    const anterior = p.e.resultado_juez
-      ? JSON.stringify({ sets: p.e.resultado_juez.sets, set_sin_terminar: p.e.resultado_juez.set_sin_terminar })
-      : null;
-    if (reportado !== anterior) {
-      await createServiceRoleClient()
-        .from("encuentros")
-        .update({
-          resultado_juez: {
-            sets: leido.sets,
-            set_sin_terminar: leido.setSinTerminar,
-            leido_at: new Date().toISOString(),
-          },
-        })
-        .eq("id", p.e.id);
-    }
-  }
+  if (leido.terminado) await guardarConstanciaJuez(p.e, leido);
   return { success: true, data: { ...leido, enlaces: enlacesMarcador(p.e.sala_marcador) } };
 }

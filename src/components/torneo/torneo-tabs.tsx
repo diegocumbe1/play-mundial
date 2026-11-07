@@ -62,6 +62,7 @@ export function TorneoTabs({
   pasos,
   marcadorDisponible = false,
   configuracion,
+  partidoInicial,
 }: {
   torneo: Torneo;
   equipos: EquipoTorneo[];
@@ -80,8 +81,10 @@ export function TorneoTabs({
   pasos: PasoConfiguracion[];
   /** Bloque de configuración renderizado en el servidor (datos de cobro, etc.). */
   configuracion: React.ReactNode;
+  /** Partido que se abre al entrar (enlace de una notificación). */
+  partidoInicial?: string;
 }) {
-  const [pestana, setPestana] = useState<Pestana>("resumen");
+  const [pestana, setPestana] = useState<Pestana>(partidoInicial ? "fixture" : "resumen");
 
   const tabs: { id: Pestana; label: string; icon: typeof BarChart3 }[] = [
     { id: "resumen", label: "Resumen", icon: BarChart3 },
@@ -156,6 +159,7 @@ export function TorneoTabs({
             encuentros={encuentros}
             reglas={reglas}
             marcadorDisponible={marcadorDisponible}
+            partidoInicial={partidoInicial}
           />
         </div>
       )}

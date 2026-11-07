@@ -1,7 +1,7 @@
 import { getPartidos } from "@/actions/partidos";
 import { Hero } from "@/components/hero";
 import { MatchList } from "@/components/match-list";
-import { RifasLanding } from "@/components/rifas-landing";
+import { PlataformaLanding } from "@/components/plataforma-landing";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import { getIdioma } from "@/lib/idioma-server";
@@ -12,9 +12,9 @@ export const dynamic = "force-dynamic";
 const SEMANA_MS = 7 * 24 * 60 * 60 * 1000;
 
 export default async function Home() {
-  // El Mundial ya terminó: con POLLA_ACTIVA != "true" la portada es la de rifas.
+  // El Mundial ya terminó: con POLLA_ACTIVA != "true" la portada es la de la plataforma.
   if (process.env.POLLA_ACTIVA !== "true") {
-    return <RifasLanding />;
+    return <PlataformaLanding />;
   }
 
   const idioma = await getIdioma();
