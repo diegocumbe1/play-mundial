@@ -2985,6 +2985,37 @@ export async function guardarResultado(
   return { success: true, data: undefined };
 }
 
+/**
+ * Casilla opcional del organizador: ¿ya se pagó el arbitraje de este partido?
+ * No afecta el resultado ni sale en la página pública.
+ */
+export async function marcarArbitrajePagado(
+  encuentroId: string,
+  pagado: boolean,
+): Promise<ActionResult> {
+  const acceso = await accesoTorneos();
+  if (!acceso.ok) return { success: false, error: acceso.error };
+
+  const svc = createServiceRoleClient();
+  const { data } = await svc
+    .from("encuentros")
+    .select("torneo_id")
+    .eq("id", encuentroId)
+    .maybeSingle();
+  if (!data) return { success: false, error: "Partido no encontrado" };
+  const torneo = await torneoDelUsuario((data as { torneo_id: string }).torneo_id, acceso.membership);
+  if (!torneo) return { success: false, error: "No autorizado" };
+
+  const { error } = await svc
+    .from("encuentros")
+    .update({ arbitraje_pagado: pagado === true })
+    .eq("id", encuentroId);
+  if (error) return { success: false, error: error.message };
+
+  revalidatePath(`/admin/torneos/${torneo.id}`);
+  return { success: true, data: undefined };
+}
+
 // ---------------------------------------------------------------------------
 // Marcador en vivo (dc-sport-score)
 // ---------------------------------------------------------------------------

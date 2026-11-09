@@ -5,7 +5,13 @@
       "Bash(./scripts/migrate.sh)",
       "Bash(grep -rn \"Cancha \\\\${\\\\|cancha}\\\\|\\\\.cancha\\\\b\" src app)",
       "Bash(grep -i \"^tsx$\\\\|jiti\\\\|esbuild$\")",
-      "Bash(node --env-file=.env.local scripts/.tmp-ver.mjs)"
+      "Bash(node --env-file=.env.local scripts/.tmp-ver.mjs)",
+      "Bash(cp /private/tmp/claude-502/-Users-DiegoCumbe-Documents-personal-projects-polla-futbolera/caaaa424-dd3b-402c-8a7c-3d96642760d5/scratchpad/q.mjs ./.tmp-q.mjs)",
+      "Bash(rm ./.tmp-q.mjs)",
+      "Bash(cat > *)"
+    ],
+    "additionalDirectories": [
+      "/Users/DiegoCumbe/Documents/personal/projects/polla-futbolera"
     ]
   }
 }

@@ -10,6 +10,7 @@ import {
   generarEliminatorias,
   generarFixture,
   guardarResultado,
+  marcarArbitrajePagado,
   traerMarcador,
   type OpcionesFixture,
 } from "@/actions/torneos";
@@ -510,6 +511,8 @@ function ResultadoModal({
           </DialogDescription>
         </DialogHeader>
 
+        <ArbitrajeCasilla key={encuentro.id} encuentroId={encuentro.id} inicial={!!encuentro.arbitraje_pagado} />
+
         {terminado && !corrigiendo ? (
           <ResumenPartido
             encuentro={encuentro}
@@ -669,6 +672,46 @@ function ResultadoModal({
         )}
       </DialogContent>
     </Dialog>
+  );
+}
+
+/**
+ * Casilla opcional del organizador: ¿ya se pagó el arbitraje? Se guarda al
+ * marcarla. Solo existe en el panel: ni el juez ni la página pública la ven.
+ */
+function ArbitrajeCasilla({ encuentroId, inicial }: { encuentroId: string; inicial: boolean }) {
+  const router = useRouter();
+  const [pagado, setPagado] = useState(inicial);
+  const [pending, startTransition] = useTransition();
+
+  function cambiar(valor: boolean) {
+    setPagado(valor);
+    startTransition(async () => {
+      const r = await marcarArbitrajePagado(encuentroId, valor);
+      if (!r.success) {
+        setPagado(!valor);
+        return void toast.error(r.error);
+      }
+      router.refresh();
+    });
+  }
+
+  return (
+    <label className="bg-muted/40 flex items-start gap-2 rounded-xl p-3 text-sm">
+      <input
+        type="checkbox"
+        checked={pagado}
+        disabled={pending}
+        onChange={(e) => cambiar(e.target.checked)}
+        className="mt-0.5 size-4 shrink-0"
+      />
+      <span>
+        Arbitraje pagado
+        <span className="text-muted-foreground block text-xs">
+          Opcional. Solo lo ves tú: no aparece para el juez ni en la página pública.
+        </span>
+      </span>
+    </label>
   );
 }
 

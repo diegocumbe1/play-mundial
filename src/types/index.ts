@@ -833,6 +833,8 @@ export interface Encuentro {
   sala_marcador: string | null;
   /** Lo que reportó el juez al terminar; el oficial es `sets`. */
   resultado_juez?: ResultadoJuez | null;
+  /** Dato interno del organizador: no sale en vistas públicas ni lo ve el juez. */
+  arbitraje_pagado?: boolean;
   created_at: string;
   updated_at: string;
 }
