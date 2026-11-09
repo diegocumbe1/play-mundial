@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node --env-file=.env.local scripts/.tmp-check.mjs)",
+      "Bash(./scripts/migrate.sh)",
+      "Bash(grep -rn \"Cancha \\\\${\\\\|cancha}\\\\|\\\\.cancha\\\\b\" src app)",
+      "Bash(grep -i \"^tsx$\\\\|jiti\\\\|esbuild$\")",
+      "Bash(node --env-file=.env.local scripts/.tmp-ver.mjs)"
+    ]
+  }
+}

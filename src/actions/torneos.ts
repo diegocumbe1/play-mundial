@@ -51,6 +51,7 @@ import {
 import {
   erroresPlantilla,
   jugadorInputSchema,
+  jugadorPublicoSchema,
   normalizarDocumento,
   type JugadorInput,
 } from "@/lib/torneo-jugadores";
@@ -131,6 +132,42 @@ async function accesoTorneos(): Promise<Acceso> {
     };
   }
   return { ok: true, membership };
+}
+
+/** Cuántos torneos lleva el organizador y cuántos puede crear (sin demos). */
+interface CupoTorneos {
+  usados: number;
+  /** `null` = sin límite. */
+  max: number | null;
+  puedeCrear: boolean;
+}
+
+async function cupoTorneosTenant(tenantId: string): Promise<CupoTorneos> {
+  const svc = createServiceRoleClient();
+  const [{ data: tenant }, { count }] = await Promise.all([
+    svc.from("tenants").select("max_torneos").eq("id", tenantId).maybeSingle(),
+    svc
+      .from("torneos")
+      .select("id", { count: "exact", head: true })
+      .eq("tenant_id", tenantId)
+      .eq("es_demo", false),
+  ]);
+  // Sin fila o sin la columna todavía: se aplica el valor por defecto (1).
+  const fila = tenant as { max_torneos?: number | null } | null;
+  const max = fila && "max_torneos" in fila ? (fila.max_torneos ?? null) : 1;
+  const usados = count ?? 0;
+  return { usados, max, puedeCrear: max === null || usados < max };
+}
+
+/**
+ * Cupo del usuario actual, para que la UI oculte "Nuevo torneo" cuando ya
+ * llegó al tope. El superadmin no tiene tope.
+ */
+export async function getCupoTorneos(): Promise<CupoTorneos | null> {
+  const membership = await getMembership();
+  if (!membership) return null;
+  if (membership.rol === "superadmin") return { usados: 0, max: null, puedeCrear: true };
+  return cupoTorneosTenant(membership.tenant_id);
 }
 
 /** Trae el torneo verificando que el usuario pueda administrarlo. */
@@ -237,6 +274,8 @@ const equipoSchema = z.object({
   estado: z
     .enum(["pendiente", "confirmado", "rechazado", "retirado"])
     .default("pendiente"),
+  /** Qué falta verificar del equipo. `null` = revisado; ausente = no se toca. */
+  nota_revision: z.string().trim().nullable().optional(),
 });
 
 const premioSchema = z.object({
@@ -533,6 +572,18 @@ export async function crearTorneo(
     acceso.membership.rol === "superadmin" && tenant_id
       ? tenant_id
       : acceso.membership.tenant_id;
+
+  // Tope de torneos: el organizador solo crea los que el superadmin le habilitó.
+  // El superadmin no tiene tope, ni cuando crea a nombre de otro.
+  if (acceso.membership.rol !== "superadmin") {
+    const cupo = await cupoTorneosTenant(tenantId);
+    if (!cupo.puedeCrear) {
+      return {
+        success: false,
+        error: `Tu plan permite ${cupo.max} torneo${cupo.max === 1 ? "" : "s"}. Para crear más, escríbenos y te habilitamos el cupo.`,
+      };
+    }
+  }
 
   const svc = createServiceRoleClient();
   const { data, error } = await svc
@@ -887,7 +938,7 @@ export async function crearEquipoTorneo(
   }
   const jugadores = d.jugadores ?? [];
   if (jugadores.length > 0) {
-    const errorPlantilla = await validarPlantilla(torneo, null, categoria, jugadores);
+    const errorPlantilla = await validarPlantilla(torneo, null, categoria, jugadores, true);
     if (errorPlantilla) return { success: false, error: errorPlantilla };
   }
 
@@ -973,6 +1024,11 @@ async function validarPlantilla(
   equipoId: string | null,
   categoria: CategoriaTorneo | null,
   jugadores: JugadorInput[],
+  /**
+   * Panel del organizador: lo que puede completar después (referencia de
+   * cliente) no bloquea el guardado. La inscripción pública sí lo exige.
+   */
+  organizador = false,
 ): Promise<string | null> {
   const parsed = z.array(jugadorInputSchema).safeParse(jugadores);
   if (!parsed.success) return parsed.error.issues[0].message;
@@ -984,6 +1040,7 @@ async function validarPlantilla(
       maximo: categoria?.max_jugadores ?? null,
     },
     await documentosOcupados(torneo, equipoId, categoria?.id ?? null),
+    { referenciaOpcional: organizador },
   );
   return errores[0] ?? null;
 }
@@ -1004,11 +1061,12 @@ async function insertarJugadores(
       torneo_id: torneo.id,
       equipo_id: equipoId,
       nombre: j.nombre,
-      documento: j.documento,
+      documento: j.documento || null,
       genero: j.genero,
       es_externo: j.es_externo,
       es_referente: j.es_referente,
       referencia_cliente: j.es_externo ? null : (j.referencia_cliente ?? null),
+      nota_revision: j.nota_revision || null,
       orden: i,
     })),
   );
@@ -1037,7 +1095,7 @@ export async function guardarJugadoresEquipo(
   const categoria = equipo.categoria_id
     ? await categoriaDelTorneo(torneo.id, equipo.categoria_id)
     : null;
-  const errorPlantilla = await validarPlantilla(torneo, equipo.id, categoria, jugadores);
+  const errorPlantilla = await validarPlantilla(torneo, equipo.id, categoria, jugadores, true);
   if (errorPlantilla) return { success: false, error: errorPlantilla };
 
   const err = await insertarJugadores(torneo, equipo.id, jugadores);
@@ -1091,6 +1149,7 @@ export async function actualizarEquipoTorneo(
       estado: d.estado,
       // Solo se toca si el formulario la envía (los que no la conocen no la borran).
       ...(d.categoria_id !== undefined ? { categoria_id: d.categoria_id } : {}),
+      ...(d.nota_revision !== undefined ? { nota_revision: d.nota_revision || null } : {}),
     })
     .eq("id", id);
 
@@ -1405,6 +1464,8 @@ export interface TorneoPublicoDetalle {
   encuentros: EncuentroPublico[];
   /** Reglas de la tabla de posiciones, para calcularla igual que el panel. */
   tablaReglas: ReturnType<typeof leerReglas>["tabla"];
+  /** Nombres de las canchas (vacío = "Cancha N"). */
+  nombresCanchas: string[];
   /** Reglas de quién puede jugar: el formulario valida la plantilla con ellas. */
   participacion: ReturnType<typeof leerReglas>["participacion"];
   equipos: EquipoTorneoPublico[];
@@ -1513,6 +1574,7 @@ export async function getTorneoPublico(
       categorias,
       encuentros: await conMarcadorEnVivo((encuentrosData as EncuentroPublico[]) ?? []),
       tablaReglas: leerReglas(torneo.reglas).tabla,
+      nombresCanchas: leerReglas(torneo.reglas).juego.nombres_canchas,
       participacion: leerReglas(torneo.reglas).participacion,
       equipos: construirEquiposPublicos(equipos),
       equiposConfirmados: vigentes.filter((e) => e.estado === "confirmado").length,
@@ -1569,7 +1631,10 @@ const inscripcionSchema = z.object({
     .or(z.literal("")),
   cantidad_jugadores: z.number().int().min(1).nullable().optional(),
   categoria_id: z.string().uuid().nullable().optional(),
-  jugadores: z.array(jugadorInputSchema).min(1, "Inscribe a los jugadores del equipo"),
+  // El público siempre da el documento, y no puede dejar notas de revisión.
+  jugadores: z
+    .array(jugadorPublicoSchema.transform((j) => ({ ...j, nota_revision: null })))
+    .min(1, "Inscribe a los jugadores del equipo"),
   consentimiento: z.literal(true, {
     error: "Debes aceptar el reglamento y el tratamiento de datos",
   }),
@@ -2126,6 +2191,158 @@ export async function crearTorneoDemo(
   return { success: true, data: { id: torneo.id } };
 }
 
+
+/**
+ * Crea un torneo REAL (borrador) a partir de una demo: copia la configuración,
+ * reglas, reglamento, categorías, premios, gastos y los equipos con sus
+ * jugadores, para que el organizador solo cambie nombres y participantes.
+ *
+ * Todos los equipos quedan `pendiente` y sin pagos: lo cobrado en la demo es
+ * ficticio. No copia partidos (el fixture se genera con los equipos reales).
+ * Cuenta para el tope de torneos del organizador.
+ */
+export async function crearTorneoDesdeDemo(
+  demoId: string,
+): Promise<ActionResult<{ id: string }>> {
+  const acceso = await accesoTorneos();
+  if (!acceso.ok) return { success: false, error: acceso.error };
+
+  const demo = await torneoDelUsuario(demoId, acceso.membership);
+  if (!demo) return { success: false, error: "Torneo no encontrado" };
+  if (!demo.es_demo) return { success: false, error: "Solo se puede copiar un torneo demo" };
+
+  const tenantId = demo.tenant_id;
+  if (acceso.membership.rol !== "superadmin") {
+    const cupo = await cupoTorneosTenant(tenantId);
+    if (!cupo.puedeCrear) {
+      return {
+        success: false,
+        error: `Tu plan permite ${cupo.max} torneo${cupo.max === 1 ? "" : "s"}. Para crear más, escríbenos y te habilitamos el cupo.`,
+      };
+    }
+  }
+
+  const svc = createServiceRoleClient();
+  const [cats, premios, gastos, equipos, jugadores] = await Promise.all([
+    svc.from("categorias_torneo").select("*").eq("torneo_id", demoId).order("orden"),
+    svc.from("premios_torneo").select("*").eq("torneo_id", demoId),
+    svc.from("gastos_torneo").select("*").eq("torneo_id", demoId),
+    svc.from("equipos_torneo").select("*").eq("torneo_id", demoId).order("created_at"),
+    svc.from("jugadores_torneo").select("*").eq("torneo_id", demoId).order("orden"),
+  ]);
+
+  type Fila = Record<string, unknown>;
+  const omitir = (fila: Fila, claves: string[]): Fila =>
+    Object.fromEntries(Object.entries(fila).filter(([k]) => !claves.includes(k)));
+  const META = ["id", "torneo_id", "tenant_id", "created_at", "updated_at"];
+  const sinMeta = (fila: Fila) => omitir(fila, META);
+
+  // Columnas que no se copian: identidad, estado y lo que pertenece a la demo.
+  const config = omitir(demo as unknown as Fila, [
+    "id", "slug_publico", "estado", "es_demo", "cobro_tipo", "activado_at", "created_at", "updated_at",
+  ]);
+  const nombre = demo.nombre.replace(/^\s*\[?demo\]?\s*[:·-]?\s*/i, "").trim() || demo.nombre;
+
+  const { data: nuevoData, error } = await svc
+    .from("torneos")
+    .insert({
+      ...config,
+      nombre,
+      slug_publico: slugify(nombre),
+      estado: "borrador",
+      es_demo: false,
+    })
+    .select("id")
+    .single();
+  if (error) return { success: false, error: error.message };
+  const nuevoId = (nuevoData as { id: string }).id;
+
+  // Si algo falla a mitad de camino se borra el torneo nuevo (cascada) para no
+  // dejar una copia a medias que además gaste el cupo.
+  const fallar = async (msg: string): Promise<ActionResult<{ id: string }>> => {
+    await svc.from("torneos").delete().eq("id", nuevoId);
+    return { success: false, error: msg };
+  };
+  const base = { tenant_id: tenantId, torneo_id: nuevoId };
+
+  // Categorías: se copian una a una para mapear el id viejo → nuevo.
+  const mapaCat = new Map<string, string>();
+  for (const c of (cats.data as CategoriaTorneo[]) ?? []) {
+    const { data, error: e } = await svc
+      .from("categorias_torneo")
+      .insert({ ...sinMeta(c as unknown as Fila), ...base })
+      .select("id")
+      .single();
+    if (e) return fallar(e.message);
+    mapaCat.set(c.id, (data as { id: string }).id);
+  }
+  const nuevaCat = (id: string | null | undefined) => (id ? (mapaCat.get(id) ?? null) : null);
+
+  const filasPremios = ((premios.data as Fila[]) ?? []).map((p) => ({
+    ...sinMeta(p),
+    ...base,
+    ...("categoria_id" in p ? { categoria_id: nuevaCat(p.categoria_id as string | null) } : {}),
+  }));
+  if (filasPremios.length > 0) {
+    const { error: e } = await svc.from("premios_torneo").insert(filasPremios);
+    if (e) return fallar(e.message);
+  }
+
+  const filasGastos = ((gastos.data as Fila[]) ?? []).map((g) => ({
+    ...sinMeta(g),
+    ...base,
+    pagado: false,
+  }));
+  if (filasGastos.length > 0) {
+    const { error: e } = await svc.from("gastos_torneo").insert(filasGastos);
+    if (e) return fallar(e.message);
+  }
+
+  // Equipos: todos pendientes de pago, sin comprobantes ni confirmación.
+  const equiposDemo = (equipos.data as EquipoTorneo[]) ?? [];
+  const mapaEquipo = new Map<string, string>();
+  if (equiposDemo.length > 0) {
+    const { data: creados, error: e } = await svc
+      .from("equipos_torneo")
+      .insert(
+        equiposDemo.map((eq) => ({
+          ...sinMeta(eq as unknown as Fila),
+          ...base,
+          categoria_id: nuevaCat(eq.categoria_id),
+          estado: "pendiente",
+          monto_pagado: 0,
+          metodo_pago: null,
+          comprobante_url: null,
+          confirmado_at: null,
+        })),
+      )
+      .select("id, nombre");
+    if (e) return fallar(e.message);
+    // `nombre` es único por torneo: sirve para emparejar cada copia con su original.
+    const porNombre = new Map(
+      ((creados as { id: string; nombre: string }[]) ?? []).map((c) => [c.nombre, c.id]),
+    );
+    for (const eq of equiposDemo) {
+      const nuevo = porNombre.get(eq.nombre);
+      if (nuevo) mapaEquipo.set(eq.id, nuevo);
+    }
+  }
+
+  const filasJugadores = ((jugadores.data as Fila[]) ?? [])
+    .filter((j) => mapaEquipo.has(j.equipo_id as string))
+    .map((j) => ({
+      ...sinMeta(j),
+      ...base,
+      equipo_id: mapaEquipo.get(j.equipo_id as string),
+    }));
+  if (filasJugadores.length > 0) {
+    const { error: e } = await svc.from("jugadores_torneo").insert(filasJugadores);
+    if (e) return fallar(e.message);
+  }
+
+  revalidatePath("/admin/torneos");
+  return { success: true, data: { id: nuevoId } };
+}
 
 // ---------------------------------------------------------------------------
 // Simulador de la demo

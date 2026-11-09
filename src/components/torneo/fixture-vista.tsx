@@ -10,6 +10,7 @@ import {
   ORDEN_FASES,
   resultadoPartido,
 } from "@/lib/torneo-fixture";
+import { nombreCancha } from "@/lib/torneo-avisos-reglas";
 import type { ReglasTorneo } from "@/lib/torneo-reglas";
 import { cn } from "@/lib/utils";
 import type { EncuentroPublico, FaseEncuentro } from "@/types";
@@ -36,6 +37,7 @@ export function FixtureVista({
   equipos,
   encuentros,
   tablaReglas,
+  nombresCanchas = [],
   autoRefrescar = false,
   onEditar,
 }: {
@@ -43,6 +45,8 @@ export function FixtureVista({
   equipos: { id: string; nombre: string }[];
   encuentros: EncuentroPublico[];
   tablaReglas: ReglasTorneo["tabla"];
+  /** Nombres de las canchas (vacío = "Cancha N"). */
+  nombresCanchas?: string[];
   autoRefrescar?: boolean;
   /** Solo en el panel: tocar un partido abre la carga de resultado. */
   onEditar?: (e: EncuentroPublico) => void;
@@ -119,7 +123,7 @@ export function FixtureVista({
           </Titulo>
           <div className="grid gap-3 sm:grid-cols-2">
             {enVivo.map((e) => (
-              <TarjetaPartido key={e.id} e={e} nombre={nombre} destacada onEditar={onEditar} />
+              <TarjetaPartido key={e.id} e={e} nombre={nombre} destacada onEditar={onEditar} canchas={nombresCanchas} />
             ))}
           </div>
         </section>
@@ -137,7 +141,7 @@ export function FixtureVista({
                 {lista
                   .filter((e) => e.fase === f)
                   .map((e) => (
-                    <TarjetaPartido key={e.id} e={e} nombre={nombre} onEditar={onEditar} />
+                    <TarjetaPartido key={e.id} e={e} nombre={nombre} onEditar={onEditar} canchas={nombresCanchas} />
                   ))}
               </div>
             ))}
@@ -204,7 +208,7 @@ export function FixtureVista({
           <Titulo>Próximos partidos</Titulo>
           <div className="grid gap-2 sm:grid-cols-2">
             {proximos.slice(0, onEditar ? undefined : 8).map((e) => (
-              <TarjetaPartido key={e.id} e={e} nombre={nombre} onEditar={onEditar} />
+              <TarjetaPartido key={e.id} e={e} nombre={nombre} onEditar={onEditar} canchas={nombresCanchas} />
             ))}
           </div>
         </section>
@@ -215,7 +219,7 @@ export function FixtureVista({
           <Titulo>Resultados</Titulo>
           <div className="grid gap-2 sm:grid-cols-2">
             {resultados.slice(0, onEditar ? undefined : 12).map((e) => (
-              <TarjetaPartido key={e.id} e={e} nombre={nombre} onEditar={onEditar} />
+              <TarjetaPartido key={e.id} e={e} nombre={nombre} onEditar={onEditar} canchas={nombresCanchas} />
             ))}
           </div>
         </section>
@@ -233,11 +237,13 @@ function TarjetaPartido({
   nombre,
   destacada = false,
   onEditar,
+  canchas = [],
 }: {
   e: EncuentroPublico;
   nombre: (id: string | null) => string;
   destacada?: boolean;
   onEditar?: (e: EncuentroPublico) => void;
+  canchas?: string[];
 }) {
   const directo = e.estado === "wo" && (!e.equipo_a_id || !e.equipo_b_id);
   const editable = !!onEditar && !!e.equipo_a_id && !!e.equipo_b_id;
@@ -303,7 +309,7 @@ function TarjetaPartido({
         ) : (
           <span>
             {e.programado_at ? HORA.format(new Date(e.programado_at)) : "Por programar"}
-            {e.cancha ? ` · Cancha ${e.cancha}` : ""}
+            {e.cancha ? ` · ${nombreCancha(e.cancha, canchas)}` : ""}
           </span>
         )}
       </div>

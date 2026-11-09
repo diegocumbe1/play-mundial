@@ -284,6 +284,40 @@ export async function restablecerPasswordOwner(
   return { success: true, data: undefined };
 }
 
+const maxTorneosSchema = z.object({
+  tenantId: z.string().uuid(),
+  /** `null` = sin límite. */
+  max: z.number().int().min(1).max(999).nullable(),
+});
+
+/**
+ * Cuántos torneos puede crear un organizador (sin contar demos). Por defecto 1;
+ * el superadmin lo sube o lo deja sin límite cuando el organizador paga.
+ * Bajarlo no borra los torneos que ya tiene: solo le impide crear más.
+ */
+export async function setMaxTorneosTenant(
+  input: z.infer<typeof maxTorneosSchema>,
+): Promise<ActionResult> {
+  if (!(await esSuperadmin())) {
+    return { success: false, error: "No autorizado" };
+  }
+  const parsed = maxTorneosSchema.safeParse(input);
+  if (!parsed.success) {
+    return { success: false, error: parsed.error.issues[0].message };
+  }
+
+  const { tenantId, max } = parsed.data;
+  const { error } = await createServiceRoleClient()
+    .from("tenants")
+    .update({ max_torneos: max })
+    .eq("id", tenantId);
+  if (error) return { success: false, error: error.message };
+
+  revalidatePath("/superadmin");
+  revalidatePath("/admin/torneos");
+  return { success: true, data: undefined };
+}
+
 /** Archiva o reactiva un tenant. Solo superadmin. */
 export async function setEstadoTenant(
   tenantId: string,

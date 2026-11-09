@@ -337,6 +337,11 @@ export interface Tenant {
   suscripcion_vence_at: string | null;
   /** Vencimiento de la suscripción de torneos, aparte de PRO (rifas). */
   suscripcion_torneos_vence_at: string | null;
+  /**
+   * Cuántos torneos (sin contar demos) puede crear. `1` por defecto; `null` =
+   * sin límite. Lo desbloquea el superadmin cuando el organizador paga.
+   */
+  max_torneos: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -869,6 +874,8 @@ export interface EquipoTorneo {
   comprobante_url: string | null;
   consentimiento_datos: boolean;
   confirmado_at: string | null;
+  /** Qué hay que verificar del equipo (dato dudoso de la planilla). `null` = revisado. */
+  nota_revision?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -880,11 +887,14 @@ export interface JugadorTorneo {
   torneo_id: string;
   equipo_id: string;
   nombre: string;
-  documento: string;
+  /** `null` = falta; el organizador lo completa después. */
+  documento: string | null;
   genero: "femenino" | "masculino";
   es_externo: boolean;
   es_referente: boolean;
   referencia_cliente: string | null;
+  /** Qué hay que verificar de este jugador. `null` = revisado. */
+  nota_revision: string | null;
   orden: number;
   created_at: string;
 }

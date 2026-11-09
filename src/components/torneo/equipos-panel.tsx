@@ -2,10 +2,21 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Check, MessageCircle, Plus, Trash2, Users, Wallet, X } from "lucide-react";
+import {
+  AlertTriangle,
+  Check,
+  MessageCircle,
+  Pencil,
+  Plus,
+  Trash2,
+  Users,
+  Wallet,
+  X,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import {
+  actualizarEquipoTorneo,
   confirmarEquipoTorneo,
   crearEquipoTorneo,
   eliminarPagoEquipo,
@@ -70,6 +81,7 @@ export function EquiposPanel({
   participacion: ReglasTorneo["participacion"];
 }) {
   const [plantillaDe, setPlantillaDe] = useState<EquipoTorneo | null>(null);
+  const [editandoDe, setEditandoDe] = useState<EquipoTorneo | null>(null);
   const limitesDe = (categoriaId: string | null) => {
     const c = categorias.find((x) => x.id === categoriaId);
     return { minimo: c?.jugadores_en_cancha ?? null, maximo: c?.max_jugadores ?? null };
@@ -87,6 +99,17 @@ export function EquiposPanel({
   };
   const nombreCategoria = (id: string | null) =>
     categorias.find((c) => c.id === id)?.nombre ?? null;
+  /** Lo que falta verificar del equipo: notas, documentos faltantes. Va en el tooltip. */
+  const porRevisar = (e: EquipoTorneo): string[] => {
+    const lista: string[] = [];
+    if (e.nota_revision) lista.push(`Equipo: ${e.nota_revision}`);
+    for (const j of jugadores) {
+      if (j.equipo_id !== e.id) continue;
+      if (!j.documento) lista.push(`${j.nombre}: falta el documento`);
+      if (j.nota_revision) lista.push(`${j.nombre}: ${j.nota_revision}`);
+    }
+    return lista;
+  };
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [filtro, setFiltro] = useState<Filtro>("todos");
@@ -169,7 +192,24 @@ export function EquiposPanel({
                         {nombreCategoria(e.categoria_id)}
                       </span>
                     )}
+                    {(() => {
+                      const pendientes = porRevisar(e);
+                      if (pendientes.length === 0) return null;
+                      return (
+                        <span
+                          title={pendientes.join("\n")}
+                          className="inline-flex shrink-0 cursor-help items-center gap-1 rounded-full bg-amber-500/15 px-2 py-0.5 text-[11px] font-semibold text-amber-700 dark:text-amber-300"
+                        >
+                          <AlertTriangle className="size-3" /> Revisar ({pendientes.length})
+                        </span>
+                      );
+                    })()}
                   </div>
+                  {e.nota_revision && (
+                    <p className="text-xs text-amber-700 dark:text-amber-300">
+                      Por revisar: {e.nota_revision}
+                    </p>
+                  )}
                   <p className="text-muted-foreground text-xs">
                     {e.responsable_nombre ?? "Sin responsable"}
                     {e.cantidad_jugadores ? ` · ${e.cantidad_jugadores} jugadores` : ""}
@@ -202,6 +242,9 @@ export function EquiposPanel({
                       <MessageCircle className="size-3.5" /> WhatsApp
                     </a>
                   )}
+                  <Button variant="outline" size="sm" onClick={() => setEditandoDe(e)}>
+                    <Pencil className="size-3.5" /> Editar
+                  </Button>
                   <Button variant="outline" size="sm" onClick={() => setPlantillaDe(e)}>
                     <Users className="size-3.5" />
                     {jugadores.filter((j) => j.equipo_id === e.id).length || "Sin"} jugadores
@@ -252,6 +295,11 @@ export function EquiposPanel({
         </ul>
       )}
 
+      <EditarEquipoModal
+        equipo={editandoDe}
+        categorias={categorias}
+        onCerrar={() => setEditandoDe(null)}
+      />
       <PlantillaModal
         equipo={plantillaDe}
         jugadores={jugadores}
@@ -307,7 +355,7 @@ function NuevoEquipoModal({
       const r = await crearEquipoTorneo(torneo.id, {
         nombre: nombre.trim(),
         categoria_id: categoriaId || null,
-        jugadores: plantilla.filter((j) => j.nombre.trim() || j.documento.trim()),
+        jugadores: plantilla.filter((j) => j.nombre.trim() || (j.documento ?? "").trim()),
         responsable_nombre: responsable.trim() || null,
         responsable_telefono: telefono.trim() || null,
         responsable_correo: correo.trim() || null,
@@ -385,6 +433,7 @@ function NuevoEquipoModal({
               Jugadores (puedes completarlos después)
             </p>
             <PlantillaEditor
+              documentoOpcional
               jugadores={plantilla}
               onChange={setPlantilla}
               reglas={participacion}
@@ -412,6 +461,146 @@ function NuevoEquipoModal({
           </Button>
           <Button onClick={guardar} disabled={pending || !nombre.trim()}>
             Registrar
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/**
+ * Corrige los datos del equipo: nombre, categoría, responsable y la nota de
+ * revisión. El estado, la inscripción y los pagos se manejan con sus propios
+ * botones; aquí se reenvían tal cual para no tocarlos.
+ */
+function EditarEquipoModal({
+  equipo,
+  categorias,
+  onCerrar,
+}: {
+  equipo: EquipoTorneo | null;
+  categorias: CategoriaTorneo[];
+  onCerrar: () => void;
+}) {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+  const [ultimoId, setUltimoId] = useState<string | null>(null);
+  const [nombre, setNombre] = useState("");
+  const [categoriaId, setCategoriaId] = useState("");
+  const [responsable, setResponsable] = useState("");
+  const [telefono, setTelefono] = useState("");
+  const [correo, setCorreo] = useState("");
+  const [nota, setNota] = useState("");
+  if (equipo && equipo.id !== ultimoId) {
+    setUltimoId(equipo.id);
+    setNombre(equipo.nombre);
+    setCategoriaId(equipo.categoria_id ?? "");
+    setResponsable(equipo.responsable_nombre ?? "");
+    setTelefono(equipo.responsable_telefono ?? "");
+    setCorreo(equipo.responsable_correo ?? "");
+    setNota(equipo.nota_revision ?? "");
+  }
+  if (!equipo) return null;
+
+  function cerrar() {
+    setUltimoId(null);
+    onCerrar();
+  }
+
+  function guardar() {
+    if (!equipo) return;
+    startTransition(async () => {
+      const r = await actualizarEquipoTorneo(equipo.id, {
+        nombre: nombre.trim(),
+        categoria_id: categoriaId || null,
+        responsable_nombre: responsable.trim() || null,
+        responsable_telefono: telefono.trim() || null,
+        responsable_correo: correo.trim() || null,
+        nota_revision: nota.trim() || null,
+        // Lo que este formulario no edita se conserva.
+        escudo_url: equipo.escudo_url,
+        cantidad_jugadores: equipo.cantidad_jugadores,
+        monto_inscripcion: equipo.monto_inscripcion,
+        estado: equipo.estado,
+      });
+      if (!r.success) {
+        toast.error(r.error);
+        return;
+      }
+      toast.success("Equipo actualizado");
+      cerrar();
+      router.refresh();
+    });
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => !o && cerrar()}>
+      <DialogContent className="max-h-[90dvh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Editar equipo</DialogTitle>
+          <DialogDescription>
+            Los jugadores se editan en el botón «jugadores» y el pago en «Pago».
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Campo label="Nombre del equipo" className="sm:col-span-2">
+            <Input value={nombre} onChange={(e) => setNombre(e.target.value)} />
+          </Campo>
+          {categorias.length > 0 && (
+            <Campo label="Categoría" className="sm:col-span-2">
+              <Selector value={categoriaId} onChange={setCategoriaId}>
+                <option value="">Sin categoría</option>
+                {categorias.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.nombre}
+                  </option>
+                ))}
+              </Selector>
+            </Campo>
+          )}
+          <Campo label="Responsable / delegado">
+            <Input value={responsable} onChange={(e) => setResponsable(e.target.value)} />
+          </Campo>
+          <Campo label="WhatsApp">
+            <Input
+              value={telefono}
+              onChange={(e) => setTelefono(e.target.value)}
+              inputMode="tel"
+              placeholder="3001234567"
+            />
+          </Campo>
+          <Campo label="Correo (opcional)" className="sm:col-span-2">
+            <Input value={correo} onChange={(e) => setCorreo(e.target.value)} inputMode="email" />
+          </Campo>
+          <Campo label="Por revisar (nota interna)" className="sm:col-span-2">
+            <div className="flex flex-col gap-1.5">
+              <textarea
+                value={nota}
+                onChange={(e) => setNota(e.target.value)}
+                rows={3}
+                placeholder="Nada pendiente"
+                className="border-input bg-background focus-visible:ring-ring/50 w-full rounded-md border px-3 py-2 text-sm outline-none focus-visible:ring-2"
+              />
+              {nota.trim() && (
+                <button
+                  type="button"
+                  onClick={() => setNota("")}
+                  className="inline-flex items-center gap-1 self-start text-xs font-semibold text-amber-700 hover:underline dark:text-amber-300"
+                >
+                  <Check className="size-3.5" /> Marcar como revisado
+                </button>
+              )}
+            </div>
+          </Campo>
+        </div>
+
+        <DialogFooter>
+          <Button variant="ghost" onClick={cerrar} disabled={pending}>
+            Cancelar
+          </Button>
+          <Button onClick={guardar} disabled={pending || !nombre.trim()}>
+            Guardar cambios
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -448,6 +637,7 @@ function PlantillaModal({
         es_externo: j.es_externo,
         es_referente: j.es_referente,
         referencia_cliente: j.referencia_cliente ?? "",
+        nota_revision: j.nota_revision ?? null,
       }));
     setLista(
       actuales.length > 0
@@ -462,7 +652,7 @@ function PlantillaModal({
     startTransition(async () => {
       const r = await guardarJugadoresEquipo(
         equipo.id,
-        lista.filter((j) => j.nombre.trim() || j.documento.trim()),
+        lista.filter((j) => j.nombre.trim() || (j.documento ?? "").trim()),
       );
       if (!r.success) {
         toast.error(r.error);
@@ -488,6 +678,7 @@ function PlantillaModal({
           onChange={setLista}
           reglas={participacion}
           limites={limites}
+          documentoOpcional
         />
         <DialogFooter>
           <Button variant="ghost" onClick={onCerrar} disabled={pending}>

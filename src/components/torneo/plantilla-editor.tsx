@@ -1,6 +1,6 @@
 "use client";
 
-import { Plus, Trash2 } from "lucide-react";
+import { AlertTriangle, Check, Plus, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -30,16 +30,24 @@ export function PlantillaEditor({
   onChange,
   reglas,
   limites,
+  documentoOpcional = false,
 }: {
   jugadores: JugadorInput[];
   onChange: (jugadores: JugadorInput[]) => void;
   reglas: ReglasTorneo["participacion"];
   limites: LimitesPlantilla;
+  /**
+   * Panel del organizador: deja guardar sin documento (se completa después) y
+   * muestra las notas "por revisar". La inscripción pública lo exige.
+   */
+  documentoOpcional?: boolean;
 }) {
   const set = (i: number, patch: Partial<JugadorInput>) =>
     onChange(jugadores.map((j, idx) => (idx === i ? { ...j, ...patch } : j)));
 
-  const completos = jugadores.filter((j) => j.nombre.trim() && j.documento.trim());
+  const completos = jugadores.filter(
+    (j) => j.nombre.trim() && (documentoOpcional || (j.documento ?? "").trim()),
+  );
   const errores = erroresPlantilla(
     completos.map((j) => ({
       ...j,
@@ -48,6 +56,8 @@ export function PlantillaEditor({
     })),
     reglas,
     limites,
+    undefined,
+    { referenciaOpcional: documentoOpcional },
   );
   const usaReferentes = reglas.max_referentes != null;
   const puedeAgregar = !limites.maximo || jugadores.length < limites.maximo;
@@ -92,12 +102,15 @@ export function PlantillaEditor({
           </div>
           <div className="flex flex-wrap items-center gap-2 pl-7">
             <Input
-              value={j.documento}
+              value={j.documento ?? ""}
               onChange={(e) => set(i, { documento: e.target.value })}
-              placeholder="Documento"
+              placeholder={documentoOpcional ? "Documento (falta)" : "Documento"}
               inputMode="numeric"
               aria-label={`Documento del jugador ${i + 1}`}
-              className="w-36"
+              className={cn(
+                "w-36",
+                documentoOpcional && !(j.documento ?? "").trim() && "border-amber-500/60",
+              )}
             />
             <div className="border-border inline-flex rounded-lg border p-0.5">
               {(["femenino", "masculino"] as const).map((g) => (
@@ -138,6 +151,24 @@ export function PlantillaEditor({
               </label>
             )}
           </div>
+          {documentoOpcional && j.nota_revision && (
+            <div
+              className="ml-7 flex items-start gap-1.5 rounded-lg border border-amber-500/40 bg-amber-500/10 px-2 py-1.5 text-xs text-amber-700 dark:text-amber-300"
+              title={j.nota_revision}
+            >
+              <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
+              <span className="min-w-0 flex-1">
+                <b>Por revisar:</b> {j.nota_revision}
+              </span>
+              <button
+                type="button"
+                onClick={() => set(i, { nota_revision: null })}
+                className="inline-flex shrink-0 items-center gap-1 font-semibold hover:underline"
+              >
+                <Check className="size-3.5" /> Revisado
+              </button>
+            </div>
+          )}
           {reglas.solo_clientes && !j.es_externo && (
             <div className="pl-7">
               <Input

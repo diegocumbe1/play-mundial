@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Plus, Trophy } from "lucide-react";
 
-import { getTorneosConResumen } from "@/actions/torneos";
+import { getCupoTorneos, getTorneosConResumen } from "@/actions/torneos";
 import { getMembership } from "@/lib/auth";
 import { buttonVariants } from "@/components/ui/button";
 import { DemoTorneoButton } from "@/components/torneo/demo-torneo-button";
@@ -37,6 +37,8 @@ export default async function TorneosPage() {
   }
 
   const { torneos, resumenes } = res.data;
+  const cupo = await getCupoTorneos();
+  const puedeCrear = cupo?.puedeCrear ?? true;
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-8">
@@ -49,11 +51,20 @@ export default async function TorneosPage() {
         </div>
         <div className="flex flex-wrap gap-2">
           <DemoTorneoButton />
-          <Link href="/admin/torneos/nuevo" className={buttonVariants({ size: "lg" })}>
-            <Plus className="size-4" /> Nuevo torneo
-          </Link>
+          {puedeCrear && (
+            <Link href="/admin/torneos/nuevo" className={buttonVariants({ size: "lg" })}>
+              <Plus className="size-4" /> Nuevo torneo
+            </Link>
+          )}
         </div>
       </header>
+
+      {!puedeCrear && (
+        <p className="border-border bg-muted/40 text-muted-foreground mb-4 rounded-xl border p-3 text-sm">
+          Tu plan incluye {cupo?.max} torneo{cupo?.max === 1 ? "" : "s"} y ya lo
+          {cupo?.max === 1 ? "" : "s"} usaste. Para crear más, escríbenos y te habilitamos el cupo.
+        </p>
+      )}
 
       {torneos.length === 0 ? (
         <div className="border-border flex flex-col items-center gap-3 rounded-2xl border border-dashed p-12 text-center">

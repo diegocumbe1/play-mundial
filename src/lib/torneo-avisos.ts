@@ -11,7 +11,9 @@ import {
   tocaRecordatorio,
   VENTANA_RECORDATORIO_MIN,
   type TipoAviso,
+  nombreCancha,
 } from "@/lib/torneo-avisos-reglas";
+import { leerReglas } from "@/lib/torneo-reglas";
 import type { Encuentro, Torneo } from "@/types";
 
 /**
@@ -32,7 +34,11 @@ interface Suscripcion {
   siguiente: boolean;
 }
 
-type TorneoAviso = Pick<Torneo, "id" | "tenant_id" | "nombre">;
+type TorneoAviso = Pick<Torneo, "id" | "tenant_id" | "nombre"> & { reglas?: unknown };
+
+/** Nombres de las canchas que puso el organizador (vacío = "Cancha N"). */
+const canchasDe = (torneo: TorneoAviso): string[] =>
+  torneo.reglas ? leerReglas(torneo.reglas).juego.nombres_canchas : [];
 
 const svc = () => createServiceRoleClient();
 
@@ -131,7 +137,7 @@ export function avisarEnVivo(torneo: TorneoAviso, e: Encuentro): Promise<void> {
     await enviar(subs, {
       torneo: torneo.nombre,
       title: `En vivo: ${nombre(e.equipo_a_id)} vs ${nombre(e.equipo_b_id)}`,
-      body: e.cancha ? `Cancha ${e.cancha}` : "",
+      body: e.cancha ? nombreCancha(e.cancha, canchasDe(torneo)) : "",
       url: enlacePartido(torneo.id, e.id),
       tag: `partido-${e.id}`,
     });
@@ -175,7 +181,7 @@ export function avisarFinalizado(torneo: TorneoAviso, e: Encuentro): Promise<voi
     await enviar(paraSiguiente, {
       torneo: torneo.nombre,
       title: `Sigue: ${nombre(sig.equipo_a_id)} vs ${nombre(sig.equipo_b_id)}`,
-      body: cuandoYDonde(sig.programado_at, sig.cancha),
+      body: cuandoYDonde(sig.programado_at, sig.cancha, canchasDe(torneo)),
       url: enlacePartido(torneo.id, sig.id),
       tag: `siguiente-${sig.id}`,
     });
@@ -211,7 +217,7 @@ async function enviarRecordatorios(ahora: Date, torneos: Map<string, TorneoAviso
     await enviar(subs, {
       torneo: torneo.nombre,
       title: `En ${minutosParaEmpezar(e.programado_at as string, ahora)} min: ${nombre(e.equipo_a_id)} vs ${nombre(e.equipo_b_id)}`,
-      body: cuandoYDonde(e.programado_at, e.cancha),
+      body: cuandoYDonde(e.programado_at, e.cancha, canchasDe(torneo)),
       url: enlacePartido(torneo.id, e.id),
       tag: `partido-${e.id}`,
     });
@@ -262,7 +268,7 @@ async function revisarMarcadores(torneos: Map<string, TorneoAviso>): Promise<num
 async function cargarTorneos(partidos: Encuentro[], torneos: Map<string, TorneoAviso>): Promise<void> {
   const faltan = [...new Set(partidos.map((e) => e.torneo_id))].filter((id) => !torneos.has(id));
   if (faltan.length === 0) return;
-  const { data } = await svc().from("torneos").select("id, tenant_id, nombre").in("id", faltan);
+  const { data } = await svc().from("torneos").select("id, tenant_id, nombre, reglas").in("id", faltan);
   for (const t of (data as TorneoAviso[]) ?? []) torneos.set(t.id, t);
 }
 

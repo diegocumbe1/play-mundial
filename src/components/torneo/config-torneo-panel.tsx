@@ -399,26 +399,74 @@ export function ConfigTorneoPanel({
               </>
             }
           />
+          <Campo
+            label={torneo.cantidad_canchas === 1 ? "Nombre de la cancha" : "Nombres de las canchas"}
+            className="sm:col-span-2"
+            ayuda="Así sale en el fixture y en las notificaciones. Vacío = «Cancha 1», «Cancha 2»…"
+            info="La cantidad de canchas se cambia en Editar torneo. Aquí solo les pones nombre."
+          >
+            <div className="grid gap-2 sm:grid-cols-2">
+              {Array.from({ length: Math.max(1, torneo.cantidad_canchas) }, (_, i) => (
+                <Input
+                  key={i}
+                  value={juego.nombres_canchas[i] ?? ""}
+                  onChange={(e) => {
+                    const nombres = [...juego.nombres_canchas];
+                    while (nombres.length <= i) nombres.push("");
+                    nombres[i] = e.target.value;
+                    set("juego", { nombres_canchas: nombres });
+                  }}
+                  placeholder={`Cancha ${i + 1}`}
+                  aria-label={`Nombre de la cancha ${i + 1}`}
+                />
+              ))}
+            </div>
+          </Campo>
         </div>
 
         <p className="mt-5 mb-1 text-sm font-semibold">Tabla de posiciones</p>
+        <div className="mb-3">
+          <Segmentado
+            value={tabla.modo}
+            onChange={(v) => set("tabla", { modo: v as "partido" | "sets" })}
+            options={[
+              { value: "partido", label: "Por partido" },
+              { value: "sets", label: "Por sets ganados" },
+            ]}
+          />
+          <p className="text-muted-foreground mt-1.5 text-xs">
+            {tabla.modo === "sets"
+              ? juego.sets === 5
+                ? "Cada set ganado es 1 punto: 3-0 → 3 y 0; 3-2 → 3 y 2."
+                : juego.sets === 3
+                  ? "Cada set ganado es 1 punto: 2-0 → 2 y 0; 2-1 → 2 y 1."
+                  : "Cada set ganado es 1 punto."
+              : "Puntos fijos por ganar o perder el partido."}
+          </p>
+        </div>
         <p className="text-muted-foreground mb-3 text-xs">
           Puntos que suma cada equipo en la tabla según el resultado del partido.
           No son los puntos del marcador.
         </p>
         <div className="grid gap-4 sm:grid-cols-3">
           <CampoNumero
-            label="Partido ganado"
+            label={tabla.modo === "sets" ? "Ganador por W.O." : "Partido ganado"}
             value={tabla.victoria}
             onChange={(v) => set("tabla", { victoria: v ?? 0 })}
-            info="Puntos de tabla para el ganador. Con el sistema de voleiplaya: 2 puntos."
+            info={
+              tabla.modo === "sets"
+                ? "Cuando el rival no se presenta no hay sets jugados: estos son los puntos que recibe el que sí se presentó. Lo normal es lo mismo que ganar todos los sets (3 en mejor de 5)."
+                : "Puntos de tabla para el ganador. Con el sistema de voleiplaya: 2 puntos."
+            }
           />
-          <CampoNumero
-            label="Partido perdido"
-            value={tabla.derrota}
-            onChange={(v) => set("tabla", { derrota: v ?? 0 })}
-            info="Puntos de tabla para el perdedor que sí jugó. Se le da 1 punto para premiar que se presentó y diferenciarlo de quien pierde por W.O."
-          />
+          {tabla.modo === "partido" && (
+            <CampoNumero
+              label="Partido perdido"
+              value={tabla.derrota}
+              onChange={(v) => set("tabla", { derrota: v ?? 0 })}
+              info="Puntos de tabla para el perdedor que sí jugó. Se le da 1 punto para premiar que se presentó y diferenciarlo de quien pierde por W.O."
+            />
+          )}
           <CampoNumero
             label="Pérdida por W.O."
             value={tabla.wo}

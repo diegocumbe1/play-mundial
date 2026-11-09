@@ -187,9 +187,18 @@ export function calcularTabla(
     b.puntosContra += r.puntosA;
     const [gana, pierde] = r.ganador === "a" ? [a, b] : [b, a];
     gana.pg += 1;
-    gana.pts += tabla.victoria;
     pierde.pp += 1;
-    pierde.pts += e.estado === "wo" ? tabla.wo : tabla.derrota;
+    if (e.estado === "wo") {
+      gana.pts += tabla.victoria;
+      pierde.pts += tabla.wo;
+    } else if (tabla.modo === "sets") {
+      // Cada set ganado es un punto, para los dos: 3-2 → 3 y 2.
+      a.pts += r.setsA;
+      b.pts += r.setsB;
+    } else {
+      gana.pts += tabla.victoria;
+      pierde.pts += tabla.derrota;
+    }
   }
 
   const ganoEntreEllos = (x: string, y: string): number => {

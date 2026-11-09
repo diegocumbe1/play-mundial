@@ -33,10 +33,21 @@ export const reglasSchema = z.object({
       cambio_lado_cada: entero(0).nullable().default(7),
       tiempos_por_set: entero(0).default(1),
       tolerancia_wo_min: entero(0).default(10),
+      /**
+       * Nombre de cada cancha, en orden (cancha 1, 2…). Vacío o sin nombre →
+       * "Cancha N". Ej.: ["Cancha estándar"].
+       */
+      nombres_canchas: z.array(z.string().trim()).default([]),
     })
     .prefault({}),
   tabla: z
     .object({
+      /**
+       * `partido`: puntos fijos por ganar/perder el partido (victoria/derrota).
+       * `sets`: cada set ganado vale 1 punto (3-2 → 3 y 2). Por W.O. el
+       * ganador recibe `victoria` y el ausente `wo`.
+       */
+      modo: z.enum(["partido", "sets"]).default("partido"),
       victoria: entero().default(2),
       derrota: entero().default(1),
       wo: entero().default(0),
@@ -253,9 +264,18 @@ export function generarReglamento(
   ]);
 
   seccion("Tabla de posiciones", [
-    `Partido ganado: ${plural(tabla.victoria, "punto", "puntos")}. ` +
-      `Partido perdido: ${plural(tabla.derrota, "punto", "puntos")}. ` +
-      `Pérdida por W.O.: ${plural(tabla.wo, "punto", "puntos")}.`,
+    tabla.modo === "sets"
+      ? "Cada set ganado suma 1 punto en la tabla, para los dos equipos: " +
+        (juego.sets === 5
+          ? "si el partido termina 3-0 el ganador suma 3 y el perdedor 0; si termina 3-2, 3 y 2. "
+          : juego.sets === 3
+            ? "si el partido termina 2-0 el ganador suma 2 y el perdedor 0; si termina 2-1, 2 y 1. "
+            : "") +
+        `Por W.O., el ganador suma ${plural(tabla.victoria, "punto", "puntos")} y el ausente ` +
+        `${plural(tabla.wo, "punto", "puntos")}.`
+      : `Partido ganado: ${plural(tabla.victoria, "punto", "puntos")}. ` +
+        `Partido perdido: ${plural(tabla.derrota, "punto", "puntos")}. ` +
+        `Pérdida por W.O.: ${plural(tabla.wo, "punto", "puntos")}.`,
     "Desempate, en este orden: más partidos ganados, mejor cociente de sets, " +
       "mejor cociente de puntos y resultado del partido entre los equipos empatados.",
   ]);

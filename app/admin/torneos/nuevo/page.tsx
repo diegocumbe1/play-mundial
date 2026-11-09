@@ -2,6 +2,7 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 
 import { getTenants } from "@/actions/tenants";
+import { getCupoTorneos } from "@/actions/torneos";
 import { esSuperadmin, getMembership } from "@/lib/auth";
 import { tieneProductoHabilitado } from "@/lib/productos";
 import { TorneoForm } from "@/components/torneo/torneo-form";
@@ -32,6 +33,25 @@ export default async function NuevoTorneoPage() {
           className={`${buttonVariants({ variant: "outline", size: "sm" })} mt-4`}
         >
           Volver al panel
+        </Link>
+      </div>
+    );
+  }
+
+  // Tope de torneos: la acción también lo valida, esto es para no mostrar el formulario.
+  const cupo = superadmin ? null : await getCupoTorneos();
+  if (cupo && !cupo.puedeCrear) {
+    return (
+      <div className="mx-auto max-w-md p-8 text-center">
+        <p className="text-muted-foreground text-sm">
+          Tu plan incluye {cupo.max} torneo{cupo.max === 1 ? "" : "s"} y ya lo
+          {cupo.max === 1 ? "" : "s"} usaste. Para crear más, escríbenos y te habilitamos el cupo.
+        </p>
+        <Link
+          href="/admin/torneos"
+          className={`${buttonVariants({ variant: "outline", size: "sm" })} mt-4`}
+        >
+          Volver a mis torneos
         </Link>
       </div>
     );

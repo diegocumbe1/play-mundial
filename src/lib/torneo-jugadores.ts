@@ -9,23 +9,37 @@ import type { ReglasTorneo } from "@/lib/torneo-reglas";
 
 export const jugadorInputSchema = z.object({
   nombre: z.string().trim().min(3, "Escribe el nombre completo de cada jugador"),
+  // Vacío = falta el documento: el organizador puede guardarlo y completarlo
+  // después. La inscripción pública lo exige (ver `jugadorPublicoSchema`).
   documento: z
     .string()
-    .trim()
-    .transform((v) => v.replace(/[.\s-]/g, "").toUpperCase())
-    .pipe(z.string().regex(/^[A-Z0-9]{5,15}$/, "Documento inválido (solo números o letras, 5 a 15)")),
+    .nullish()
+    .transform((v) => (v ?? "").replace(/[.\s-]/g, "").toUpperCase())
+    .pipe(
+      z
+        .string()
+        .regex(/^([A-Z0-9]{5,15})?$/, "Documento inválido (solo números o letras, 5 a 15)"),
+    ),
   genero: z.enum(["femenino", "masculino"], { error: "Indica el género de cada jugador" }),
   es_externo: z.boolean().default(false),
   es_referente: z.boolean().default(false),
   referencia_cliente: z.string().trim().nullable().optional(),
+  /** Qué debe verificar el organizador (dato dudoso de la planilla). */
+  nota_revision: z.string().trim().nullable().optional(),
+});
+
+/** En la inscripción pública el documento es obligatorio. */
+export const jugadorPublicoSchema = jugadorInputSchema.refine((j) => j.documento !== "", {
+  message: "Escribe el documento de cada jugador",
+  path: ["documento"],
 });
 
 export type JugadorInput = z.input<typeof jugadorInputSchema>;
 export type JugadorValido = z.output<typeof jugadorInputSchema>;
 
 /** Documento normalizado para comparar (sin puntos, espacios ni guiones). */
-export function normalizarDocumento(doc: string): string {
-  return doc.replace(/[.\s-]/g, "").toUpperCase();
+export function normalizarDocumento(doc: string | null | undefined): string {
+  return (doc ?? "").replace(/[.\s-]/g, "").toUpperCase();
 }
 
 export interface LimitesPlantilla {
@@ -43,10 +57,14 @@ export interface LimitesPlantilla {
  * jugar en varias).
  */
 export function erroresPlantilla(
-  jugadores: Pick<JugadorValido, "nombre" | "documento" | "genero" | "es_externo" | "es_referente" | "referencia_cliente">[],
+  jugadores: (Pick<JugadorValido, "nombre" | "genero" | "es_externo" | "es_referente" | "referencia_cliente"> & {
+    documento?: string | null;
+  })[],
   reglas: ReglasTorneo["participacion"],
   limites: LimitesPlantilla,
   documentosOcupados: Set<string> = new Set(),
+  /** `referenciaOpcional`: el organizador puede completar la referencia de cliente después. */
+  opciones: { referenciaOpcional?: boolean } = {},
 ): string[] {
   const errores: string[] = [];
   const n = jugadores.length;
@@ -79,7 +97,7 @@ export function erroresPlantilla(
       );
     }
     const sinReferencia = jugadores.filter((j) => !j.es_externo && !j.referencia_cliente?.trim());
-    if (sinReferencia.length > 0) {
+    if (sinReferencia.length > 0 && !opciones.referenciaOpcional) {
       errores.push(
         `Falta cómo demuestra que es cliente: ${sinReferencia.map((j) => j.nombre || "jugador").join(", ")}.`,
       );

@@ -23,6 +23,7 @@ import { ReasignarTorneo } from "@/components/torneo/reasignar-torneo";
 import { ShareTorneo } from "@/components/torneo/share-torneo";
 import { AvisosTorneoPanel } from "@/components/torneo/avisos-torneo-panel";
 import { TorneoTabs } from "@/components/torneo/torneo-tabs";
+import { UsarDemoButton } from "@/components/torneo/usar-demo-button";
 
 export const dynamic = "force-dynamic";
 
@@ -124,6 +125,7 @@ export default async function TorneoDetallePage({
               <Pencil className="size-3.5" /> Editar
             </Link>
           )}
+          {torneo.es_demo && <UsarDemoButton demoId={torneo.id} />}
           {torneo.estado === "borrador" && <ActivarTorneoButton torneoId={torneo.id} />}
           <EstadoTorneoControl torneoId={torneo.id} estado={torneo.estado} />
         </div>

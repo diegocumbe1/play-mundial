@@ -99,6 +99,7 @@ export function FixturePanel({
         equipos={equipos}
         encuentros={encuentros}
         tablaReglas={reglas.tabla}
+        nombresCanchas={reglas.juego.nombres_canchas}
         onEditar={setEditando}
       />
 

@@ -45,6 +45,7 @@ export function TorneoPublicoView({ datos }: { datos: TorneoPublicoDetalle }) {
     categorias,
     encuentros,
     tablaReglas,
+    nombresCanchas,
     participacion,
     equipos,
     cuposDisponibles,
@@ -172,6 +173,7 @@ export function TorneoPublicoView({ datos }: { datos: TorneoPublicoDetalle }) {
             equipos={equipos}
             encuentros={encuentros}
             tablaReglas={tablaReglas}
+            nombresCanchas={nombresCanchas}
             autoRefrescar
           />
         </section>
@@ -391,7 +393,7 @@ function FormularioInscripcion({
         responsable_telefono: telefono.trim(),
         responsable_correo: correo.trim() || null,
         categoria_id: categoriaId || null,
-        jugadores: jugadores.filter((j) => j.nombre.trim() || j.documento.trim()),
+        jugadores: jugadores.filter((j) => j.nombre.trim() || (j.documento ?? "").trim()),
         consentimiento: true,
       });
       if (!r.success) {

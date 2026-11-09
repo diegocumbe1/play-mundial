@@ -17,8 +17,17 @@ export function tocaRecordatorio(programadoAt: string, minutosAntes: number, aho
 export const setsEnTexto = (sets: [number, number][]): string =>
   sets.map(([a, b]) => `${a}-${b}`).join(", ");
 
+/** "Cancha estándar" si el organizador la nombró; si no, "Cancha 2". */
+export function nombreCancha(cancha: number, nombres: readonly string[] = []): string {
+  return nombres[cancha - 1]?.trim() || `Cancha ${cancha}`;
+}
+
 /** Hora y cancha de un partido, en hora de Colombia. */
-export function cuandoYDonde(programadoAt: string | null, cancha: number | null): string {
+export function cuandoYDonde(
+  programadoAt: string | null,
+  cancha: number | null,
+  nombresCanchas: readonly string[] = [],
+): string {
   const hora = programadoAt
     ? new Intl.DateTimeFormat("es-CO", {
         timeZone: "America/Bogota",
@@ -27,7 +36,7 @@ export function cuandoYDonde(programadoAt: string | null, cancha: number | null)
         minute: "2-digit",
       }).format(new Date(programadoAt))
     : null;
-  return [hora, cancha ? `Cancha ${cancha}` : null].filter(Boolean).join(" · ");
+  return [hora, cancha ? nombreCancha(cancha, nombresCanchas) : null].filter(Boolean).join(" · ");
 }
 
 /** Minutos que faltan, redondeados: el aviso dice la verdad aunque salga un minuto después. */

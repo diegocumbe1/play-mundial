@@ -6,7 +6,12 @@ import { useRouter } from "next/navigation";
 import { Ban, CheckCircle2, Gift, KeyRound, Lock, Settings, Unlock } from "lucide-react";
 import { toast } from "sonner";
 
-import { restablecerPasswordOwner, setEstadoTenant, setPlanTenant } from "@/actions/tenants";
+import {
+  restablecerPasswordOwner,
+  setEstadoTenant,
+  setMaxTorneosTenant,
+  setPlanTenant,
+} from "@/actions/tenants";
 import { RegistrarCobroForm } from "@/components/superadmin/registrar-cobro-form";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -174,6 +179,13 @@ export function TenantPlanControls({
               </Button>
             </div>
 
+            {!esSuper && (
+              <TopeTorneos
+                tenantId={tenant.id}
+                max={tenant.max_torneos === undefined ? 1 : tenant.max_torneos}
+              />
+            )}
+
             {!bloqueado && <RegistrarCobroForm tenantId={tenant.id} />}
 
             {!esSuper && (
@@ -222,6 +234,89 @@ export function TenantPlanControls({
         </DialogContent>
       </Dialog>
     </>
+  );
+}
+
+/**
+ * Tope de torneos del organizador. Bloqueado = solo 1 torneo (por defecto);
+ * al pagar, el superadmin lo deja sin límite o le fija un número.
+ */
+function TopeTorneos({ tenantId, max }: { tenantId: string; max: number | null }) {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+  const [cantidad, setCantidad] = useState(String(max ?? 2));
+  const ilimitado = max === null;
+
+  function guardar(nuevo: number | null, ok: string) {
+    startTransition(async () => {
+      const r = await setMaxTorneosTenant({ tenantId, max: nuevo });
+      if (!r.success) {
+        toast.error(r.error);
+        return;
+      }
+      toast.success(ok);
+      router.refresh();
+    });
+  }
+
+  const n = Number(cantidad);
+  const cantidadValida = Number.isInteger(n) && n >= 1;
+
+  return (
+    <div className="border-border rounded-xl border p-3">
+      <p className="text-sm font-semibold">Torneos permitidos</p>
+      <p className="text-muted-foreground mb-2 text-xs">
+        {ilimitado
+          ? "Sin límite: puede crear todos los torneos que quiera."
+          : max === 1
+            ? "Bloqueado en 1 torneo (por defecto). Habilítalo cuando pague."
+            : `Puede crear hasta ${max} torneos.`}{" "}
+        Los demos no cuentan.
+      </p>
+      <div className="flex flex-wrap gap-2">
+        {ilimitado || (max ?? 1) > 1 ? (
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={pending}
+            onClick={() => guardar(1, "Organizador limitado a 1 torneo")}
+          >
+            <Lock className="size-3.5" /> Bloquear en 1
+          </Button>
+        ) : null}
+        {!ilimitado && (
+          <Button
+            type="button"
+            size="sm"
+            disabled={pending}
+            onClick={() => guardar(null, "Torneos sin límite habilitados")}
+          >
+            <Unlock className="size-3.5" /> Permitir crear más (sin límite)
+          </Button>
+        )}
+      </div>
+      <div className="mt-2 flex gap-2">
+        <Input
+          type="number"
+          min={1}
+          inputMode="numeric"
+          value={cantidad}
+          onChange={(e) => setCantidad(e.target.value)}
+          className="h-9 w-24"
+          aria-label="Cantidad de torneos permitidos"
+        />
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          disabled={pending || !cantidadValida || n === max}
+          onClick={() => guardar(n, `Tope fijado en ${n} torneo${n === 1 ? "" : "s"}`)}
+        >
+          Fijar cantidad
+        </Button>
+      </div>
+    </div>
   );
 }
 
