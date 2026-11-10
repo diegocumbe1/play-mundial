@@ -387,6 +387,193 @@ export function asignarHorarios(
 }
 
 // ---------------------------------------------------------------------------
+// Categoría que se muestra primero
+// ---------------------------------------------------------------------------
+/**
+ * La que eligió el organizador; si no eligió (o ya no existe), la que tiene
+ * más equipos inscritos. Empate → la primera en el orden de las categorías.
+ */
+export function categoriaInicial(
+  categorias: { id: string }[],
+  equipos: { categoria_id: string | null }[],
+  elegida: string | null,
+): string | null {
+  if (elegida && categorias.some((c) => c.id === elegida)) return elegida;
+  let mejor: string | null = categorias[0]?.id ?? null;
+  let max = -1;
+  for (const c of categorias) {
+    const n = equipos.filter((e) => e.categoria_id === c.id).length;
+    if (n > max) {
+      max = n;
+      mejor = c.id;
+    }
+  }
+  return mejor;
+}
+
+// ---------------------------------------------------------------------------
+// Llave anticipada (estilo Mundial)
+// ---------------------------------------------------------------------------
+/**
+ * Lugares de la llave a partir de los grupos, en el mismo orden de siembra que
+ * `generarEliminatorias`: primeros de cada grupo, luego segundos… → "1A", "1B",
+ * "2A"… Con `armarLlave` queda 1°A vs 4°B, 2°B vs 3°A, etc.
+ */
+export function sembradosDesdeGrupos(grupos: string[], clasifican: number): string[] {
+  const codigos: string[] = [];
+  for (let puesto = 1; puesto <= Math.max(1, clasifican); puesto++) {
+    for (const g of grupos) codigos.push(`${puesto}${g}`);
+  }
+  return codigos;
+}
+
+/** "1A" → { puesto: 1, grupo: "A" }. */
+export function leerOrigen(codigo: string): { puesto: number; grupo: string } | null {
+  const m = /^(\d+)(.+)$/.exec(codigo);
+  return m ? { puesto: Number(m[1]), grupo: m[2] } : null;
+}
+
+/** Ronda que alimenta a cada fase, con el nombre corto que se lee en la llave. */
+const FASE_ANTERIOR: Partial<Record<FaseEncuentro, string>> = {
+  cuartos: "octavos",
+  semifinal: "cuartos",
+  final: "semifinal",
+};
+
+/**
+ * De dónde sale el equipo de un lugar de la llave todavía vacío:
+ * "1° Grupo A", "Ganador cuartos 2", "Perdedor semifinal 1". `null` si no
+ * viene de ningún lado (primera ronda sin origen).
+ */
+export function etiquetaLugar(
+  e: Pick<Encuentro, "fase" | "orden" | "origen_a" | "origen_b">,
+  lado: "a" | "b",
+  primeraFase: FaseEncuentro | null,
+): string | null {
+  const origen = lado === "a" ? e.origen_a : e.origen_b;
+  if (origen) {
+    const o = leerOrigen(origen);
+    return o ? `${o.puesto}° Grupo ${o.grupo}` : origen;
+  }
+  const n = e.orden * 2 + (lado === "a" ? 1 : 2);
+  if (e.fase === "tercer_puesto") return `Perdedor semifinal ${lado === "a" ? 1 : 2}`;
+  if (e.fase === "grupos" || e.fase === primeraFase) return null;
+  const anterior = FASE_ANTERIOR[e.fase];
+  return anterior ? `Ganador ${anterior} ${n}` : null;
+}
+
+// ---------------------------------------------------------------------------
+// Programación por calendario (partidos sin fecha → próximos días de juego)
+// ---------------------------------------------------------------------------
+/** Fecha "YYYY-MM-DD" en hora de Colombia (UTC-5, sin horario de verano). */
+export function fechaColombia(iso: string | Date): string {
+  const t = typeof iso === "string" ? new Date(iso).getTime() : iso.getTime();
+  return new Date(t - 5 * 3600_000).toISOString().slice(0, 10);
+}
+
+/** Suma días a una fecha "YYYY-MM-DD". */
+function sumarDias(fecha: string, dias: number): string {
+  const d = new Date(`${fecha}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + dias);
+  return d.toISOString().slice(0, 10);
+}
+
+type PartidoProgramable = Pick<
+  Encuentro,
+  "id" | "equipo_a_id" | "equipo_b_id" | "grupo" | "ronda" | "orden"
+>;
+type PartidoOcupado = Pick<Encuentro, "equipo_a_id" | "equipo_b_id" | "programado_at" | "cancha">;
+
+/**
+ * Reparte los partidos pendientes (sin fecha) en los próximos días de juego.
+ *
+ * - Cada día tiene `partidos_por_dia` turnos desde `hora_inicio`, uno tras otro
+ *   según la duración, llenando primero todas las canchas de cada turno.
+ * - Respeta lo ya programado: no usa un turno ocupado y un equipo nunca juega
+ *   dos veces el mismo día.
+ * - Alterna grupos (A, B, A, B…) y da prioridad a los equipos que llevan menos
+ *   partidos (jugados + programados), para que todos avancen parejo.
+ *
+ * `cargas`: partidos que ya tiene cada equipo. No se modifica.
+ */
+export function proponerProgramacion(p: {
+  pendientes: PartidoProgramable[];
+  ocupados: PartidoOcupado[];
+  cargas: Map<string, number>;
+  /** Primer día posible, "YYYY-MM-DD". */
+  desde: string;
+  /** Cuántos días de juego llenar. */
+  diasDeJuego: number;
+  calendario: ReglasTorneo["calendario"];
+  canchas: number;
+  duracionMin: number;
+}): { id: string; programado_at: string; cancha: number }[] {
+  const canchas = Math.max(1, p.canchas);
+  const porDia = Math.max(1, p.calendario.partidos_por_dia);
+  const dias = new Set(p.calendario.dias_juego);
+  const carga = new Map(p.cargas);
+  const restantes = [...p.pendientes].sort((x, y) => x.ronda - y.ronda || x.orden - y.orden);
+
+  const turnoOcupado = new Set(
+    p.ocupados.filter((o) => o.programado_at).map((o) => `${new Date(o.programado_at!).getTime()}|${o.cancha ?? 1}`),
+  );
+  const equiposDelDia = new Map<string, Set<string>>();
+  for (const o of p.ocupados) {
+    if (!o.programado_at) continue;
+    const f = fechaColombia(o.programado_at);
+    const set = equiposDelDia.get(f) ?? new Set<string>();
+    for (const id of [o.equipo_a_id, o.equipo_b_id]) if (id) set.add(id);
+    equiposDelDia.set(f, set);
+  }
+
+  const asignados: { id: string; programado_at: string; cancha: number }[] = [];
+  let fecha = p.desde;
+  let llenados = 0;
+  // Tope de seguridad: un año de calendario.
+  for (let vuelta = 0; vuelta < 366 && llenados < p.diasDeJuego && restantes.length > 0; vuelta++, fecha = sumarDias(fecha, 1)) {
+    const diaSemana = new Date(`${fecha}T12:00:00Z`).getUTCDay();
+    if (dias.size > 0 && !dias.has(diaSemana)) continue;
+    llenados++;
+
+    const ocupadosHoy = equiposDelDia.get(fecha) ?? new Set<string>();
+    equiposDelDia.set(fecha, ocupadosHoy);
+    let ultimoGrupo: string | null = null;
+
+    for (let k = 0; k < porDia && restantes.length > 0; k++) {
+      const inicio = new Date(`${fecha}T${p.calendario.hora_inicio}:00-05:00`);
+      inicio.setMinutes(inicio.getMinutes() + Math.floor(k / canchas) * p.duracionMin);
+      const cancha = (k % canchas) + 1;
+      if (turnoOcupado.has(`${inicio.getTime()}|${cancha}`)) continue;
+
+      const libres = restantes.filter(
+        (m) => !ocupadosHoy.has(m.equipo_a_id!) && !ocupadosHoy.has(m.equipo_b_id!),
+      );
+      if (libres.length === 0) break;
+      const peso = (m: PartidoProgramable) =>
+        (carga.get(m.equipo_a_id!) ?? 0) + (carga.get(m.equipo_b_id!) ?? 0);
+      libres.sort(
+        (x, y) =>
+          Number(x.grupo === ultimoGrupo && ultimoGrupo !== null) -
+            Number(y.grupo === ultimoGrupo && ultimoGrupo !== null) ||
+          peso(x) - peso(y) ||
+          x.ronda - y.ronda ||
+          x.orden - y.orden,
+      );
+      const elegido = libres[0];
+      restantes.splice(restantes.indexOf(elegido), 1);
+      for (const id of [elegido.equipo_a_id!, elegido.equipo_b_id!]) {
+        ocupadosHoy.add(id);
+        carga.set(id, (carga.get(id) ?? 0) + 1);
+      }
+      turnoOcupado.add(`${inicio.getTime()}|${cancha}`);
+      ultimoGrupo = elegido.grupo;
+      asignados.push({ id: elegido.id, programado_at: inicio.toISOString(), cancha });
+    }
+  }
+  return asignados;
+}
+
+// ---------------------------------------------------------------------------
 // Llaves de eliminación
 // ---------------------------------------------------------------------------
 /** Orden clásico de siembra: 1 y 2 solo se cruzan en la final. [1,8,4,5,2,7,3,6] */

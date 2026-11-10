@@ -1,4 +1,5 @@
 import type { EstadoPartido } from "@/types";
+import { formatCOP as formatCOPManual } from "@/lib/numero-co";
 
 /**
  * Zona horaria fija para toda la app. Sin esto, las fechas se formatean en la
@@ -48,11 +49,7 @@ export function formatFechaCorta(iso: string): string {
 
 /** Formatea un número como pesos colombianos sin decimales. Ej: "$1.200.000". */
 export function formatCOP(valor: number): string {
-  return new Intl.NumberFormat("es-CO", {
-    style: "currency",
-    currency: "COP",
-    maximumFractionDigits: 0,
-  }).format(valor);
+  return formatCOPManual(valor);
 }
 
 /** Etiqueta legible para el estado de un partido. */

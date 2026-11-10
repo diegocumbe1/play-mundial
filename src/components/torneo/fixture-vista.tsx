@@ -1,28 +1,22 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import { Medal, Radio } from "lucide-react";
 
 import {
   calcularTabla,
+  etiquetaLugar,
+  fechaColombia,
   labelFase,
   ORDEN_FASES,
   resultadoPartido,
 } from "@/lib/torneo-fixture";
+import { formatDiaCO, formatFechaHoraCO } from "@/lib/fecha-co";
 import { nombreCancha } from "@/lib/torneo-avisos-reglas";
 import type { ReglasTorneo } from "@/lib/torneo-reglas";
 import { cn } from "@/lib/utils";
 import type { EncuentroPublico, FaseEncuentro } from "@/types";
-
-const HORA = new Intl.DateTimeFormat("es-CO", {
-  timeZone: "America/Bogota",
-  weekday: "short",
-  day: "numeric",
-  month: "short",
-  hour: "numeric",
-  minute: "2-digit",
-});
 
 /**
  * Fixture del torneo: en vivo, posiciones, llaves, podio y resultados. La usan
@@ -40,7 +34,10 @@ export function FixtureVista({
   nombresCanchas = [],
   autoRefrescar = false,
   onEditar,
+  categoriaInicial = null,
 }: {
+  /** Categoría que se muestra primero (la elegida por el organizador o la de más inscritos). */
+  categoriaInicial?: string | null;
   categorias: { id: string; nombre: string }[];
   equipos: { id: string; nombre: string }[];
   encuentros: EncuentroPublico[];
@@ -52,7 +49,11 @@ export function FixtureVista({
   onEditar?: (e: EncuentroPublico) => void;
 }) {
   const router = useRouter();
-  const [categoriaId, setCategoriaId] = useState(categorias[0]?.id ?? null);
+  // Torneos guardados antes de existir la regla no la traen: 2, como antes.
+  const clasifican = tablaReglas.clasifican ?? 2;
+  const [categoriaId, setCategoriaId] = useState(
+    categorias.some((c) => c.id === categoriaInicial) ? categoriaInicial : (categorias[0]?.id ?? null),
+  );
   const nombre = useMemo(() => {
     const mapa = new Map(equipos.map((e) => [e.id, e.nombre]));
     return (id: string | null) => (id ? (mapa.get(id) ?? "Equipo") : "Por definir");
@@ -141,11 +142,26 @@ export function FixtureVista({
                 {lista
                   .filter((e) => e.fase === f)
                   .map((e) => (
-                    <TarjetaPartido key={e.id} e={e} nombre={nombre} onEditar={onEditar} canchas={nombresCanchas} />
+                    <TarjetaPartido
+                      key={e.id}
+                      e={e}
+                      nombre={nombre}
+                      onEditar={onEditar}
+                      canchas={nombresCanchas}
+                      primeraFase={fasesElim[0] ?? null}
+                    />
                   ))}
               </div>
             ))}
           </div>
+          {lista.some((e) => e.fase !== "grupos" && (!e.equipo_a_id || !e.equipo_b_id) && e.estado !== "wo") && (
+            <p className="text-muted-foreground mt-1 flex items-center gap-1.5 text-xs">
+              <span className="border-muted-foreground/40 inline-flex size-4 items-center justify-center rounded-full border border-dashed text-[10px] font-bold">
+                ?
+              </span>
+              Lugar por definir: se llena solo cuando termina el grupo o el partido del que sale.
+            </p>
+          )}
         </section>
       )}
 
@@ -179,10 +195,10 @@ export function FixtureVista({
                       {filas.map((f, i) => (
                         <tr
                           key={f.equipoId}
-                          className={cn("border-border border-t", i < 2 && "bg-emerald-500/5")}
+                          className={cn("border-border border-t", i < clasifican && "bg-emerald-500/5")}
                         >
                           <td className="px-2 py-1.5">
-                            <span className={cn(i < 2 && "font-bold text-emerald-500")}>{i + 1}</span>
+                            <span className={cn(i < clasifican && "font-bold text-emerald-500")}>{i + 1}</span>
                           </td>
                           <td className="px-1 py-1.5 font-medium leading-tight break-words">{nombre(f.equipoId)}</td>
                           <td className="px-1.5 py-1.5 text-center tabular-nums">{f.pj}</td>
@@ -204,8 +220,8 @@ export function FixtureVista({
             })}
           </div>
           <p className="text-muted-foreground mt-2 text-xs">
-            En verde, los que van clasificando a eliminatorias (dos por grupo). Desempate: partidos
-            ganados, cociente de sets y cociente de puntos.
+            En verde, los que van clasificando a eliminatorias ({clasifican} por grupo). Desempate:
+            partidos ganados, cociente de sets y cociente de puntos.
           </p>
         </section>
       )}
@@ -213,25 +229,212 @@ export function FixtureVista({
       {proximos.length > 0 && (
         <section>
           <Titulo>Próximos partidos</Titulo>
-          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-            {proximos.slice(0, onEditar ? undefined : 8).map((e) => (
+          <PartidosPorFecha
+            partidos={proximos}
+            orden="asc"
+            render={(e) => (
               <TarjetaPartido key={e.id} e={e} nombre={nombre} onEditar={onEditar} canchas={nombresCanchas} />
-            ))}
-          </div>
+            )}
+          />
         </section>
       )}
 
       {resultados.length > 0 && (
         <section>
           <Titulo>Resultados</Titulo>
-          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-            {resultados.slice(0, onEditar ? undefined : 12).map((e) => (
+          <PartidosPorFecha
+            partidos={resultados}
+            orden="desc"
+            render={(e) => (
               <TarjetaPartido key={e.id} e={e} nombre={nombre} onEditar={onEditar} canchas={nombresCanchas} />
-            ))}
-          </div>
+            )}
+          />
         </section>
       )}
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Partidos agrupados por semana y día
+// ---------------------------------------------------------------------------
+
+/** "YYYY-MM-DD" → Date al mediodía UTC (para formatear sin correr de día). */
+const diaUTC = (fecha: string) => new Date(`${fecha}T12:00:00Z`);
+
+/** Lunes de la semana de una fecha "YYYY-MM-DD". */
+function lunesDe(fecha: string): string {
+  const d = diaUTC(fecha);
+  d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7));
+  return d.toISOString().slice(0, 10);
+}
+
+/**
+ * Lista de partidos por semana (plegable) y, dentro, por día. Abierta solo la
+ * semana más cercana. Los partidos sin fecha van al final, plegados.
+ * Agrupa con las fechas de los partidos: no depende de la hora actual, así el
+ * servidor y el navegador muestran lo mismo ("Hoy"/"Mañana" se añade al hidratar).
+ */
+function PartidosPorFecha({
+  partidos,
+  orden,
+  render,
+}: {
+  partidos: EncuentroPublico[];
+  orden: "asc" | "desc";
+  render: (e: EncuentroPublico) => React.ReactNode;
+}) {
+  const ahora = useAhora();
+  const signo = orden === "asc" ? 1 : -1;
+  const conFecha = partidos
+    .filter((e) => e.programado_at)
+    .sort((x, y) => signo * (Date.parse(x.programado_at!) - Date.parse(y.programado_at!)) || x.orden - y.orden);
+  const sinFecha = partidos.filter((e) => !e.programado_at);
+
+  const semanas: { lunes: string; dias: { fecha: string; partidos: EncuentroPublico[] }[] }[] = [];
+  for (const e of conFecha) {
+    const fecha = fechaColombia(e.programado_at!);
+    const lunes = lunesDe(fecha);
+    let semana = semanas.find((s) => s.lunes === lunes);
+    if (!semana) semanas.push((semana = { lunes, dias: [] }));
+    let dia = semana.dias.find((d) => d.fecha === fecha);
+    if (!dia) semana.dias.push((dia = { fecha, partidos: [] }));
+    dia.partidos.push(e);
+  }
+
+  const hoy = ahora ? fechaColombia(new Date(ahora)) : null;
+  const relativo = (fecha: string) => {
+    if (!hoy) return null;
+    const dias = Math.round((diaUTC(fecha).getTime() - diaUTC(hoy).getTime()) / 86_400_000);
+    return dias === 0 ? "Hoy" : dias === 1 ? "Mañana" : dias === -1 ? "Ayer" : null;
+  };
+  const tituloSemana = (lunes: string) => {
+    const domingo = diaUTC(lunes);
+    domingo.setUTCDate(domingo.getUTCDate() + 6);
+    const esta = hoy && lunesDe(hoy) === lunes ? "Esta semana · " : "";
+    return `${esta}${formatDiaCO(lunes, { corto: true })} – ${formatDiaCO(domingo.toISOString(), { corto: true })}`;
+  };
+  const cuantos = (n: number) => `${n} ${n === 1 ? "partido" : "partidos"}`;
+
+  return (
+    <div className="flex flex-col gap-2">
+      {semanas.map((s, i) => (
+        <details key={s.lunes} open={i === 0} className="group border-border rounded-xl border">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-3 py-2 text-sm font-semibold [&::-webkit-details-marker]:hidden">
+            <span>{tituloSemana(s.lunes)}</span>
+            <span className="text-muted-foreground flex items-center gap-2 text-xs font-normal">
+              {cuantos(s.dias.reduce((n, d) => n + d.partidos.length, 0))}
+              <span className="transition-transform group-open:rotate-180">▾</span>
+            </span>
+          </summary>
+          <div className="flex flex-col gap-3 px-3 pb-3">
+            {s.dias.map((d) => {
+              const rel = relativo(d.fecha);
+              return (
+                <div key={d.fecha}>
+                  <p className="text-muted-foreground mb-1.5 text-xs font-semibold">
+                    {formatDiaCO(d.fecha)}
+                    {rel && <span className="text-primary"> · {rel}</span>}
+                  </p>
+                  <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">{d.partidos.map(render)}</div>
+                </div>
+              );
+            })}
+          </div>
+        </details>
+      ))}
+      {sinFecha.length > 0 && (
+        <details open={semanas.length === 0} className="group border-border rounded-xl border border-dashed">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-3 py-2 text-sm font-semibold [&::-webkit-details-marker]:hidden">
+            <span>Por programar</span>
+            <span className="text-muted-foreground flex items-center gap-2 text-xs font-normal">
+              {cuantos(sinFecha.length)}
+              <span className="transition-transform group-open:rotate-180">▾</span>
+            </span>
+          </summary>
+          <div className="grid gap-2 px-3 pb-3 sm:grid-cols-2 lg:grid-cols-3">{sinFecha.map(render)}</div>
+        </details>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Cuenta regresiva de los partidos programados ("Hoy · en 3 h", "En 25 min")
+// ---------------------------------------------------------------------------
+// Un solo reloj para todas las tarjetas. En el servidor no hay hora (null): la
+// etiqueta aparece al hidratar, así el HTML del servidor y el del navegador
+// coinciden.
+let ahoraActual = 0;
+const oyentes = new Set<() => void>();
+let reloj: ReturnType<typeof setInterval> | undefined;
+
+function suscribirReloj(avisar: () => void) {
+  oyentes.add(avisar);
+  if (!reloj) {
+    ahoraActual = Date.now();
+    reloj = setInterval(() => {
+      ahoraActual = Date.now();
+      oyentes.forEach((f) => f());
+    }, 30_000);
+  }
+  return () => {
+    oyentes.delete(avisar);
+    if (oyentes.size === 0) {
+      clearInterval(reloj);
+      reloj = undefined;
+    }
+  };
+}
+
+function useAhora(): number | null {
+  return useSyncExternalStore(
+    suscribirReloj,
+    () => ahoraActual || null,
+    () => null,
+  );
+}
+
+/** Texto y tono de la etiqueta según cuánto falta (días contados en hora de Colombia). */
+export function textoCuentaRegresiva(
+  iso: string,
+  ahora: number,
+): { texto: string; tono: "urgente" | "hoy" | "manana" | "normal" | "pasado" } {
+  const inicio = new Date(iso).getTime();
+  const min = Math.ceil((inicio - ahora) / 60_000);
+  if (min <= 0) return { texto: "Por jugar", tono: "pasado" };
+  if (min < 60) return { texto: `En ${min} min`, tono: "urgente" };
+  const dias = Math.round(
+    (Date.parse(`${fechaColombia(iso)}T00:00:00Z`) - Date.parse(`${fechaColombia(new Date(ahora))}T00:00:00Z`)) /
+      86_400_000,
+  );
+  if (dias === 0) return { texto: `Hoy · en ${Math.floor(min / 60)} h`, tono: "hoy" };
+  if (dias === 1) return { texto: "Mañana", tono: "manana" };
+  return { texto: `En ${dias} días`, tono: "normal" };
+}
+
+const TONOS = {
+  urgente: "bg-red-500/15 text-red-500",
+  hoy: "bg-amber-500/15 text-amber-600 dark:text-amber-400",
+  manana: "bg-primary/10 text-primary",
+  normal: "bg-muted text-muted-foreground",
+  pasado: "bg-muted text-muted-foreground italic",
+} as const;
+
+function CuentaRegresiva({ iso }: { iso: string }) {
+  const ahora = useAhora();
+  if (ahora === null) return null;
+  const { texto, tono } = textoCuentaRegresiva(iso, ahora);
+  return (
+    <span
+      className={cn(
+        "mr-1.5 inline-flex items-center rounded-full px-1.5 py-px text-[10px] font-semibold",
+        TONOS[tono],
+      )}
+    >
+      {tono === "urgente" && <span className="mr-1 size-1.5 animate-pulse rounded-full bg-red-500" />}
+      {texto}
+    </span>
   );
 }
 
@@ -245,31 +448,53 @@ function TarjetaPartido({
   destacada = false,
   onEditar,
   canchas = [],
+  primeraFase = null,
 }: {
   e: EncuentroPublico;
   nombre: (id: string | null) => string;
   destacada?: boolean;
   onEditar?: (e: EncuentroPublico) => void;
   canchas?: string[];
+  /** Primera ronda de la llave: sus lugares vacíos no vienen de otro partido. */
+  primeraFase?: FaseEncuentro | null;
 }) {
   const directo = e.estado === "wo" && (!e.equipo_a_id || !e.equipo_b_id);
-  const editable = !!onEditar && !!e.equipo_a_id && !!e.equipo_b_id;
+  const definido = !!e.equipo_a_id && !!e.equipo_b_id;
+  // En el panel, un cruce sin equipos se abre igual: para ponerle fecha y hora.
+  const editable = !!onEditar && (definido || e.fase !== "grupos");
   const r = resultadoPartido(e);
   const vivo = e.estado === "en_vivo";
   const etiqueta = e.fase === "grupos" ? `Grupo ${e.grupo}` : labelFase(e.fase as FaseEncuentro);
   const fila = (lado: "a" | "b") => {
     const id = lado === "a" ? e.equipo_a_id : e.equipo_b_id;
     const gano = r.ganador === lado;
+    const lugar = etiquetaLugar(e, lado, primeraFase);
+    const origen = lado === "a" ? e.origen_a : e.origen_b;
     return (
       <div className="flex items-center justify-between gap-2">
         <span
           className={cn(
-            "min-w-0 text-sm leading-tight break-words",
+            "flex min-w-0 items-center gap-1.5 text-sm leading-tight break-words",
             gano && "font-bold",
             !id && "text-muted-foreground italic",
           )}
         >
-          {!id && directo ? "Pasa directo" : nombre(id)}
+          {!id && !directo && lugar && (
+            <span
+              aria-hidden
+              className="border-muted-foreground/40 inline-flex size-5 shrink-0 items-center justify-center rounded-full border border-dashed text-[11px] font-bold not-italic"
+            >
+              ?
+            </span>
+          )}
+          <span className="min-w-0">
+            {!id && directo ? "Pasa directo" : id ? nombre(id) : (lugar ?? "Por definir")}
+            {id && origen && (
+              <span className="text-muted-foreground ml-1 text-[10px] font-normal">
+                ({lugar})
+              </span>
+            )}
+          </span>
           {e.estado === "wo" && !directo && gano && (
             <span className="text-muted-foreground ml-1 text-[10px] font-normal">(W.O.: el rival no se presentó)</span>
           )}
@@ -315,7 +540,8 @@ function TarjetaPartido({
           </span>
         ) : (
           <span>
-            {e.programado_at ? HORA.format(new Date(e.programado_at)) : "Por programar"}
+            {e.estado === "programado" && e.programado_at && <CuentaRegresiva iso={e.programado_at} />}
+            {e.programado_at ? formatFechaHoraCO(e.programado_at) : "Por programar"}
             {e.cancha ? ` · ${nombreCancha(e.cancha, canchas)}` : ""}
           </span>
         )}
@@ -326,7 +552,9 @@ function TarjetaPartido({
       </div>
       {editable && (
         <p className="text-primary mt-1.5 text-[11px] font-medium">
-          {e.estado === "programado"
+          {!definido && e.estado === "programado"
+            ? "Programar fecha"
+            : e.estado === "programado"
             ? "Cargar resultado"
             : e.estado === "en_vivo"
               ? "Editar resultado"

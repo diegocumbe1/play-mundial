@@ -7,6 +7,7 @@ import { InputMoneda } from "@/components/rifa/input-moneda";
 import { Input } from "@/components/ui/input";
 import { proyectarRifa, type ConfigCobroRifa } from "@/lib/cobro-rifa";
 import { formatCOP } from "@/lib/rifa";
+import { formatMiles } from "@/lib/numero-co";
 
 const MAX_PRECIOS = 6;
 /** Escenarios de venta que se muestran como columnas (lo que de verdad se vende). */
@@ -71,7 +72,7 @@ export function CalculadoraGanancias({
                   n === c ? "bg-primary text-primary-foreground border-primary" : "border-border hover:bg-muted"
                 }`}
               >
-                {c.toLocaleString("es-CO")}
+                {formatMiles(c)}
               </button>
             ))}
           </div>
@@ -164,7 +165,7 @@ export function CalculadoraGanancias({
                   <span className="text-muted-foreground">Para no perder vende mínimo </span>
                   {alcanza ? (
                     <b className="tabular-nums">
-                      {f.equilibrio!.toLocaleString("es-CO")} números ({pct(pctEquilibrio)})
+                      {formatMiles(f.equilibrio!)} números ({pct(pctEquilibrio)})
                     </b>
                   ) : (
                     <b className="text-red-600 dark:text-red-400">no alcanza ni vendiendo todo</b>
@@ -213,5 +214,5 @@ export function CalculadoraGanancias({
 
 /** "42,3%" con coma decimal, como se escribe en Colombia. */
 function pct(v: number): string {
-  return `${v.toLocaleString("es-CO", { maximumFractionDigits: 1 })}%`;
+  return `${formatMiles(v, 1)}%`;
 }

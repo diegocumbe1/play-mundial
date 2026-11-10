@@ -2,12 +2,27 @@
 
 import { useCallback, useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { CalendarPlus, Check, Copy, Download, MessageCircle, Monitor, Pencil, Smartphone, Trophy } from "lucide-react";
+import {
+  CalendarClock,
+  CalendarPlus,
+  Check,
+  Copy,
+  Download,
+  GitFork,
+  MessageCircle,
+  Monitor,
+  Pencil,
+  Smartphone,
+  Trophy,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import {
   abrirMarcador,
+  armarLlaveAnticipada,
+  editarHorarioEncuentro,
   generarEliminatorias,
+  programarPartidos,
   generarFixture,
   guardarResultado,
   marcarArbitrajePagado,
@@ -26,7 +41,15 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { armarGrupos, labelFase, todosContraTodos, validarSets } from "@/lib/torneo-fixture";
+import { formatFechaHoraCO } from "@/lib/fecha-co";
+import {
+  armarGrupos,
+  categoriaInicial,
+  etiquetaLugar,
+  labelFase,
+  todosContraTodos,
+  validarSets,
+} from "@/lib/torneo-fixture";
 import { textoAlargue, type ReglasTorneo } from "@/lib/torneo-reglas";
 import type { CategoriaTorneo, Encuentro, EncuentroPublico, EquipoTorneo, Torneo } from "@/types";
 
@@ -91,6 +114,8 @@ export function FixturePanel({
               ).length
             }
             encuentros={encuentros.filter((e) => e.categoria_id === c.id)}
+            clasificanPorDefecto={reglas.tabla.clasifican}
+            calendario={reglas.calendario}
           />
         ))}
       </div>
@@ -100,15 +125,27 @@ export function FixturePanel({
         equipos={equipos}
         encuentros={encuentros}
         tablaReglas={reglas.tabla}
+        categoriaInicial={categoriaInicial(
+          categorias,
+          equipos.filter((e) => e.estado === "pendiente" || e.estado === "confirmado"),
+          reglas.publico.categoria_inicial,
+        )}
         nombresCanchas={reglas.juego.nombres_canchas}
         onEditar={setEditando}
       />
 
       <ResultadoModal
-        encuentro={editando}
+        // Siempre la versión más reciente: tras guardar horario o resultado se refresca.
+        encuentro={editando ? (encuentros.find((e) => e.id === editando.id) ?? editando) : null}
         nombre={nombre}
         juego={reglas.juego}
         marcadorDisponible={marcadorDisponible}
+        canchas={torneo.cantidad_canchas}
+        primeraFase={
+          (["octavos", "cuartos", "semifinal", "final"] as const).find((f) =>
+            encuentros.some((e) => e.fase === f),
+          ) ?? null
+        }
         onCerrar={cerrarPartido}
       />
     </div>
@@ -121,12 +158,17 @@ function ControlCategoria({
   nombre,
   confirmados,
   encuentros,
+  clasificanPorDefecto,
+  calendario,
 }: {
   torneo: Torneo;
   categoriaId: string | null;
   nombre: string;
   confirmados: number;
   encuentros: Encuentro[];
+  /** Regla del torneo: cuántos pasan por grupo. */
+  clasificanPorDefecto: number;
+  calendario: ReglasTorneo["calendario"];
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -136,7 +178,7 @@ function ControlCategoria({
   const [fecha, setFecha] = useState(torneo.fecha_inicio ?? new Date().toISOString().slice(0, 10));
   const [hora, setHora] = useState("17:00");
   const [dias, setDias] = useState("7");
-  const [clasifican, setClasifican] = useState("2");
+  const [clasifican, setClasifican] = useState(String(clasificanPorDefecto));
 
   const deGrupos = encuentros.filter((e) => e.fase === "grupos");
   const hayLlave = encuentros.some((e) => e.fase !== "grupos");
@@ -172,6 +214,19 @@ function ControlCategoria({
       if (!r.success) return void toast.error(r.error);
       toast.success(`Fixture de ${nombre}: ${r.data.partidos} partidos`);
       setRehacer(false);
+      router.refresh();
+    });
+  }
+
+  const sinFecha = encuentros.filter(
+    (e) => e.estado === "programado" && !e.programado_at && e.equipo_a_id && e.equipo_b_id,
+  ).length;
+
+  function llaveAnticipada() {
+    startTransition(async () => {
+      const r = await armarLlaveAnticipada(torneo.id, categoriaId);
+      if (!r.success) return void toast.error(r.error);
+      toast.success(`Llave de ${nombre} armada: ${r.data.partidos} partidos`);
       router.refresh();
     });
   }
@@ -246,10 +301,17 @@ function ControlCategoria({
         <div className="flex flex-col gap-2">
           {deGrupos.length > 0 && !hayLlave && (
             pendientesGrupos > 0 ? (
-              <p className="text-muted-foreground text-xs">
-                Faltan {pendientesGrupos} partido(s) de grupos. Al terminarlos podrás generar las
-                eliminatorias.
-              </p>
+              <div className="flex flex-col gap-2">
+                <p className="text-muted-foreground text-xs">
+                  Faltan {pendientesGrupos} partido(s) de grupos. Puedes armar la llave desde ya
+                  (estilo Mundial): los cruces quedan a la vista («1° A vs {clasificanPorDefecto}° B»)
+                  y cada lugar se llena solo cuando termina su grupo. Clasifican{" "}
+                  {clasificanPorDefecto} por grupo (se cambia en Configuración).
+                </p>
+                <Button size="sm" variant="outline" className="self-start" onClick={llaveAnticipada} disabled={pending}>
+                  <GitFork className="size-3.5" /> Armar llave ahora
+                </Button>
+              </div>
             ) : (
               <div className="flex flex-col gap-2">
                 <div className="grid grid-cols-3 gap-2">
@@ -271,9 +333,16 @@ function ControlCategoria({
           )}
           {hayLlave && (
             <p className="text-muted-foreground text-xs">
-              Llave en juego: los ganadores avanzan solos al cargar cada resultado.
+              Llave armada: los lugares «?» se llenan solos al terminar cada grupo y los ganadores
+              avanzan solos al cargar cada resultado.
             </p>
           )}
+          <ProgramarPartidos
+            torneoId={torneo.id}
+            categoriaId={categoriaId}
+            calendario={calendario}
+            sinFecha={sinFecha}
+          />
           {!conResultados && (
             <Button size="sm" variant="ghost" className="self-start" onClick={() => setRehacer(true)}>
               Rehacer fixture
@@ -306,12 +375,16 @@ function ResultadoModal({
   nombre,
   juego,
   marcadorDisponible,
+  canchas,
+  primeraFase,
   onCerrar,
 }: {
   encuentro: EncuentroPublico | null;
   nombre: (id: string | null) => string;
   juego: ReglasTorneo["juego"];
   marcadorDisponible: boolean;
+  canchas: number;
+  primeraFase: Encuentro["fase"] | null;
   onCerrar: () => void;
 }) {
   const router = useRouter();
@@ -399,6 +472,39 @@ function ResultadoModal({
   }, [vigilar]);
 
   if (!encuentro) return null;
+
+  const horario = (
+    <HorarioPartido
+      key={`h-${encuentro.id}`}
+      encuentro={encuentro}
+      canchas={canchas}
+      nombresCanchas={juego.nombres_canchas}
+    />
+  );
+
+  // Cruce de la llave todavía sin equipos: solo se le puede poner fecha.
+  if (!encuentro.equipo_a_id || !encuentro.equipo_b_id) {
+    const lugar = (lado: "a" | "b") => {
+      const id = lado === "a" ? encuentro.equipo_a_id : encuentro.equipo_b_id;
+      return id ? nombre(id) : (etiquetaLugar(encuentro, lado, primeraFase) ?? "Por definir");
+    };
+    return (
+      <Dialog open onOpenChange={(o) => !o && onCerrar()}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {lugar("a")} vs {lugar("b")}
+            </DialogTitle>
+            <DialogDescription>
+              {labelFase(encuentro.fase)}. El cruce se completa solo cuando termina el grupo o el
+              partido del que sale cada equipo. Mientras tanto puedes dejarle fecha y hora.
+            </DialogDescription>
+          </DialogHeader>
+          {horario}
+        </DialogContent>
+      </Dialog>
+    );
+  }
 
   const numericos = sets
     .map(([a, b]) => [Number(a) || 0, Number(b) || 0] as [number, number])
@@ -511,6 +617,7 @@ function ResultadoModal({
           </DialogDescription>
         </DialogHeader>
 
+        {horario}
         <ArbitrajeCasilla key={encuentro.id} encuentroId={encuentro.id} inicial={!!encuentro.arbitraje_pagado} />
 
         {terminado && !corrigiendo ? (
@@ -672,6 +779,212 @@ function ResultadoModal({
         )}
       </DialogContent>
     </Dialog>
+  );
+}
+
+/** "YYYY-MM-DD" y "HH:MM" en hora de Colombia de un ISO. */
+function partesColombia(iso: string | null): { fecha: string; hora: string } {
+  if (!iso) return { fecha: "", hora: "19:00" };
+  const d = new Date(new Date(iso).getTime() - 5 * 3600_000).toISOString();
+  return { fecha: d.slice(0, 10), hora: d.slice(11, 16) };
+}
+
+/** Fecha, hora y cancha de un partido: el organizador las cambia a mano. */
+function HorarioPartido({
+  encuentro,
+  canchas,
+  nombresCanchas,
+}: {
+  encuentro: EncuentroPublico;
+  canchas: number;
+  nombresCanchas: string[];
+}) {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+  const [editando, setEditando] = useState(false);
+  const inicial = partesColombia(encuentro.programado_at);
+  const [fecha, setFecha] = useState(inicial.fecha);
+  const [hora, setHora] = useState(inicial.hora);
+  const [cancha, setCancha] = useState(String(encuentro.cancha ?? 1));
+  const nombreCancha = (n: number) => nombresCanchas[n - 1]?.trim() || `Cancha ${n}`;
+
+  function guardar(quitar: boolean) {
+    startTransition(async () => {
+      const r = await editarHorarioEncuentro(encuentro.id, {
+        fecha: quitar ? null : fecha || null,
+        hora,
+        cancha: Number(cancha) || 1,
+      });
+      if (!r.success) return void toast.error(r.error);
+      toast.success(quitar ? "El partido quedó por programar" : "Horario guardado");
+      setEditando(false);
+      router.refresh();
+    });
+  }
+
+  return (
+    <div className="bg-muted/40 flex flex-col gap-2 rounded-xl p-3 text-sm">
+      <div className="flex items-center justify-between gap-2">
+        <span>
+          <CalendarClock className="text-muted-foreground mr-1.5 inline size-4 align-[-3px]" />
+          {encuentro.programado_at
+            ? `${formatFechaHoraCO(encuentro.programado_at)}${canchas > 1 && encuentro.cancha ? ` · ${nombreCancha(encuentro.cancha)}` : ""}`
+            : "Por programar"}
+        </span>
+        {!editando && (
+          <Button size="sm" variant="ghost" onClick={() => setEditando(true)}>
+            <Pencil className="size-3.5" /> {encuentro.programado_at ? "Cambiar" : "Programar"}
+          </Button>
+        )}
+      </div>
+      {editando && (
+        <>
+          <div className="grid grid-cols-2 gap-2">
+            <Input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} aria-label="Fecha" />
+            <Input type="time" value={hora} onChange={(e) => setHora(e.target.value)} aria-label="Hora" />
+          </div>
+          {canchas > 1 && (
+            <select
+              value={cancha}
+              onChange={(e) => setCancha(e.target.value)}
+              className="border-input bg-background h-9 rounded-md border px-2 text-sm"
+              aria-label="Cancha"
+            >
+              {Array.from({ length: canchas }, (_, i) => (
+                <option key={i} value={i + 1}>
+                  {nombreCancha(i + 1)}
+                </option>
+              ))}
+            </select>
+          )}
+          <div className="flex flex-wrap justify-end gap-2">
+            {encuentro.programado_at && (
+              <Button size="sm" variant="ghost" disabled={pending} onClick={() => guardar(true)}>
+                Quitar fecha
+              </Button>
+            )}
+            <Button size="sm" variant="ghost" disabled={pending} onClick={() => setEditando(false)}>
+              Cancelar
+            </Button>
+            <Button size="sm" disabled={pending || !fecha || !hora} onClick={() => guardar(false)}>
+              Guardar horario
+            </Button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+const DIAS_SEMANA = ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"];
+
+type Propuesta = Extract<Awaited<ReturnType<typeof programarPartidos>>, { success: true }>["data"];
+
+/**
+ * Programa los partidos sin fecha en los próximos días de juego del
+ * calendario. Primero muestra la propuesta; se guarda al confirmar.
+ */
+function ProgramarPartidos({
+  torneoId,
+  categoriaId,
+  calendario,
+  sinFecha,
+}: {
+  torneoId: string;
+  categoriaId: string | null;
+  calendario: ReglasTorneo["calendario"];
+  sinFecha: number;
+}) {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+  const [abierto, setAbierto] = useState(false);
+  const [desde, setDesde] = useState(() => partesColombia(new Date().toISOString()).fecha);
+  const [dias, setDias] = useState(String(Math.max(1, calendario.dias_juego.length || 1)));
+  const [propuesta, setPropuesta] = useState<Propuesta | null>(null);
+
+  const textoCalendario =
+    (calendario.dias_juego.length > 0
+      ? [...calendario.dias_juego].sort().map((d) => DIAS_SEMANA[d]).join(", ")
+      : "todos los días") +
+    ` desde las ${calendario.hora_inicio}, ${calendario.partidos_por_dia} partido(s) por día`;
+
+  function correr(aplicar: boolean) {
+    startTransition(async () => {
+      const r = await programarPartidos(torneoId, categoriaId, { desde, dias: Number(dias) || 1 }, aplicar);
+      if (!r.success) return void toast.error(r.error);
+      if (!aplicar) return void setPropuesta(r.data);
+      toast.success(`${r.data.propuesta.length} partidos programados`);
+      setPropuesta(null);
+      setAbierto(false);
+      router.refresh();
+    });
+  }
+
+  if (sinFecha === 0) return null;
+  if (!abierto) {
+    return (
+      <Button size="sm" variant="outline" className="self-start" onClick={() => setAbierto(true)}>
+        <CalendarClock className="size-3.5" /> Programar partidos ({sinFecha} sin fecha)
+      </Button>
+    );
+  }
+
+  return (
+    <div className="bg-muted/40 flex flex-col gap-3 rounded-xl p-3">
+      <p className="text-muted-foreground text-xs">
+        Calendario: {textoCalendario}. Se cambia en Configuración. Alterna grupos, nadie juega dos
+        veces el mismo día y van primero los equipos con menos partidos.
+      </p>
+      <div className="grid grid-cols-2 gap-3">
+        <Campo label="Desde">
+          <Input type="date" value={desde} onChange={(e) => { setDesde(e.target.value); setPropuesta(null); }} />
+        </Campo>
+        <Campo label="Días de juego">
+          <Input
+            inputMode="numeric"
+            value={dias}
+            onChange={(e) => { setDias(e.target.value.replace(/\D/g, "")); setPropuesta(null); }}
+          />
+        </Campo>
+      </div>
+
+      {propuesta && (
+        propuesta.propuesta.length === 0 ? (
+          <p className="text-xs text-amber-600 dark:text-amber-400">
+            No hay turnos libres en esos días para los partidos pendientes.
+          </p>
+        ) : (
+          <ul className="border-border divide-border divide-y rounded-lg border text-sm">
+            {propuesta.propuesta.map((p) => (
+              <li key={p.id} className="flex flex-wrap items-baseline gap-x-2 px-3 py-1.5">
+                <span className="text-muted-foreground w-36 shrink-0 text-xs">
+                  {formatFechaHoraCO(p.programado_at)}
+                </span>
+                <span className="text-muted-foreground text-xs">{p.grupo ? `Grupo ${p.grupo}` : labelFase(p.fase as Encuentro["fase"])}</span>
+                <span className="min-w-0">
+                  {p.a} <span className="text-muted-foreground">vs</span> {p.b}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )
+      )}
+
+      <div className="flex flex-wrap justify-end gap-2">
+        <Button size="sm" variant="ghost" disabled={pending} onClick={() => { setAbierto(false); setPropuesta(null); }}>
+          Cancelar
+        </Button>
+        {propuesta && propuesta.propuesta.length > 0 ? (
+          <Button size="sm" disabled={pending} onClick={() => correr(true)}>
+            Guardar programación
+          </Button>
+        ) : (
+          <Button size="sm" disabled={pending} onClick={() => correr(false)}>
+            Ver propuesta
+          </Button>
+        )}
+      </div>
+    </div>
   );
 }
 

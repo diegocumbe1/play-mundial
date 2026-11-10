@@ -19,6 +19,7 @@ import {
   type ReglasTorneo,
 } from "@/lib/torneo-reglas";
 import type { CategoriaTorneo, PremioTorneo, Torneo } from "@/types";
+import { formatMiles } from "@/lib/numero-co";
 
 /** Una categoría mientras se edita (los números viajan como texto). */
 interface CategoriaDraft {
@@ -146,7 +147,7 @@ export function ConfigTorneoPanel({
     });
   }
 
-  const { juego, tabla, participacion: p, premiacion, reembolso } = reglas;
+  const { juego, tabla, calendario, participacion: p, premiacion, reembolso } = reglas;
 
   return (
     <div className="flex flex-col gap-6">
@@ -218,7 +219,7 @@ export function ConfigTorneoPanel({
                     <InputMoneda
                       value={c.valor_inscripcion}
                       onChange={(v) => setCat(i, { valor_inscripcion: v })}
-                      placeholder={torneo.valor_inscripcion.toLocaleString("es-CO")}
+                      placeholder={formatMiles(torneo.valor_inscripcion)}
                     />
                   </Campo>
                 </div>
@@ -424,6 +425,78 @@ export function ConfigTorneoPanel({
           </Campo>
         </div>
 
+        <p className="mt-5 mb-1 text-sm font-semibold">Calendario</p>
+        <p className="text-muted-foreground mb-3 text-xs">
+          Cuándo se juega. Con esto, «Programar partidos» en el Fixture reparte solo los partidos
+          sin fecha. Siempre puedes cambiar a mano la fecha de cualquier partido.
+        </p>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Campo label="Días de juego" className="sm:col-span-2" ayuda="Ninguno marcado = todos los días.">
+            <div className="flex flex-wrap gap-1.5">
+              {["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"].map((d, i) => {
+                const activo = calendario.dias_juego.includes(i);
+                return (
+                  <button
+                    key={d}
+                    type="button"
+                    aria-pressed={activo}
+                    onClick={() =>
+                      set("calendario", {
+                        dias_juego: activo
+                          ? calendario.dias_juego.filter((x) => x !== i)
+                          : [...calendario.dias_juego, i].sort(),
+                      })
+                    }
+                    className={
+                      activo
+                        ? "bg-primary text-primary-foreground rounded-lg px-3 py-1.5 text-sm font-semibold"
+                        : "bg-muted text-muted-foreground hover:text-foreground rounded-lg px-3 py-1.5 text-sm font-semibold"
+                    }
+                  >
+                    {d}
+                  </button>
+                );
+              })}
+            </div>
+          </Campo>
+          <Campo label="Hora del primer partido">
+            <Input
+              type="time"
+              value={calendario.hora_inicio}
+              onChange={(e) => e.target.value && set("calendario", { hora_inicio: e.target.value })}
+            />
+          </Campo>
+          <CampoNumero
+            label="Partidos por día"
+            value={calendario.partidos_por_dia}
+            onChange={(v) => set("calendario", { partidos_por_dia: Math.max(1, v ?? 1) })}
+            info={`Entre todas las canchas. Van uno tras otro cada ${torneo.duracion_partido_minutos ?? 45} min (la duración se cambia en Editar torneo).`}
+          />
+        </div>
+
+        {categorias.length > 1 && (
+          <>
+            <p className="mt-5 mb-1 text-sm font-semibold">Página pública</p>
+            <Campo
+              label="Categoría que se muestra primero"
+              ayuda="En el fixture, la tabla y los resultados. Los visitantes pueden cambiar de categoría."
+            >
+              <select
+                value={reglas.publico.categoria_inicial ?? ""}
+                onChange={(e) => set("publico", { categoria_inicial: e.target.value || null })}
+                className="border-input bg-background h-9 w-full rounded-md border px-2 text-sm sm:w-72"
+              >
+                <option value="">Automático: la que tenga más inscritos</option>
+                {categorias.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.nombre}
+                  </option>
+                ))}
+              </select>
+            </Campo>
+          </>
+        )}
+
         <p className="mt-5 mb-1 text-sm font-semibold">Tabla de posiciones</p>
         <div className="mb-3">
           <Segmentado
@@ -472,6 +545,12 @@ export function ConfigTorneoPanel({
             value={tabla.wo}
             onChange={(v) => set("tabla", { wo: v ?? 0 })}
             info="Puntos de tabla para el equipo que no se presentó. Lo normal es 0."
+          />
+          <CampoNumero
+            label="Clasifican por grupo"
+            value={tabla.clasifican}
+            onChange={(v) => set("tabla", { clasifican: Math.max(1, v ?? 1) })}
+            info="Cuántos equipos de cada grupo pasan a eliminatorias. Se marcan en verde en la tabla y es el número que se usa al generar las eliminatorias."
           />
         </div>
       </section>

@@ -835,6 +835,12 @@ export interface Encuentro {
   resultado_juez?: ResultadoJuez | null;
   /** Dato interno del organizador: no sale en vistas públicas ni lo ve el juez. */
   arbitraje_pagado?: boolean;
+  /**
+   * Llave anticipada: de dónde sale cada equipo de la primera ronda
+   * ("1A" = 1° del grupo A) mientras no se conoce. `null` = sin origen.
+   */
+  origen_a?: string | null;
+  origen_b?: string | null;
   created_at: string;
   updated_at: string;
 }

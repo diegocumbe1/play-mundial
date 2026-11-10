@@ -35,6 +35,7 @@ import { VerificarEmailModal } from "@/components/rifa/verificar-email-modal";
 import { Campo, Segmentado } from "@/components/torneo/campos";
 import { esErrorDeVerificacion } from "@/lib/errores";
 import type { AbonoBoleta, Boleta, MetodoPago, Rifa } from "@/types";
+import { formatMiles } from "@/lib/numero-co";
 
 const METODO_LABEL: Record<MetodoPago, string> = {
   transferencia: "Transferencia",
@@ -210,7 +211,7 @@ export function BoletaModal({
                 <InputMoneda
                   value={abono}
                   onChange={setAbono}
-                  placeholder={cuotaMin ? `Mínimo ${cuotaMin.toLocaleString("es-CO")}` : "Ej. 50.000"}
+                  placeholder={cuotaMin ? `Mínimo ${formatMiles(cuotaMin)}` : "Ej. 50.000"}
                 />
                 <p className="text-muted-foreground mt-1 text-[11px]">
                   Lo que deja hoy para separar el número. Queda debiendo{" "}

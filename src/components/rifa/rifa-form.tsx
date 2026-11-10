@@ -31,6 +31,7 @@ import {
 } from "@/lib/rifa";
 import { TemaPreview } from "@/components/rifa/tema-preview";
 import type { CriterioPremio, OrdenSorteo, Premio, Rifa, TipoRifa } from "@/types";
+import { formatMiles } from "@/lib/numero-co";
 
 interface PremioDraft {
   tipo: "valor" | "producto";
@@ -361,7 +362,7 @@ export function RifaForm({
                   onUsar={(n, p) => {
                     setCantidad(String(n));
                     setPrecio(String(p));
-                    toast.success(`Listo: ${n.toLocaleString("es-CO")} números a $${p.toLocaleString("es-CO")}`);
+                    toast.success(`Listo: ${formatMiles(n)} números a $${formatMiles(p)}`);
                   }}
                 />
               </div>
@@ -402,7 +403,7 @@ export function RifaForm({
             />
             {cantidadNum > 10 ** formato && (
               <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
-                Con {formato} cifras solo existen {(10 ** formato).toLocaleString("es-CO")} números
+                Con {formato} cifras solo existen {formatMiles(10 ** formato)} números
                 posibles: sube las cifras o baja la cantidad.
               </p>
             )}
@@ -604,7 +605,7 @@ export function RifaForm({
                           options={[
                             {
                               value: "cuota",
-                              label: cuotaNum ? `Con ${cuotaNum.toLocaleString("es-CO")}` : "Con la cuota",
+                              label: cuotaNum ? `Con ${formatMiles(cuotaNum)}` : "Con la cuota",
                             },
                             { value: "completo", label: "Pago completo" },
                           ]}

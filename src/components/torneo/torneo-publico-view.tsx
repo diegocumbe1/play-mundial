@@ -174,6 +174,7 @@ export function TorneoPublicoView({ datos }: { datos: TorneoPublicoDetalle }) {
             encuentros={encuentros}
             tablaReglas={tablaReglas}
             nombresCanchas={nombresCanchas}
+            categoriaInicial={datos.categoriaInicial}
             autoRefrescar
           />
         </section>

@@ -38,11 +38,15 @@ import {
   armarLlave,
   asignarHorarios,
   calcularTabla,
+  categoriaInicial,
   destinoEnLlave,
   validarSets,
   crucesEliminatoria,
   faseEliminatoria,
+  leerOrigen,
+  proponerProgramacion,
   rngConSemilla,
+  sembradosDesdeGrupos,
   siguienteFase,
   simularEnVivo,
   simularPartido,
@@ -1466,6 +1470,8 @@ export interface TorneoPublicoDetalle {
   tablaReglas: ReturnType<typeof leerReglas>["tabla"];
   /** Nombres de las canchas (vacío = "Cancha N"). */
   nombresCanchas: string[];
+  /** Categoría que se muestra primero (la elegida o la de más inscritos). */
+  categoriaInicial: string | null;
   /** Reglas de quién puede jugar: el formulario valida la plantilla con ellas. */
   participacion: ReturnType<typeof leerReglas>["participacion"];
   equipos: EquipoTorneoPublico[];
@@ -1521,7 +1527,7 @@ export async function getTorneoPublico(
     svc
       .from("encuentros")
       .select(
-        "id, torneo_id, categoria_id, fase, grupo, ronda, orden, equipo_a_id, equipo_b_id, cancha, programado_at, estado, sets, ganador_id, sala_marcador",
+        "id, torneo_id, categoria_id, fase, grupo, ronda, orden, equipo_a_id, equipo_b_id, origen_a, origen_b, cancha, programado_at, estado, sets, ganador_id, sala_marcador",
       )
       .eq("torneo_id", torneo.id)
       .order("programado_at")
@@ -1575,6 +1581,11 @@ export async function getTorneoPublico(
       encuentros: await conMarcadorEnVivo((encuentrosData as EncuentroPublico[]) ?? []),
       tablaReglas: leerReglas(torneo.reglas).tabla,
       nombresCanchas: leerReglas(torneo.reglas).juego.nombres_canchas,
+      categoriaInicial: categoriaInicial(
+        categorias,
+        vigentes,
+        leerReglas(torneo.reglas).publico.categoria_inicial,
+      ),
       participacion: leerReglas(torneo.reglas).participacion,
       equipos: construirEquiposPublicos(equipos),
       equiposConfirmados: vigentes.filter((e) => e.estado === "confirmado").length,
@@ -2861,6 +2872,250 @@ export async function generarEliminatorias(
   return { success: true, data: undefined };
 }
 
+/**
+ * Llave estilo Mundial: arma las eliminatorias antes de que terminen los grupos
+ * ("1° A vs 4° B", "Ganador cuartos 1"…). Los lugares se llenan solos cuando
+ * cada grupo termina. Mismos cruces que `generarEliminatorias`.
+ */
+export async function armarLlaveAnticipada(
+  torneoId: string,
+  categoriaId: string | null,
+): Promise<ActionResult<{ partidos: number }>> {
+  const acceso = await accesoTorneos();
+  if (!acceso.ok) return { success: false, error: acceso.error };
+  const torneo = await torneoDelUsuario(torneoId, acceso.membership);
+  if (!torneo) return { success: false, error: "Torneo no encontrado" };
+
+  const todos = await encuentrosDeCategoria(torneoId, categoriaId);
+  const deGrupos = todos.filter((e) => e.fase === "grupos");
+  if (deGrupos.length === 0) return { success: false, error: "Primero genera la fase de grupos." };
+  if (todos.some((e) => e.fase !== "grupos")) {
+    return { success: false, error: "La llave ya está armada." };
+  }
+  const grupos = [...new Set(deGrupos.map((e) => e.grupo ?? ""))].sort();
+  const clasifican = leerReglas(torneo.reglas).tabla.clasifican;
+  const porGrupo = Math.min(
+    ...grupos.map(
+      (g) =>
+        new Set(deGrupos.filter((e) => (e.grupo ?? "") === g).flatMap((e) => [e.equipo_a_id, e.equipo_b_id])).size,
+    ),
+  );
+  if (clasifican > porGrupo) {
+    return { success: false, error: `Clasifican ${clasifican} por grupo, pero hay grupos de ${porGrupo} equipos.` };
+  }
+  const codigos = sembradosDesdeGrupos(grupos, clasifican);
+  if (codigos.length < 2) return { success: false, error: "No hay suficientes clasificados." };
+
+  const filas: FilaEncuentro[] = armarLlave(codigos).map((p) => ({
+    tenant_id: torneo.tenant_id,
+    torneo_id: torneo.id,
+    categoria_id: categoriaId,
+    fase: p.fase,
+    grupo: null,
+    ronda: 1,
+    orden: p.orden,
+    equipo_a_id: null,
+    equipo_b_id: null,
+    origen_a: p.a,
+    origen_b: p.b,
+    cancha: null,
+    programado_at: null,
+    estado: "programado",
+    sets: [],
+    ganador_id: null,
+    sala_marcador: null,
+  }));
+  const svc = createServiceRoleClient();
+  const { error } = await svc.from("encuentros").insert(filas);
+  if (error) return { success: false, error: error.message };
+
+  // Si algún grupo ya terminó, sus lugares se llenan de una vez.
+  await completarLlaveDesdeGrupos(torneo, categoriaId);
+  await avisarPartidosNuevos(torneo, "Llave de eliminatorias lista");
+  revalidarTorneo(torneo);
+  return { success: true, data: { partidos: filas.length } };
+}
+
+/**
+ * Llena los lugares de la llave anticipada con la tabla de cada grupo que ya
+ * terminó (y los vacía si un grupo se reabre por una corrección). Solo toca
+ * partidos que no han empezado. Un lugar sin rival (pase directo) avanza solo.
+ */
+async function completarLlaveDesdeGrupos(torneo: Torneo, categoriaId: string | null): Promise<void> {
+  const todos = await encuentrosDeCategoria(torneo.id, categoriaId);
+  const conOrigen = todos.filter((m) => m.fase !== "grupos" && (m.origen_a || m.origen_b));
+  if (conOrigen.length === 0) return;
+
+  const reglas = leerReglas(torneo.reglas);
+  const deGrupos = todos.filter((m) => m.fase === "grupos");
+  const posiciones = new Map<string, string[] | null>();
+  for (const g of new Set(deGrupos.map((m) => m.grupo ?? ""))) {
+    const partidos = deGrupos.filter((m) => (m.grupo ?? "") === g);
+    const completo = partidos.every((m) => m.estado === "finalizado" || m.estado === "wo");
+    const ids = [...new Set(partidos.flatMap((m) => [m.equipo_a_id, m.equipo_b_id]).filter(Boolean))] as string[];
+    posiciones.set(g, completo ? calcularTabla(ids, partidos, reglas.tabla).map((f) => f.equipoId) : null);
+  }
+
+  const svc = createServiceRoleClient();
+  for (const m of conOrigen) {
+    if (m.estado !== "programado") continue;
+    const cambios: Partial<Encuentro> = {};
+    for (const lado of ["a", "b"] as const) {
+      const codigo = lado === "a" ? m.origen_a : m.origen_b;
+      const o = codigo ? leerOrigen(codigo) : null;
+      if (!o) continue;
+      const quien = posiciones.get(o.grupo)?.[o.puesto - 1] ?? null;
+      const columna = lado === "a" ? "equipo_a_id" : "equipo_b_id";
+      if (m[columna] !== quien) cambios[columna] = quien;
+    }
+    const a = cambios.equipo_a_id !== undefined ? cambios.equipo_a_id : m.equipo_a_id;
+    const b = cambios.equipo_b_id !== undefined ? cambios.equipo_b_id : m.equipo_b_id;
+    // Pase directo: un lado sin origen (no hay rival) y el otro ya definido.
+    const directo = (!m.origen_a && b && !a) || (!m.origen_b && a && !b);
+    if (directo) {
+      cambios.estado = "wo";
+      cambios.ganador_id = a ?? b;
+    }
+    if (Object.keys(cambios).length === 0) continue;
+    await svc.from("encuentros").update(cambios).eq("id", m.id);
+    if (directo) await avanzarLlave({ ...m, ...cambios } as Encuentro);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Programación de partidos (calendario del torneo) y edición de horarios
+// ---------------------------------------------------------------------------
+const programarSchema = z.object({
+  desde: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Elige desde qué día programar"),
+  dias: z.number().int().min(1).max(30),
+});
+
+/**
+ * Reparte los partidos sin fecha (con los dos equipos definidos) en los
+ * próximos días de juego del calendario. Con `aplicar = false` solo devuelve
+ * la propuesta, para revisarla; el cálculo es el mismo al guardar.
+ */
+export async function programarPartidos(
+  torneoId: string,
+  categoriaId: string | null,
+  input: z.input<typeof programarSchema>,
+  aplicar: boolean,
+): Promise<
+  ActionResult<{
+    propuesta: { id: string; programado_at: string; cancha: number; grupo: string | null; fase: string; a: string; b: string }[];
+    sinFecha: number;
+  }>
+> {
+  const acceso = await accesoTorneos();
+  if (!acceso.ok) return { success: false, error: acceso.error };
+  const torneo = await torneoDelUsuario(torneoId, acceso.membership);
+  if (!torneo) return { success: false, error: "Torneo no encontrado" };
+  const parsed = programarSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: parsed.error.issues[0].message };
+
+  const svc = createServiceRoleClient();
+  const [{ data: todosData }, { data: eqs }] = await Promise.all([
+    svc.from("encuentros").select("*").eq("torneo_id", torneoId),
+    svc.from("equipos_torneo").select("id, nombre").eq("torneo_id", torneoId),
+  ]);
+  const todos = (todosData as Encuentro[]) ?? [];
+  const deCategoria = todos.filter((m) => m.categoria_id === categoriaId);
+  const pendientes = deCategoria.filter(
+    (m) => m.estado === "programado" && !m.programado_at && m.equipo_a_id && m.equipo_b_id,
+  );
+  // Carga de cada equipo: partidos ya jugados o con fecha.
+  const cargas = new Map<string, number>();
+  for (const m of deCategoria) {
+    if (m.estado === "programado" && !m.programado_at) continue;
+    for (const id of [m.equipo_a_id, m.equipo_b_id]) if (id) cargas.set(id, (cargas.get(id) ?? 0) + 1);
+  }
+
+  const asignados = proponerProgramacion({
+    pendientes,
+    // Las canchas son del torneo: cuenta lo programado de todas las categorías.
+    ocupados: todos.filter((m) => m.programado_at),
+    cargas,
+    desde: parsed.data.desde,
+    diasDeJuego: parsed.data.dias,
+    calendario: leerReglas(torneo.reglas).calendario,
+    canchas: torneo.cantidad_canchas,
+    duracionMin: torneo.duracion_partido_minutos ?? 45,
+  });
+
+  const nombre = (id: string | null) =>
+    ((eqs as { id: string; nombre: string }[]) ?? []).find((e) => e.id === id)?.nombre ?? "Equipo";
+  const propuesta = asignados.map((x) => {
+    const m = pendientes.find((p) => p.id === x.id)!;
+    return { ...x, grupo: m.grupo, fase: m.fase, a: nombre(m.equipo_a_id), b: nombre(m.equipo_b_id) };
+  });
+
+  if (aplicar && asignados.length > 0) {
+    for (const x of asignados) {
+      const { error } = await svc
+        .from("encuentros")
+        .update({ programado_at: x.programado_at, cancha: x.cancha })
+        .eq("id", x.id)
+        .is("programado_at", null);
+      if (error) return { success: false, error: error.message };
+    }
+    await avisarPartidosNuevos(torneo, `Nueva programación: ${asignados.length} partidos`);
+    revalidarTorneo(torneo);
+  }
+  return { success: true, data: { propuesta, sinFecha: pendientes.length } };
+}
+
+const horarioSchema = z.object({
+  /** `null` = quitarle la fecha (vuelve a "Por programar"). */
+  fecha: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Fecha inválida").nullable(),
+  hora: z.string().regex(/^\d{2}:\d{2}$/, "Hora inválida"),
+  cancha: z.number().int().min(1),
+});
+
+/** El organizador cambia a mano la fecha, hora o cancha de un partido. */
+export async function editarHorarioEncuentro(
+  encuentroId: string,
+  input: z.input<typeof horarioSchema>,
+): Promise<ActionResult> {
+  const acceso = await accesoTorneos();
+  if (!acceso.ok) return { success: false, error: acceso.error };
+  const parsed = horarioSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: parsed.error.issues[0].message };
+  const d = parsed.data;
+
+  const svc = createServiceRoleClient();
+  const { data } = await svc.from("encuentros").select("*").eq("id", encuentroId).maybeSingle();
+  const e = (data as Encuentro | null) ?? null;
+  if (!e) return { success: false, error: "Partido no encontrado" };
+  const torneo = await torneoDelUsuario(e.torneo_id, acceso.membership);
+  if (!torneo) return { success: false, error: "No autorizado" };
+  if (d.cancha > Math.max(1, torneo.cantidad_canchas)) {
+    return { success: false, error: `El torneo tiene ${torneo.cantidad_canchas} cancha(s).` };
+  }
+
+  const programado_at = d.fecha ? new Date(`${d.fecha}T${d.hora}:00-05:00`).toISOString() : null;
+  if (programado_at) {
+    const { data: choque } = await svc
+      .from("encuentros")
+      .select("id")
+      .eq("torneo_id", e.torneo_id)
+      .eq("programado_at", programado_at)
+      .eq("cancha", d.cancha)
+      .neq("id", e.id)
+      .limit(1);
+    if (choque && choque.length > 0) {
+      return { success: false, error: "Ya hay otro partido en esa cancha a esa hora." };
+    }
+  }
+
+  const { error } = await svc
+    .from("encuentros")
+    .update({ programado_at, cancha: programado_at ? d.cancha : null })
+    .eq("id", encuentroId);
+  if (error) return { success: false, error: error.message };
+  revalidarTorneo(torneo);
+  return { success: true, data: undefined };
+}
+
 const resultadoSchema = z.discriminatedUnion("tipo", [
   z.object({
     tipo: z.literal("sets"),
@@ -2967,6 +3222,8 @@ export async function guardarResultado(
 
   const errAvance = await avanzarLlave(actualizado);
   if (errAvance) return { success: false, error: errAvance };
+  // Llave anticipada: al cerrarse (o reabrirse) un grupo se llenan sus lugares.
+  if (e.fase === "grupos") await completarLlaveDesdeGrupos(torneo, e.categoria_id);
 
   // El torneo pasa a "en curso" con el primer partido jugado.
   if (torneo.estado === "inscripciones" || torneo.estado === "programado") {

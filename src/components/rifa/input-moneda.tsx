@@ -1,6 +1,7 @@
 "use client";
 
 import { Input } from "@/components/ui/input";
+import { formatMiles } from "@/lib/numero-co";
 
 /**
  * Input de dinero que muestra separadores de miles ("1.000.000") mientras se
@@ -19,7 +20,7 @@ export function InputMoneda({
   placeholder?: string;
   id?: string;
 }) {
-  const display = value ? Number(value).toLocaleString("es-CO") : "";
+  const display = value ? formatMiles(Number(value)) : "";
 
   return (
     <Input

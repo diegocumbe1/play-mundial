@@ -51,6 +51,29 @@ export const reglasSchema = z.object({
       victoria: entero().default(2),
       derrota: entero().default(1),
       wo: entero().default(0),
+      /** Equipos de cada grupo que pasan a eliminatorias (los de verde en la tabla). */
+      clasifican: entero(1).default(2),
+    })
+    .prefault({}),
+  /**
+   * Cuándo se juega: lo usa "Programar partidos" para repartir los pendientes.
+   * La duración de cada partido y las canchas salen del torneo.
+   */
+  calendario: z
+    .object({
+      /** Días de la semana con partidos: 0 = domingo … 6 = sábado. Vacío = todos. */
+      dias_juego: z.array(z.number().int().min(0).max(6)).default([]),
+      /** Hora del primer partido del día, "HH:MM" (hora de Colombia). */
+      hora_inicio: z.string().regex(/^\d{2}:\d{2}$/).default("19:00"),
+      /** Partidos por día entre todas las canchas. */
+      partidos_por_dia: entero(1).default(4),
+    })
+    .prefault({}),
+  /** Cómo se ve el torneo en su página pública. */
+  publico: z
+    .object({
+      /** Categoría que se muestra primero. `null` = la que tenga más equipos inscritos. */
+      categoria_inicial: z.string().uuid().nullable().default(null),
     })
     .prefault({}),
   participacion: z
@@ -278,6 +301,7 @@ export function generarReglamento(
         `Pérdida por W.O.: ${plural(tabla.wo, "punto", "puntos")}.`,
     "Desempate, en este orden: más partidos ganados, mejor cociente de sets, " +
       "mejor cociente de puntos y resultado del partido entre los equipos empatados.",
+    `Si hay fase de grupos, clasifican a eliminatorias los ${plural(tabla.clasifican, "primero", "primeros")} de cada grupo.`,
   ]);
 
   seccion("Quién puede jugar", [

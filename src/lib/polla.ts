@@ -1,5 +1,6 @@
 import type { Apuesta, Partido, ResultadoPartido } from "@/types";
 import { getMarcadorReglamentario } from "@/lib/marcador-reglamentario";
+import { formatCOP as formatCOPManual } from "@/lib/numero-co";
 
 /**
  * Configuración económica de la polla (costo por partido y reparto del pozo).
@@ -18,11 +19,7 @@ export const POLLA = {
 
 /** Formatea un número como pesos colombianos. Ej: 5000 -> "$ 5.000". */
 export function formatCOP(monto: number): string {
-  return new Intl.NumberFormat("es-CO", {
-    style: "currency",
-    currency: "COP",
-    maximumFractionDigits: 0,
-  }).format(monto);
+  return formatCOPManual(monto);
 }
 
 /**
