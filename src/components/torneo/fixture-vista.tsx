@@ -152,7 +152,7 @@ export function FixtureVista({
       {grupos.length > 0 && (
         <section>
           <Titulo>Posiciones</Titulo>
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid gap-3 lg:grid-cols-2">
             {grupos.map((g) => {
               const delGrupo = lista.filter((e) => e.fase === "grupos" && e.grupo === g);
               const ids = [
@@ -161,15 +161,17 @@ export function FixtureVista({
               const filas = calcularTabla(ids, delGrupo, tablaReglas);
               return (
                 <div key={g} className="border-border overflow-hidden rounded-xl border">
-                  <p className="bg-muted/50 px-3 py-1.5 text-xs font-semibold">Grupo {g}</p>
-                  <table className="w-full text-xs">
+                  <p className="bg-muted/50 px-3 py-1.5 text-xs font-semibold sm:text-sm">Grupo {g}</p>
+                  <table className="w-full text-xs sm:text-sm">
                     <thead className="text-muted-foreground">
                       <tr>
                         <th className="px-2 py-1 text-left font-medium">#</th>
-                        <th className="px-1 py-1 text-left font-medium">Equipo</th>
-                        <th className="px-1 py-1 font-medium" title="Partidos jugados">PJ</th>
-                        <th className="px-1 py-1 font-medium" title="Partidos ganados">PG</th>
-                        <th className="px-1 py-1 font-medium" title="Sets a favor - en contra">Sets</th>
+                        <th className="w-full px-1 py-1 text-left font-medium">Equipo</th>
+                        <th className="px-1.5 py-1 font-medium" title="Partidos jugados">PJ</th>
+                        <th className="px-1.5 py-1 font-medium" title="Partidos ganados">PG</th>
+                        <th className="hidden px-1.5 py-1 font-medium sm:table-cell" title="Partidos perdidos">PP</th>
+                        <th className="px-1.5 py-1 font-medium" title="Sets a favor - en contra">Sets</th>
+                        <th className="hidden px-1.5 py-1 font-medium sm:table-cell" title="Puntos a favor - en contra">Ptos</th>
                         <th className="px-2 py-1 font-medium" title="Puntos en la tabla">Pts</th>
                       </tr>
                     </thead>
@@ -182,11 +184,15 @@ export function FixtureVista({
                           <td className="px-2 py-1.5">
                             <span className={cn(i < 2 && "font-bold text-emerald-500")}>{i + 1}</span>
                           </td>
-                          <td className="max-w-0 truncate px-1 py-1.5 font-medium">{nombre(f.equipoId)}</td>
-                          <td className="px-1 py-1.5 text-center">{f.pj}</td>
-                          <td className="px-1 py-1.5 text-center">{f.pg}</td>
-                          <td className="px-1 py-1.5 text-center">
+                          <td className="px-1 py-1.5 font-medium leading-tight break-words">{nombre(f.equipoId)}</td>
+                          <td className="px-1.5 py-1.5 text-center tabular-nums">{f.pj}</td>
+                          <td className="px-1.5 py-1.5 text-center tabular-nums">{f.pg}</td>
+                          <td className="hidden px-1.5 py-1.5 text-center tabular-nums sm:table-cell">{f.pp}</td>
+                          <td className="px-1.5 py-1.5 text-center whitespace-nowrap tabular-nums">
                             {f.setsFavor}-{f.setsContra}
+                          </td>
+                          <td className="hidden px-1.5 py-1.5 text-center whitespace-nowrap tabular-nums sm:table-cell">
+                            {f.puntosFavor}-{f.puntosContra}
                           </td>
                           <td className="px-2 py-1.5 text-center font-bold">{f.pts}</td>
                         </tr>
@@ -198,7 +204,8 @@ export function FixtureVista({
             })}
           </div>
           <p className="text-muted-foreground mt-2 text-xs">
-            En verde, los que van clasificando a eliminatorias (dos por grupo).
+            En verde, los que van clasificando a eliminatorias (dos por grupo). Desempate: partidos
+            ganados, cociente de sets y cociente de puntos.
           </p>
         </section>
       )}
@@ -206,7 +213,7 @@ export function FixtureVista({
       {proximos.length > 0 && (
         <section>
           <Titulo>Próximos partidos</Titulo>
-          <div className="grid gap-2 sm:grid-cols-2">
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
             {proximos.slice(0, onEditar ? undefined : 8).map((e) => (
               <TarjetaPartido key={e.id} e={e} nombre={nombre} onEditar={onEditar} canchas={nombresCanchas} />
             ))}
@@ -217,7 +224,7 @@ export function FixtureVista({
       {resultados.length > 0 && (
         <section>
           <Titulo>Resultados</Titulo>
-          <div className="grid gap-2 sm:grid-cols-2">
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
             {resultados.slice(0, onEditar ? undefined : 12).map((e) => (
               <TarjetaPartido key={e.id} e={e} nombre={nombre} onEditar={onEditar} canchas={nombresCanchas} />
             ))}
@@ -257,7 +264,7 @@ function TarjetaPartido({
       <div className="flex items-center justify-between gap-2">
         <span
           className={cn(
-            "min-w-0 truncate text-sm",
+            "min-w-0 text-sm leading-tight break-words",
             gano && "font-bold",
             !id && "text-muted-foreground italic",
           )}

@@ -84,7 +84,7 @@ export function TorneoPublicoView({ datos }: { datos: TorneoPublicoDetalle }) {
   }
 
   return (
-    <main className="mx-auto max-w-xl px-4 py-8">
+    <main className="mx-auto max-w-xl px-4 py-8 md:max-w-3xl lg:max-w-5xl">
       {/* --- Promesa --- */}
       <header className="mb-5">
         <p className="text-primary text-xs font-semibold uppercase tracking-wide">
