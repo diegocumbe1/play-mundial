@@ -1,10 +1,12 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useSyncExternalStore, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   AlertTriangle,
   Check,
+  LayoutGrid,
+  List,
   MessageCircle,
   Pencil,
   Plus,
@@ -53,6 +55,28 @@ import type {
 } from "@/types";
 
 type Filtro = "todos" | "pendiente" | "confirmado" | "deben";
+type Vista = "tarjetas" | "lista";
+const CLAVE_VISTA = "torneo:equipos:vista";
+const oyentesVista = new Set<() => void>();
+let vistaEnMemoria: Vista = "tarjetas";
+function suscribirVista(fn: () => void) {
+  oyentesVista.add(fn);
+  return () => oyentesVista.delete(fn);
+}
+function leerVista(): Vista {
+  try {
+    const v = localStorage.getItem(CLAVE_VISTA);
+    if (v === "lista" || v === "tarjetas") vistaEnMemoria = v;
+  } catch {}
+  return vistaEnMemoria;
+}
+function cambiarVista(v: Vista) {
+  vistaEnMemoria = v;
+  try {
+    localStorage.setItem(CLAVE_VISTA, v);
+  } catch {}
+  oyentesVista.forEach((fn) => fn());
+}
 
 const CLASES_ESTADO: Record<EstadoEquipoTorneo, string> = {
   pendiente: "bg-amber-500/15 text-amber-600 dark:text-amber-400",
@@ -115,6 +139,8 @@ export function EquiposPanel({
   const [filtro, setFiltro] = useState<Filtro>("todos");
   const [nuevoAbierto, setNuevoAbierto] = useState(false);
   const [pagoDe, setPagoDe] = useState<EquipoTorneo | null>(null);
+  // La vista elegida se recuerda en este navegador; en el servidor, tarjetas.
+  const vista = useSyncExternalStore(suscribirVista, leerVista, () => "tarjetas" as Vista);
 
   const visibles = equipos.filter((e) => {
     if (filtro === "todos") return true;
@@ -136,6 +162,131 @@ export function EquiposPanel({
     });
   }
 
+  /** Estado, categoría y "Revisar (n)" con el detalle en el tooltip. */
+  function insignias(e: EquipoTorneo) {
+    const pendientes = porRevisar(e);
+    const categoria = nombreCategoria(e.categoria_id);
+    return (
+      <>
+        <span
+          className={cn(
+            "inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-[11px] font-semibold",
+            CLASES_ESTADO[e.estado],
+          )}
+        >
+          {labelEstadoEquipo(e.estado)}
+        </span>
+        {categoria && (
+          <span className="bg-muted inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-[11px] font-semibold">
+            {categoria}
+          </span>
+        )}
+        {pendientes.length > 0 && (
+          <span
+            title={pendientes.join("\n")}
+            className="inline-flex shrink-0 cursor-help items-center gap-1 rounded-full bg-amber-500/15 px-2 py-0.5 text-[11px] font-semibold text-amber-700 dark:text-amber-300"
+          >
+            <AlertTriangle className="size-3" /> Revisar ({pendientes.length})
+          </span>
+        )}
+      </>
+    );
+  }
+
+  function enlaceWhatsApp(e: EquipoTorneo, compacto: boolean) {
+    if (!e.responsable_telefono) return null;
+    return (
+      <a
+        href={waLink(
+          e.responsable_telefono,
+          `Hola ${e.responsable_nombre ?? ""}, te escribo por la inscripción de ${e.nombre} al torneo ${torneo.nombre}.`,
+        )}
+        target="_blank"
+        rel="noreferrer"
+        title={`WhatsApp a ${e.responsable_nombre ?? "el responsable"}`}
+        aria-label="WhatsApp"
+        className={cn(
+          "inline-flex shrink-0 items-center gap-1 rounded-lg text-xs font-medium text-emerald-600 hover:bg-emerald-500/10 dark:text-emerald-400",
+          compacto ? "size-7 justify-center" : "px-2 py-1.5",
+        )}
+      >
+        <MessageCircle className="size-3.5" />
+        {!compacto && "WhatsApp"}
+      </a>
+    );
+  }
+
+  /**
+   * Acciones del equipo. En la lista (compacto) van como íconos con tooltip;
+   * jugadores, pago y WhatsApp ya están en sus columnas.
+   */
+  function acciones(e: EquipoTorneo, compacto: boolean) {
+    const boton = compacto ? ("icon-sm" as const) : ("sm" as const);
+    const cantidad = jugadores.filter((j) => j.equipo_id === e.id).length;
+    return (
+      <>
+        {!compacto && enlaceWhatsApp(e, false)}
+        <Button
+          variant="outline"
+          size={boton}
+          onClick={() => setEditandoDe(e)}
+          title="Editar equipo"
+          aria-label="Editar equipo"
+        >
+          <Pencil className="size-3.5" /> {!compacto && "Editar"}
+        </Button>
+        {!compacto && (
+          <>
+            <Button variant="outline" size="sm" onClick={() => setPlantillaDe(e)}>
+              <Users className="size-3.5" />
+              {cantidad || "Sin"} jugadores
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => setPagoDe(e)}>
+              <Wallet className="size-3.5" /> Pago
+            </Button>
+          </>
+        )}
+        {e.estado !== "confirmado" && (
+          <Button
+            variant="outline"
+            size={boton}
+            disabled={pending}
+            title="Confirmar equipo"
+            aria-label="Confirmar equipo"
+            className={cn(compacto && "text-emerald-600 dark:text-emerald-400")}
+            onClick={() => accion(() => confirmarEquipoTorneo(e.id), "Equipo confirmado")}
+          >
+            <Check className="size-3.5" /> {!compacto && "Confirmar"}
+          </Button>
+        )}
+        {e.estado === "pendiente" && (
+          <Button
+            variant="ghost"
+            size={boton}
+            disabled={pending}
+            title="Rechazar solicitud"
+            aria-label="Rechazar solicitud"
+            className={cn(compacto && "text-destructive")}
+            onClick={() => accion(() => rechazarEquipoTorneo(e.id), "Solicitud rechazada")}
+          >
+            <X className="size-3.5" /> {!compacto && "Rechazar"}
+          </Button>
+        )}
+        {e.estado === "confirmado" && (
+          <Button
+            variant="ghost"
+            size={compacto ? "xs" : "sm"}
+            disabled={pending}
+            title="Retirar equipo"
+            onClick={() => accion(() => retirarEquipoTorneo(e.id), "Equipo retirado")}
+          >
+            Retirar
+          </Button>
+        )}
+      </>
+    );
+  }
+
   return (
     <section className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -155,9 +306,35 @@ export function EquiposPanel({
             { value: "deben", label: "Deben" },
           ]}
         />
-        <Button size="sm" onClick={() => setNuevoAbierto(true)}>
-          <Plus className="size-3.5" /> Registrar equipo
-        </Button>
+        <div className="flex items-center gap-2">
+          <div className="border-border hidden rounded-lg border p-0.5 md:inline-flex">
+            {(
+              [
+                { value: "tarjetas", label: "Tarjetas", Icon: LayoutGrid },
+                { value: "lista", label: "Lista", Icon: List },
+              ] as const
+            ).map(({ value, label, Icon }) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => cambiarVista(value)}
+                aria-pressed={vista === value}
+                title={`Vista de ${label.toLowerCase()}`}
+                className={cn(
+                  "inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium transition-colors",
+                  vista === value
+                    ? "bg-muted text-foreground"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                <Icon className="size-3.5" /> {label}
+              </button>
+            ))}
+          </div>
+          <Button size="sm" onClick={() => setNuevoAbierto(true)}>
+            <Plus className="size-3.5" /> Registrar equipo
+          </Button>
+        </div>
       </div>
 
       {visibles.length === 0 ? (
@@ -167,55 +344,32 @@ export function EquiposPanel({
             : "Ningún equipo coincide con este filtro."}
         </p>
       ) : (
-        <ul className="flex flex-col gap-2">
-          {visibles.map((e) => {
-            const esperado = montoEsperadoEquipo(torneo, e);
-            const saldo = saldoEquipo(torneo, e);
-            return (
-              <li
-                key={e.id}
-                className="border-border flex flex-col gap-3 rounded-xl border p-3 sm:flex-row sm:items-center sm:justify-between"
-              >
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <p className="truncate font-semibold">{e.nombre}</p>
-                    <span
-                      className={cn(
-                        "inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-[11px] font-semibold",
-                        CLASES_ESTADO[e.estado],
-                      )}
-                    >
-                      {labelEstadoEquipo(e.estado)}
-                    </span>
-                    {nombreCategoria(e.categoria_id) && (
-                      <span className="bg-muted inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-[11px] font-semibold">
-                        {nombreCategoria(e.categoria_id)}
-                      </span>
-                    )}
-                    {(() => {
-                      const pendientes = porRevisar(e);
-                      if (pendientes.length === 0) return null;
-                      return (
-                        <span
-                          title={pendientes.join("\n")}
-                          className="inline-flex shrink-0 cursor-help items-center gap-1 rounded-full bg-amber-500/15 px-2 py-0.5 text-[11px] font-semibold text-amber-700 dark:text-amber-300"
-                        >
-                          <AlertTriangle className="size-3" /> Revisar ({pendientes.length})
-                        </span>
-                      );
-                    })()}
+        <>
+          {/* Tarjetas: siempre en móvil; en escritorio, dos columnas para ver más de un vistazo. */}
+          <ul className={cn("grid gap-2 lg:grid-cols-2", vista === "lista" && "md:hidden")}>
+            {visibles.map((e) => {
+              const esperado = montoEsperadoEquipo(torneo, e);
+              const saldo = saldoEquipo(torneo, e);
+              return (
+                <li
+                  key={e.id}
+                  className="border-border flex min-w-0 flex-col gap-2 rounded-xl border p-3"
+                >
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <p className="mr-0.5 truncate font-semibold">{e.nombre}</p>
+                    {insignias(e)}
                   </div>
                   {e.nota_revision && (
-                    <p className="text-xs text-amber-700 dark:text-amber-300">
+                    <p
+                      title={e.nota_revision}
+                      className="line-clamp-2 text-xs text-amber-700 dark:text-amber-300"
+                    >
                       Por revisar: {e.nota_revision}
                     </p>
                   )}
                   <p className="text-muted-foreground text-xs">
-                    {e.responsable_nombre ?? "Sin responsable"}
-                    {e.cantidad_jugadores ? ` · ${e.cantidad_jugadores} jugadores` : ""}
-                  </p>
-                  <p className="text-muted-foreground text-xs">
-                    Pagó {formatCOP(e.monto_pagado)} de {formatCOP(esperado)}
+                    {e.responsable_nombre ?? "Sin responsable"} · Pagó {formatCOP(e.monto_pagado)}{" "}
+                    de {formatCOP(esperado)}
                     {detalleMedios(e.id) && (
                       <span className="text-muted-foreground/80"> ({detalleMedios(e.id)})</span>
                     )}
@@ -226,73 +380,101 @@ export function EquiposPanel({
                       </span>
                     )}
                   </p>
-                </div>
+                  <div className="border-border mt-auto flex flex-wrap items-center gap-1.5 border-t pt-2">
+                    {acciones(e, false)}
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
 
-                <div className="flex flex-wrap items-center gap-1.5">
-                  {e.responsable_telefono && (
-                    <a
-                      href={waLink(
-                        e.responsable_telefono,
-                        `Hola ${e.responsable_nombre ?? ""}, te escribo por la inscripción de ${e.nombre} al torneo ${torneo.nombre}.`,
-                      )}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs font-medium text-emerald-600 hover:bg-emerald-500/10 dark:text-emerald-400"
-                    >
-                      <MessageCircle className="size-3.5" /> WhatsApp
-                    </a>
-                  )}
-                  <Button variant="outline" size="sm" onClick={() => setEditandoDe(e)}>
-                    <Pencil className="size-3.5" /> Editar
-                  </Button>
-                  <Button variant="outline" size="sm" onClick={() => setPlantillaDe(e)}>
-                    <Users className="size-3.5" />
-                    {jugadores.filter((j) => j.equipo_id === e.id).length || "Sin"} jugadores
-                  </Button>
-                  <Button variant="outline" size="sm" onClick={() => setPagoDe(e)}>
-                    <Wallet className="size-3.5" /> Pago
-                  </Button>
-                  {e.estado !== "confirmado" && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={pending}
-                      onClick={() =>
-                        accion(() => confirmarEquipoTorneo(e.id), "Equipo confirmado")
-                      }
-                    >
-                      <Check className="size-3.5" /> Confirmar
-                    </Button>
-                  )}
-                  {e.estado === "pendiente" && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      disabled={pending}
-                      onClick={() =>
-                        accion(() => rechazarEquipoTorneo(e.id), "Solicitud rechazada")
-                      }
-                    >
-                      <X className="size-3.5" /> Rechazar
-                    </Button>
-                  )}
-                  {e.estado === "confirmado" && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      disabled={pending}
-                      onClick={() =>
-                        accion(() => retirarEquipoTorneo(e.id), "Equipo retirado")
-                      }
-                    >
-                      Retirar
-                    </Button>
-                  )}
-                </div>
-              </li>
-            );
-          })}
-        </ul>
+          {/* Lista: tabla compacta en escritorio con todas las acciones por fila. */}
+          {vista === "lista" && (
+            <div className="border-border hidden overflow-x-auto rounded-xl border md:block">
+              <table className="w-full text-sm">
+                <thead className="bg-muted/40 text-muted-foreground text-left text-xs">
+                  <tr>
+                    <th className="px-3 py-2 font-medium">Equipo</th>
+                    <th className="px-3 py-2 font-medium">Responsable</th>
+                    <th className="px-3 py-2 text-center font-medium">Jugadores</th>
+                    <th className="px-3 py-2 font-medium">Pago</th>
+                    <th className="px-3 py-2 text-right font-medium">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-border divide-y">
+                  {visibles.map((e) => {
+                    const esperado = montoEsperadoEquipo(torneo, e);
+                    const saldo = saldoEquipo(torneo, e);
+                    const cantidad = jugadores.filter((j) => j.equipo_id === e.id).length;
+                    return (
+                      <tr key={e.id} className="hover:bg-muted/30 align-top">
+                        <td className="max-w-[22rem] px-3 py-2">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <span className="font-semibold">{e.nombre}</span>
+                            {insignias(e)}
+                          </div>
+                          {e.nota_revision && (
+                            <p
+                              title={e.nota_revision}
+                              className="mt-0.5 line-clamp-1 text-xs text-amber-700 dark:text-amber-300"
+                            >
+                              {e.nota_revision}
+                            </p>
+                          )}
+                        </td>
+                        <td className="px-3 py-2">
+                          <div className="flex items-center gap-1">
+                            <span className="truncate text-xs">
+                              {e.responsable_nombre ?? "—"}
+                            </span>
+                            {enlaceWhatsApp(e, true)}
+                          </div>
+                        </td>
+                        <td className="px-3 py-2 text-center">
+                          <button
+                            type="button"
+                            onClick={() => setPlantillaDe(e)}
+                            className="hover:bg-muted inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium"
+                            title="Ver y editar jugadores"
+                          >
+                            <Users className="size-3.5" /> {cantidad}
+                          </button>
+                        </td>
+                        <td className="px-3 py-2">
+                          <button
+                            type="button"
+                            onClick={() => setPagoDe(e)}
+                            className="hover:bg-muted -mx-1.5 rounded-md px-1.5 py-0.5 text-left text-xs"
+                            title={detalleMedios(e.id) || "Registrar pago"}
+                          >
+                            <span className="whitespace-nowrap">
+                              {formatCOP(e.monto_pagado)} / {formatCOP(esperado)}
+                            </span>
+                            <span
+                              className={cn(
+                                "block font-medium",
+                                saldo > 0
+                                  ? "text-amber-600 dark:text-amber-400"
+                                  : "text-emerald-600 dark:text-emerald-400",
+                              )}
+                            >
+                              {saldo > 0 ? `debe ${formatCOP(saldo)}` : "al día"}
+                            </span>
+                          </button>
+                        </td>
+                        <td className="px-3 py-2">
+                          <div className="flex items-center justify-end gap-1">
+                            {acciones(e, true)}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
       )}
 
       <EditarEquipoModal
