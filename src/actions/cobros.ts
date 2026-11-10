@@ -197,10 +197,18 @@ async function activarEntidadDelCobro(
   ahora: string,
 ): Promise<void> {
   if (cobro.torneo_id) {
+    // Solo si sigue en borrador: un torneo que ya arrancó (se cobra después de
+    // empezar) no puede volver a "inscripciones" al confirmar el pago.
     await svc
       .from("torneos")
       .update({ estado: "inscripciones", cobro_tipo: cobroTipo, activado_at: ahora })
-      .eq("id", cobro.torneo_id);
+      .eq("id", cobro.torneo_id)
+      .eq("estado", "borrador");
+    await svc
+      .from("torneos")
+      .update({ cobro_tipo: cobroTipo })
+      .eq("id", cobro.torneo_id)
+      .neq("estado", "borrador");
     return;
   }
   if (cobro.rifa_id) {
