@@ -520,7 +520,7 @@ function ResultadoModal({
   useEffect(() => {
     if (!leerAlAbrir) return;
     let vigente = true;
-    traerMarcador(leerAlAbrir)
+    traerMarcador(leerAlAbrir, true)
       .then((r) => {
         if (!vigente) return;
         if (r.success) aplicarLectura(r.data);
@@ -699,7 +699,7 @@ function ResultadoModal({
   function traer() {
     if (!encuentro) return;
     startTransition(async () => {
-      const r = await traerMarcador(encuentro.id);
+      const r = await traerMarcador(encuentro.id, true);
       if (!r.success) return void toast.error(r.error);
       aplicarLectura(r.data);
     });

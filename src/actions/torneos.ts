@@ -3672,6 +3672,8 @@ export async function probarVozPartido(
  */
 export async function traerMarcador(
   encuentroId: string,
+  /** Al abrir el partido: de paso corrige los nombres de la sala si quedaron recortados. */
+  sincronizar = false,
 ): Promise<ActionResult<MarcadorLeido & { enlaces: ReturnType<typeof enlacesMarcador> }>> {
   const acceso = await accesoTorneos();
   if (!acceso.ok) return { success: false, error: acceso.error };
@@ -3680,6 +3682,7 @@ export async function traerMarcador(
   if (!p.e.sala_marcador) {
     return { success: false, error: "Este partido no tiene marcador abierto." };
   }
+  if (sincronizar) await sincronizarNombresMarcador(p.e.sala_marcador, p.nombreA, p.nombreB);
   const leido = await leerMarcador(p.e.sala_marcador, 5000);
   if (!leido) return { success: false, error: "No se pudo leer el marcador. ¿Está encendido?" };
   // Precedente: lo que reportó el juez queda aquí aunque luego se corrija o se borre la sala.
