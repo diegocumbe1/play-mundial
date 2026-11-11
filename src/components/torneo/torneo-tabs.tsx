@@ -98,13 +98,14 @@ export function TorneoTabs({
 }) {
   const [pestana, setPestana] = useState<Pestana>(partidoInicial ? "fixture" : "resumen");
 
-  const tabs: { id: Pestana; label: string; icon: typeof BarChart3 }[] = [
-    { id: "resumen", label: "Resumen", icon: BarChart3 },
-    { id: "equipos", label: "Equipos", icon: Users },
-    { id: "reglas", label: "Categorías y reglas", icon: ListChecks },
-    { id: "fixture", label: "Fixture y resultados", icon: CalendarRange },
-    { id: "finanzas", label: "Finanzas", icon: Wallet },
-    { id: "configuracion", label: "Configuración", icon: Settings },
+  // `corto`: lo que se lee en celular (las pestañas se desplazan de lado).
+  const tabs: { id: Pestana; label: string; corto: string; icon: typeof BarChart3 }[] = [
+    { id: "resumen", label: "Resumen", corto: "Resumen", icon: BarChart3 },
+    { id: "equipos", label: "Equipos", corto: "Equipos", icon: Users },
+    { id: "reglas", label: "Categorías y reglas", corto: "Reglas", icon: ListChecks },
+    { id: "fixture", label: "Fixture y resultados", corto: "Fixture", icon: CalendarRange },
+    { id: "finanzas", label: "Finanzas", corto: "Finanzas", icon: Wallet },
+    { id: "configuracion", label: "Configuración", corto: "Ajustes", icon: Settings },
   ];
 
   return (
@@ -112,7 +113,8 @@ export function TorneoTabs({
       <div
         role="tablist"
         aria-label="Secciones del torneo"
-        className="border-border mb-5 flex gap-1 overflow-x-auto border-b pb-px"
+        // Fijas arriba al hacer scroll: en celular se cambia de sección sin volver a subir.
+        className="border-border bg-polla-dark/95 sticky top-0 z-20 -mx-4 mb-5 flex gap-1 overflow-x-auto border-b px-4 pb-px backdrop-blur [scrollbar-width:none] sm:static sm:mx-0 sm:bg-transparent sm:px-0 sm:backdrop-blur-none"
       >
         {tabs.map((t) => {
           const Icon = t.icon;
@@ -131,7 +133,8 @@ export function TorneoTabs({
               )}
             >
               <Icon className="size-3.5" />
-              {t.label}
+              <span className="sm:hidden">{t.corto}</span>
+              <span className="hidden sm:inline">{t.label}</span>
             </button>
           );
         })}

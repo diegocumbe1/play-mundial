@@ -74,7 +74,7 @@ export default async function SuperadminPage({
   const nombreTenant = Object.fromEntries(tenants.map((t) => [t.id, t.nombre]));
 
   return (
-    <div className="mx-auto max-w-5xl px-4 py-8">
+    <div className="mx-auto w-full max-w-5xl px-4 py-8">
       <header className="mb-6 flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">Panel de plataforma</h1>

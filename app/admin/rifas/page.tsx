@@ -19,7 +19,7 @@ export default async function RifasPage({
   const membership = await getMembership();
   if (!membership) {
     return (
-      <div className="mx-auto max-w-md p-8 text-center">
+      <div className="mx-auto w-full max-w-md p-8 text-center">
         <p className="text-muted-foreground">
           Tu usuario no está asociado a ningún organizador. Pídele al administrador
           que te cree el acceso.
@@ -39,7 +39,7 @@ export default async function RifasPage({
     (activa ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted");
 
   return (
-    <div className="mx-auto max-w-3xl px-4 py-8">
+    <div className="mx-auto w-full max-w-3xl px-4 py-8">
       <header className="mb-6 flex items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold">Mis rifas</h1>

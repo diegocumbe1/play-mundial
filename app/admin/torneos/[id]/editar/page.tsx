@@ -21,7 +21,7 @@ export default async function EditarTorneoPage({
   const superadmin = await esSuperadmin();
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-8">
+    <div className="mx-auto w-full max-w-2xl px-4 py-8">
       <Link
         href={`/admin/torneos/${torneo.id}`}
         className="text-muted-foreground hover:text-foreground mb-4 inline-flex items-center gap-1.5 text-sm"

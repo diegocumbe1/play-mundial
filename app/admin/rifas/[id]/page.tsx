@@ -35,7 +35,7 @@ export default async function RifaDetallePage({
   const { id } = await params;
   const membership = await getMembership();
   if (!membership) {
-    return <div className="mx-auto max-w-md p-8 text-center text-muted-foreground">Sin acceso.</div>;
+    return <div className="mx-auto w-full max-w-md p-8 text-center text-muted-foreground">Sin acceso.</div>;
   }
 
   const res = await getRifa(id);
@@ -79,7 +79,7 @@ export default async function RifaDetallePage({
   const puedeEditar = !["sorteada", "pagada", "cancelada"].includes(rifa.estado);
 
   return (
-    <div className="mx-auto max-w-3xl px-4 py-8 lg:max-w-5xl xl:max-w-7xl">
+    <div className="mx-auto w-full max-w-3xl px-4 py-8 lg:max-w-5xl xl:max-w-7xl">
       <Link href="/admin/rifas" className="text-muted-foreground hover:text-foreground mb-4 inline-flex items-center gap-1.5 text-sm">
         <ArrowLeft className="size-4" /> Mis rifas
       </Link>

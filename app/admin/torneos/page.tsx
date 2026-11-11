@@ -13,7 +13,7 @@ export default async function TorneosPage() {
   const membership = await getMembership();
   if (!membership) {
     return (
-      <div className="mx-auto max-w-md p-8 text-center">
+      <div className="mx-auto w-full max-w-md p-8 text-center">
         <p className="text-muted-foreground">
           Tu usuario no está asociado a ningún organizador. Pídele al administrador que te
           cree el acceso.
@@ -26,7 +26,7 @@ export default async function TorneosPage() {
   const res = await getTorneosConResumen();
   if (!res.success) {
     return (
-      <div className="mx-auto max-w-md p-8 text-center">
+      <div className="mx-auto w-full max-w-md p-8 text-center">
         <Trophy className="text-muted-foreground mx-auto mb-3 size-8" />
         <p className="text-muted-foreground text-sm">{res.error}</p>
         <Link href="/admin" className={`${buttonVariants({ variant: "outline", size: "sm" })} mt-4`}>
@@ -41,7 +41,7 @@ export default async function TorneosPage() {
   const puedeCrear = cupo?.puedeCrear ?? true;
 
   return (
-    <div className="mx-auto max-w-3xl px-4 py-8">
+    <div className="mx-auto w-full max-w-3xl px-4 py-8">
       <header className="mb-6 flex items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold">Torneos deportivos</h1>

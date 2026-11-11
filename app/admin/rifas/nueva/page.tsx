@@ -13,7 +13,7 @@ export default async function NuevaRifaPage() {
   const membership = await getMembership();
   if (!membership) {
     return (
-      <div className="mx-auto max-w-md p-8 text-center">
+      <div className="mx-auto w-full max-w-md p-8 text-center">
         <p className="text-muted-foreground">Sin acceso de organizador.</p>
       </div>
     );
@@ -26,7 +26,7 @@ export default async function NuevaRifaPage() {
     : [];
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-8">
+    <div className="mx-auto w-full max-w-2xl px-4 py-8">
       <Link
         href="/admin/rifas"
         className="text-muted-foreground hover:text-foreground mb-4 inline-flex items-center gap-1.5 text-sm"

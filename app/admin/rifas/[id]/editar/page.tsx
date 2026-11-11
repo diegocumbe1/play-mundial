@@ -18,14 +18,14 @@ export default async function EditarRifaPage({
   const { id } = await params;
   const membership = await getMembership();
   if (!membership) {
-    return <div className="mx-auto max-w-md p-8 text-center text-muted-foreground">Sin acceso.</div>;
+    return <div className="mx-auto w-full max-w-md p-8 text-center text-muted-foreground">Sin acceso.</div>;
   }
 
   const [res, config] = await Promise.all([getRifa(id), getPlataformaConfig()]);
   if (!res.success) notFound();
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-8">
+    <div className="mx-auto w-full max-w-2xl px-4 py-8">
       <Link href={`/admin/rifas/${id}`} className="text-muted-foreground hover:text-foreground mb-4 inline-flex items-center gap-1.5 text-sm">
         <ArrowLeft className="size-4" /> Volver a la rifa
       </Link>

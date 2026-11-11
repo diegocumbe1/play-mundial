@@ -5,7 +5,6 @@ import { Search, X } from "lucide-react";
 
 import type { SuperadminTenantMetric } from "@/actions/tenants";
 import { TenantPlanControls } from "@/components/superadmin/tenant-plan-controls";
-import { TenantPatrociniosToggle } from "@/components/superadmin/tenant-patrocinios-toggle";
 import { TenantProductosControls } from "@/components/superadmin/tenant-productos-controls";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -201,11 +200,6 @@ export function SuperadminOrganizadoresTable({
                       tenantId={t.id}
                       habilitados={productosPorTenant[t.id] ?? []}
                     />
-                    {(productosPorTenant[t.id] ?? []).includes("torneos") && (
-                      <div className="mt-1">
-                        <TenantPatrociniosToggle tenantId={t.id} activo={!!t.patrocinios_habilitado} />
-                      </div>
-                    )}
                   </TableCell>
                   <TableCell className="text-right">
                     <div>{m.rifasMes}</div>

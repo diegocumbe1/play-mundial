@@ -168,7 +168,7 @@ export default async function PreciosPage() {
   ];
 
   return (
-    <div className="mx-auto max-w-4xl px-4 py-12">
+    <div className="mx-auto w-full max-w-4xl px-4 py-12">
       {/* Con sesión manda el header del panel; sin ella, esta es la única
           salida de la página. */}
       {!membership && (

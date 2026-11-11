@@ -21,7 +21,7 @@ export default async function SuperadminSettingsPage() {
   ]);
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-8">
+    <div className="mx-auto w-full max-w-2xl px-4 py-8">
       <Link href="/superadmin" className="text-muted-foreground hover:text-foreground mb-4 inline-flex items-center gap-1.5 text-sm">
         <ArrowLeft className="size-4" /> Panel
       </Link>

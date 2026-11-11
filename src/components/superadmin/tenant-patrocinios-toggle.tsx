@@ -30,13 +30,13 @@ export function TenantPatrociniosToggle({ tenantId, activo }: { tenantId: string
         })
       }
       className={cn(
-        "rounded-full px-2 py-0.5 text-[11px] font-semibold transition-colors",
+        "inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors disabled:opacity-50",
         activo
-          ? "bg-sky-500/15 text-sky-600 dark:text-sky-400"
-          : "bg-muted text-muted-foreground hover:bg-muted/70",
+          ? "border-border hover:bg-muted border"
+          : "bg-primary text-primary-foreground hover:bg-primary/80",
       )}
     >
-      Patrocinadores
+      {activo ? "Desactivar patrocinadores" : "Activar patrocinadores"}
     </button>
   );
 }

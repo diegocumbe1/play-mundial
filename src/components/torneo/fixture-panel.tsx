@@ -701,7 +701,7 @@ function ResultadoModal({
 
   return (
     <Dialog open onOpenChange={(o) => !o && onCerrar()}>
-      <DialogContent>
+      <DialogContent className="sm:max-w-xl">
         <DialogHeader>
           <DialogTitle>
             {a} vs {b}
@@ -1037,7 +1037,7 @@ function HorarioPartido({
               <select
                 value={intercambio}
                 onChange={(e) => setIntercambio(e.target.value)}
-                className="border-input bg-background h-9 rounded-md border px-2 text-sm"
+                className="border-input bg-background h-9 w-full min-w-0 rounded-md border px-2 text-sm"
                 aria-label="Partido con el que intercambiar"
               >
                 <option value="">Elige el partido…</option>

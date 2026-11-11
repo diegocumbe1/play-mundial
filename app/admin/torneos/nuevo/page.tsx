@@ -14,7 +14,7 @@ export default async function NuevoTorneoPage() {
   const membership = await getMembership();
   if (!membership) {
     return (
-      <div className="mx-auto max-w-md p-8 text-center">
+      <div className="mx-auto w-full max-w-md p-8 text-center">
         <p className="text-muted-foreground">Sin acceso de organizador.</p>
       </div>
     );
@@ -24,7 +24,7 @@ export default async function NuevoTorneoPage() {
   // La ruta también valida el producto: no basta con ocultar la tarjeta.
   if (!superadmin && !(await tieneProductoHabilitado(membership.tenant_id, "torneos"))) {
     return (
-      <div className="mx-auto max-w-md p-8 text-center">
+      <div className="mx-auto w-full max-w-md p-8 text-center">
         <p className="text-muted-foreground text-sm">
           Tu cuenta no tiene habilitado el módulo de torneos deportivos.
         </p>
@@ -42,7 +42,7 @@ export default async function NuevoTorneoPage() {
   const cupo = superadmin ? null : await getCupoTorneos();
   if (cupo && !cupo.puedeCrear) {
     return (
-      <div className="mx-auto max-w-md p-8 text-center">
+      <div className="mx-auto w-full max-w-md p-8 text-center">
         <p className="text-muted-foreground text-sm">
           Tu plan incluye {cupo.max} torneo{cupo.max === 1 ? "" : "s"} y ya lo
           {cupo.max === 1 ? "" : "s"} usaste. Para crear más, escríbenos y te habilitamos el cupo.
@@ -63,7 +63,7 @@ export default async function NuevoTorneoPage() {
     : [];
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-8">
+    <div className="mx-auto w-full max-w-2xl px-4 py-8">
       <Link
         href="/admin/torneos"
         className="text-muted-foreground hover:text-foreground mb-4 inline-flex items-center gap-1.5 text-sm"

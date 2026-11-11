@@ -13,6 +13,7 @@ import {
   setPlanTenant,
 } from "@/actions/tenants";
 import { RegistrarCobroForm } from "@/components/superadmin/registrar-cobro-form";
+import { TenantPatrociniosToggle } from "@/components/superadmin/tenant-patrocinios-toggle";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -184,6 +185,18 @@ export function TenantPlanControls({
                 tenantId={tenant.id}
                 max={tenant.max_torneos === undefined ? 1 : tenant.max_torneos}
               />
+            )}
+
+            {!esSuper && (
+              <div className="border-border rounded-xl border p-3">
+                <p className="text-sm font-semibold">Patrocinadores de torneos</p>
+                <p className="text-muted-foreground mb-2 text-xs">
+                  {tenant.patrocinios_habilitado
+                    ? "Activo: puede agregar organizador, gestores y patrocinadores con logo, y publicarlos en la página del torneo."
+                    : "Inactivo (por defecto): no ve la sección y la página pública no muestra patrocinadores."}
+                </p>
+                <TenantPatrociniosToggle tenantId={tenant.id} activo={!!tenant.patrocinios_habilitado} />
+              </div>
             )}
 
             {!bloqueado && <RegistrarCobroForm tenantId={tenant.id} />}
