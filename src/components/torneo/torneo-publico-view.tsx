@@ -16,6 +16,7 @@ import { inscribirEquipoPublico } from "@/actions/torneos";
 import type { TorneoPublicoDetalle } from "@/actions/torneos";
 import { Campo, Selector } from "@/components/torneo/campos";
 import { FixtureVista } from "@/components/torneo/fixture-vista";
+import { BannerPatrocinadores, FranjaPatrocinadores } from "@/components/torneo/patrocinadores-publicos";
 import { jugadorVacio, PlantillaEditor } from "@/components/torneo/plantilla-editor";
 import type { JugadorInput } from "@/lib/torneo-jugadores";
 import { Button } from "@/components/ui/button";
@@ -53,6 +54,7 @@ export function TorneoPublicoView({ datos }: { datos: TorneoPublicoDetalle }) {
     inscripcionesPausadas,
     pago,
     organizador,
+    patrocinadores,
   } = datos;
   const [enviado, setEnviado] = useState<string | null>(null);
 
@@ -84,7 +86,13 @@ export function TorneoPublicoView({ datos }: { datos: TorneoPublicoDetalle }) {
   }
 
   return (
-    <main className="mx-auto max-w-xl px-4 py-8 md:max-w-3xl lg:max-w-5xl">
+    <main
+      className={
+        "mx-auto max-w-xl px-4 py-8 md:max-w-3xl lg:max-w-5xl" +
+        // Espacio para el banner fijo de patrocinadores (abajo).
+        (patrocinadores.length > 0 ? " pb-24 2xl:pb-8" : "")
+      }
+    >
       {/* --- Promesa --- */}
       <header className="mb-5">
         <p className="text-primary text-xs font-semibold uppercase tracking-wide">
@@ -342,11 +350,14 @@ export function TorneoPublicoView({ datos }: { datos: TorneoPublicoDetalle }) {
         </section>
       )}
 
+      <FranjaPatrocinadores patrocinadores={patrocinadores} />
+
       <footer className="text-muted-foreground border-border border-t pt-4 text-center text-xs">
         <a href="/terminos" className="hover:text-foreground underline">
           Términos y tratamiento de datos
         </a>
       </footer>
+      <BannerPatrocinadores patrocinadores={patrocinadores} />
     </main>
   );
 }

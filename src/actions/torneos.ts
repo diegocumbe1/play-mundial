@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
-import { getMembership } from "@/lib/auth";
+import { esSuperadmin, getMembership } from "@/lib/auth";
 import { ESTADOS_TENANT_BLOQUEADO } from "@/lib/errores";
 import {
   borrarSalaMarcador,
@@ -16,6 +16,13 @@ import {
   type MarcadorLeido,
 } from "@/lib/marcador-externo";
 import { fraseDePrueba, limpiarOpcionesMarcador, type OpcionesMarcador } from "@/lib/marcador-voz";
+import {
+  choquePartido,
+  leerRestricciones,
+  restriccionesSchema,
+  tieneRestricciones,
+  type RestriccionesEquipo,
+} from "@/lib/torneo-restricciones";
 import {
   avisarEnVivo,
   avisarFinalizado,
@@ -45,6 +52,7 @@ import {
   validarSets,
   crucesEliminatoria,
   faseEliminatoria,
+  fechaColombia,
   leerOrigen,
   proponerProgramacion,
   rngConSemilla,
@@ -83,6 +91,9 @@ import type {
   EquipoTorneo,
   EquipoTorneoPublico,
   GastoTorneo,
+  IngresoTorneo,
+  PatrocinadorPublico,
+  PatrocinadorTorneo,
   JugadorTorneo,
   Membership,
   PagoEquipoTorneo,
@@ -282,6 +293,8 @@ const equipoSchema = z.object({
     .default("pendiente"),
   /** Qué falta verificar del equipo. `null` = revisado; ausente = no se toca. */
   nota_revision: z.string().trim().nullable().optional(),
+  /** Cuándo puede jugar. `null` = sin restricciones; ausente = no se toca. */
+  restricciones_horario: restriccionesSchema.nullable().optional(),
 });
 
 const premioSchema = z.object({
@@ -386,6 +399,11 @@ export interface TorneoDetalle {
   encuentros: Encuentro[];
   pagos: PagoEquipoTorneo[];
   jugadores: JugadorTorneo[];
+  /** Otros ingresos (arbitraje, patrocinios…). */
+  ingresos: IngresoTorneo[];
+  patrocinadores: PatrocinadorTorneo[];
+  /** El superadmin le habilitó los patrocinadores a este organizador. */
+  patrociniosHabilitados: boolean;
   dashboard: DashboardTorneo;
   alertas: AlertaTorneo[];
 }
@@ -416,10 +434,17 @@ export async function getTorneo(id: string): Promise<ActionResult<TorneoDetalle>
     svc.from("pagos_equipo_torneo").select("*").eq("torneo_id", id).order("fecha", { ascending: false }),
     svc.from("jugadores_torneo").select("*").eq("torneo_id", id).order("orden"),
   ]);
+  const [{ data: ingresos }, { data: patrocinadores }, habilitaPatrocinios] = await Promise.all([
+    svc.from("ingresos_torneo").select("*").eq("torneo_id", id).order("fecha", { ascending: false }),
+    svc.from("patrocinadores_torneo").select("*").eq("torneo_id", id).order("orden").order("created_at"),
+    patrociniosHabilitados(torneo.tenant_id, acceso.membership),
+  ]);
+  const listaIngresos = (ingresos as IngresoTorneo[]) ?? [];
 
   const listaEquipos = (equipos as EquipoTorneo[]) ?? [];
   const listaGastos = (gastos as GastoTorneo[]) ?? [];
   const listaPremios = (premios as PremioTorneo[]) ?? [];
+  const listaCategorias = (categorias as CategoriaTorneo[]) ?? [];
 
   return {
     success: true,
@@ -428,12 +453,15 @@ export async function getTorneo(id: string): Promise<ActionResult<TorneoDetalle>
       equipos: listaEquipos,
       gastos: listaGastos,
       premios: listaPremios,
-      categorias: (categorias as CategoriaTorneo[]) ?? [],
+      categorias: listaCategorias,
       encuentros: (encuentros as Encuentro[]) ?? [],
       pagos: (pagos as PagoEquipoTorneo[]) ?? [],
       jugadores: (jugadores as JugadorTorneo[]) ?? [],
-      dashboard: calcularDashboardTorneo(torneo, listaEquipos, listaGastos),
-      alertas: validarViabilidadTorneo(torneo, listaEquipos, listaGastos, listaPremios),
+      ingresos: listaIngresos,
+      patrocinadores: (patrocinadores as PatrocinadorTorneo[]) ?? [],
+      patrociniosHabilitados: habilitaPatrocinios,
+      dashboard: calcularDashboardTorneo(torneo, listaEquipos, listaGastos, listaCategorias, listaPremios, listaIngresos),
+      alertas: validarViabilidadTorneo(torneo, listaEquipos, listaGastos, listaPremios, Date.now(), listaCategorias, listaIngresos),
     },
   };
 }
@@ -1156,6 +1184,16 @@ export async function actualizarEquipoTorneo(
       // Solo se toca si el formulario la envía (los que no la conocen no la borran).
       ...(d.categoria_id !== undefined ? { categoria_id: d.categoria_id } : {}),
       ...(d.nota_revision !== undefined ? { nota_revision: d.nota_revision || null } : {}),
+      ...(d.restricciones_horario !== undefined
+        ? {
+            // Sin ninguna restricción ni nota se guarda `null` (equipo libre).
+            restricciones_horario:
+              d.restricciones_horario &&
+              (tieneRestricciones(d.restricciones_horario) || d.restricciones_horario.nota)
+                ? d.restricciones_horario
+                : null,
+          }
+        : {}),
     })
     .eq("id", id);
 
@@ -1315,6 +1353,69 @@ export async function registrarPagoEquipo(
   await sincronizarPagado(equipo.id);
   revalidarTorneo(torneo);
   return { success: true, data: undefined };
+}
+
+const pagoGrupalSchema = z.object({
+  metodo: z.enum(["efectivo", "transferencia"]),
+  nota: z.string().trim().max(200).nullable().optional(),
+  pagos: z
+    .array(z.object({ equipoId: z.string().uuid(), monto: z.number().int().min(1, "Cada equipo debe tener un monto") }))
+    .min(1, "Marca al menos un equipo")
+    .max(100),
+});
+
+/**
+ * Un ingreso que cubre a varios equipos (ej. llegan $800.000 de 4 equipos):
+ * deja un abono en cada equipo, con su monto, y actualiza lo pagado de cada
+ * uno. Todo o nada: si algún equipo no es del torneo o pagaría de más, no se
+ * registra ninguno.
+ */
+export async function registrarPagoGrupal(
+  torneoId: string,
+  input: z.input<typeof pagoGrupalSchema>,
+): Promise<ActionResult<{ equipos: number; total: number }>> {
+  const acceso = await accesoTorneos();
+  if (!acceso.ok) return { success: false, error: acceso.error };
+  const torneo = await torneoDelUsuario(torneoId, acceso.membership);
+  if (!torneo) return { success: false, error: "Torneo no encontrado" };
+  const parsed = pagoGrupalSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: parsed.error.issues[0].message };
+  const d = parsed.data;
+  if (new Set(d.pagos.map((p) => p.equipoId)).size !== d.pagos.length) {
+    return { success: false, error: "Un equipo aparece dos veces" };
+  }
+
+  const svc = createServiceRoleClient();
+  const { data } = await svc
+    .from("equipos_torneo")
+    .select("*")
+    .eq("torneo_id", torneoId)
+    .in("id", d.pagos.map((p) => p.equipoId));
+  const equipos = (data as EquipoTorneo[]) ?? [];
+  for (const p of d.pagos) {
+    const e = equipos.find((x) => x.id === p.equipoId);
+    if (!e) return { success: false, error: "Un equipo no es de este torneo" };
+    const saldo = saldoEquipo(torneo, e);
+    if (p.monto > saldo) {
+      return { success: false, error: `${e.nombre}: el abono supera lo que debe (${formatCOP(saldo)})` };
+    }
+  }
+
+  const nota = d.nota || `Pago agrupado de ${d.pagos.length} equipos`;
+  const { error } = await svc.from("pagos_equipo_torneo").insert(
+    d.pagos.map((p) => ({
+      tenant_id: torneo.tenant_id,
+      torneo_id: torneo.id,
+      equipo_id: p.equipoId,
+      monto: p.monto,
+      metodo: d.metodo,
+      nota,
+    })),
+  );
+  if (error) return { success: false, error: error.message };
+  for (const p of d.pagos) await sincronizarPagado(p.equipoId);
+  revalidarTorneo(torneo);
+  return { success: true, data: { equipos: d.pagos.length, total: d.pagos.reduce((s, p) => s + p.monto, 0) } };
 }
 
 /** Borra un abono registrado por error. El saldo del equipo se recalcula. */
@@ -1486,6 +1587,11 @@ export interface TorneoPublicoDetalle {
   /** Datos de contacto/cobro del organizador (ya son públicos por diseño). */
   pago: TenantPagoConfig | null;
   organizador: string;
+  /**
+   * Organizador, gestores y patrocinadores publicados (con imagen). Vacío si
+   * no hay o si el superadmin no le habilitó la función al organizador.
+   */
+  patrocinadores: PatrocinadorPublico[];
 }
 
 /** Datos públicos de un torneo por slug. Nunca expone contactos ni finanzas. */
@@ -1581,6 +1687,7 @@ export async function getTorneoPublico(
       premios: premiosOrdenados((premiosData as PremioTorneoPublico[]) ?? []),
       categorias,
       encuentros: await conMarcadorEnVivo((encuentrosData as EncuentroPublico[]) ?? []),
+      patrocinadores: await patrocinadoresPublicos(torneo),
       tablaReglas: leerReglas(torneo.reglas).tabla,
       nombresCanchas: leerReglas(torneo.reglas).juego.nombres_canchas,
       categoriaInicial: categoriaInicial(
@@ -2990,6 +3097,13 @@ async function completarLlaveDesdeGrupos(torneo: Torneo, categoriaId: string | n
 const programarSchema = z.object({
   desde: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Elige desde qué día programar"),
   dias: z.number().int().min(1).max(30),
+  /**
+   * Qué se programa:
+   * - `sin_fecha`: solo los partidos sin fecha (lo de siempre).
+   * - `conflictos`: además, los ya programados que chocan con las restricciones de sus equipos.
+   * - `todo`: rehace la programación de todos los partidos no jugados desde `desde`.
+   */
+  modo: z.enum(["sin_fecha", "conflictos", "todo"]).default("sin_fecha"),
 });
 
 /**
@@ -3004,8 +3118,10 @@ export async function programarPartidos(
   aplicar: boolean,
 ): Promise<
   ActionResult<{
-    propuesta: { id: string; programado_at: string; cancha: number; grupo: string | null; fase: string; a: string; b: string }[];
+    propuesta: { id: string; programado_at: string; cancha: number; grupo: string | null; fase: string; a: string; b: string; antes: string | null }[];
     sinFecha: number;
+    /** Partidos que no caben en ningún turno (quedarán «Por programar»), con el porqué. */
+    sinCupo: { a: string; b: string; motivo: string }[];
   }>
 > {
   const acceso = await accesoTorneos();
@@ -3018,24 +3134,51 @@ export async function programarPartidos(
   const svc = createServiceRoleClient();
   const [{ data: todosData }, { data: eqs }] = await Promise.all([
     svc.from("encuentros").select("*").eq("torneo_id", torneoId),
-    svc.from("equipos_torneo").select("id, nombre").eq("torneo_id", torneoId),
+    svc.from("equipos_torneo").select("id, nombre, restricciones_horario").eq("torneo_id", torneoId),
   ]);
+  const equipos = (eqs as { id: string; nombre: string; restricciones_horario: unknown }[]) ?? [];
+  const restricciones = new Map<string, RestriccionesEquipo>(
+    equipos.map((e) => [e.id, leerRestricciones(e.restricciones_horario)]),
+  );
+  const nombre = (id: string | null) => equipos.find((e) => e.id === id)?.nombre ?? "Equipo";
+  const choque = (m: Encuentro) =>
+    m.programado_at
+      ? choquePartido(m.programado_at, [
+          { nombre: nombre(m.equipo_a_id), restricciones: restricciones.get(m.equipo_a_id ?? "") },
+          { nombre: nombre(m.equipo_b_id), restricciones: restricciones.get(m.equipo_b_id ?? "") },
+        ])
+      : null;
+
   const todos = (todosData as Encuentro[]) ?? [];
   const deCategoria = todos.filter((m) => m.categoria_id === categoriaId);
-  const pendientes = deCategoria.filter(
-    (m) => m.estado === "programado" && !m.programado_at && m.equipo_a_id && m.equipo_b_id,
+  const conEquipos = (m: Encuentro) => m.estado === "programado" && !!m.equipo_a_id && !!m.equipo_b_id;
+  const sinFecha = deCategoria.filter((m) => conEquipos(m) && !m.programado_at);
+  // Partidos con fecha que se vuelven a programar (no jugados y a partir de `desde`).
+  const desdeISO = new Date(`${parsed.data.desde}T00:00:00-05:00`).getTime();
+  const { modo } = parsed.data;
+  const reprogramar = deCategoria.filter(
+    (m) =>
+      conEquipos(m) &&
+      !!m.programado_at &&
+      (modo === "todo"
+        ? new Date(m.programado_at).getTime() >= desdeISO
+        : modo === "conflictos" && !!choque(m)),
   );
-  // Carga de cada equipo: partidos ya jugados o con fecha.
+  const moverIds = new Set(reprogramar.map((m) => m.id));
+  const pendientes = [...sinFecha, ...reprogramar];
+  // Carga de cada equipo: partidos ya jugados o con fecha (sin contar los que se mueven).
   const cargas = new Map<string, number>();
   for (const m of deCategoria) {
-    if (m.estado === "programado" && !m.programado_at) continue;
+    if (moverIds.has(m.id) || (m.estado === "programado" && !m.programado_at)) continue;
     for (const id of [m.equipo_a_id, m.equipo_b_id]) if (id) cargas.set(id, (cargas.get(id) ?? 0) + 1);
   }
 
   const asignados = proponerProgramacion({
     pendientes,
-    // Las canchas son del torneo: cuenta lo programado de todas las categorías.
-    ocupados: todos.filter((m) => m.programado_at),
+    // Las canchas son del torneo: cuenta lo programado de todas las categorías
+    // (menos lo que se está moviendo, que libera su turno).
+    ocupados: todos.filter((m) => m.programado_at && !moverIds.has(m.id)),
+    restricciones,
     cargas,
     desde: parsed.data.desde,
     diasDeJuego: parsed.data.dias,
@@ -3044,26 +3187,63 @@ export async function programarPartidos(
     duracionMin: torneo.duracion_partido_minutos ?? 45,
   });
 
-  const nombre = (id: string | null) =>
-    ((eqs as { id: string; nombre: string }[]) ?? []).find((e) => e.id === id)?.nombre ?? "Equipo";
   const propuesta = asignados.map((x) => {
     const m = pendientes.find((p) => p.id === x.id)!;
-    return { ...x, grupo: m.grupo, fase: m.fase, a: nombre(m.equipo_a_id), b: nombre(m.equipo_b_id) };
+    return {
+      ...x,
+      grupo: m.grupo,
+      fase: m.fase,
+      a: nombre(m.equipo_a_id),
+      b: nombre(m.equipo_b_id),
+      antes: m.programado_at,
+    };
   });
+  const asignadoIds = new Set(asignados.map((x) => x.id));
+  const sinCupo = pendientes
+    .filter((m) => !asignadoIds.has(m.id))
+    .map((m) => {
+      const restringidos = [m.equipo_a_id, m.equipo_b_id].filter((id) =>
+        tieneRestricciones(restricciones.get(id ?? "")),
+      );
+      return {
+        a: nombre(m.equipo_a_id),
+        b: nombre(m.equipo_b_id),
+        motivo:
+          restringidos.length > 0
+            ? `Ningún turno les sirve: revisa las restricciones de ${restringidos.map(nombre).join(" y ")} o programa más días.`
+            : "No alcanzaron los turnos: programa más días.",
+      };
+    });
 
-  if (aplicar && asignados.length > 0) {
+  if (aplicar && (asignados.length > 0 || reprogramar.length > 0)) {
     for (const x of asignados) {
-      const { error } = await svc
-        .from("encuentros")
-        .update({ programado_at: x.programado_at, cancha: x.cancha })
-        .eq("id", x.id)
-        .is("programado_at", null);
+      const query = svc.from("encuentros").update({ programado_at: x.programado_at, cancha: x.cancha }).eq("id", x.id);
+      // Uno sin fecha solo se llena si sigue sin fecha; uno que se mueve, si aún no se jugó.
+      const { error } = await (moverIds.has(x.id) ? query.eq("estado", "programado") : query.is("programado_at", null));
       if (error) return { success: false, error: error.message };
     }
-    await avisarPartidosNuevos(torneo, `Nueva programación: ${asignados.length} partidos`);
+    // Los que se iban a mover y no cupieron quedan «Por programar»: su turno viejo
+    // ya pudo quedar ocupado (o choca con las restricciones).
+    const sinTurno = reprogramar.filter((m) => !asignadoIds.has(m.id)).map((m) => m.id);
+    if (sinTurno.length > 0) {
+      const { error } = await svc
+        .from("encuentros")
+        .update({ programado_at: null, cancha: null })
+        .in("id", sinTurno)
+        .eq("estado", "programado");
+      if (error) return { success: false, error: error.message };
+    }
+    if (asignados.length > 0) {
+      await avisarPartidosNuevos(
+        torneo,
+        reprogramar.length > 0
+          ? `Reprogramación: ${asignados.length} partidos`
+          : `Nueva programación: ${asignados.length} partidos`,
+      );
+    }
     revalidarTorneo(torneo);
   }
-  return { success: true, data: { propuesta, sinFecha: pendientes.length } };
+  return { success: true, data: { propuesta, sinFecha: pendientes.length, sinCupo } };
 }
 
 const horarioSchema = z.object({
@@ -3073,11 +3253,15 @@ const horarioSchema = z.object({
   cancha: z.number().int().min(1),
 });
 
-/** El organizador cambia a mano la fecha, hora o cancha de un partido. */
+/**
+ * El organizador cambia a mano la fecha, hora o cancha de un partido. Si choca
+ * con las restricciones de un equipo se guarda igual (manda el organizador),
+ * pero vuelve un `aviso` para que lo sepa.
+ */
 export async function editarHorarioEncuentro(
   encuentroId: string,
   input: z.input<typeof horarioSchema>,
-): Promise<ActionResult> {
+): Promise<ActionResult<{ aviso: string | null }>> {
   const acceso = await accesoTorneos();
   if (!acceso.ok) return { success: false, error: acceso.error };
   const parsed = horarioSchema.safeParse(input);
@@ -3115,7 +3299,101 @@ export async function editarHorarioEncuentro(
     .eq("id", encuentroId);
   if (error) return { success: false, error: error.message };
   revalidarTorneo(torneo);
-  return { success: true, data: undefined };
+
+  let aviso: string | null = null;
+  if (programado_at && e.equipo_a_id && e.equipo_b_id) {
+    const { data: eqs } = await svc
+      .from("equipos_torneo")
+      .select("id, nombre, restricciones_horario")
+      .in("id", [e.equipo_a_id, e.equipo_b_id]);
+    aviso = choquePartido(
+      programado_at,
+      ((eqs as { nombre: string; restricciones_horario: unknown }[]) ?? []).map((x) => ({
+        nombre: x.nombre,
+        restricciones: leerRestricciones(x.restricciones_horario),
+      })),
+    );
+  }
+  return { success: true, data: { aviso } };
+}
+
+/**
+ * Intercambia fecha, hora y cancha entre dos partidos no jugados del mismo
+ * torneo (así se cambia quién juega en un turno sin romper el fixture). Se
+ * guarda igual aunque choque con restricciones o un equipo quede jugando dos
+ * veces el mismo día, pero vuelve un `aviso` para que el organizador lo sepa.
+ */
+export async function intercambiarHorarios(
+  encuentroId: string,
+  otroId: string,
+): Promise<ActionResult<{ aviso: string | null }>> {
+  const acceso = await accesoTorneos();
+  if (!acceso.ok) return { success: false, error: acceso.error };
+  if (encuentroId === otroId) return { success: false, error: "Elige otro partido" };
+
+  const svc = createServiceRoleClient();
+  const { data } = await svc.from("encuentros").select("*").in("id", [encuentroId, otroId]);
+  const lista = (data as Encuentro[]) ?? [];
+  const a = lista.find((x) => x.id === encuentroId);
+  const b = lista.find((x) => x.id === otroId);
+  if (!a || !b) return { success: false, error: "Partido no encontrado" };
+  if (a.torneo_id !== b.torneo_id) return { success: false, error: "Los partidos son de torneos distintos" };
+  const torneo = await torneoDelUsuario(a.torneo_id, acceso.membership);
+  if (!torneo) return { success: false, error: "No autorizado" };
+  if (a.estado !== "programado" || b.estado !== "programado") {
+    return { success: false, error: "Solo se intercambian partidos que aún no se juegan." };
+  }
+  if (!a.programado_at && !b.programado_at) {
+    return { success: false, error: "Ninguno de los dos tiene horario." };
+  }
+
+  // Dos pasos: primero se libera el turno de `a` (evita chocar con algún índice de turno único).
+  const pasos = [
+    svc.from("encuentros").update({ programado_at: null, cancha: null }).eq("id", a.id).eq("estado", "programado"),
+    svc.from("encuentros").update({ programado_at: a.programado_at, cancha: a.cancha }).eq("id", b.id).eq("estado", "programado"),
+    svc.from("encuentros").update({ programado_at: b.programado_at, cancha: b.cancha }).eq("id", a.id).eq("estado", "programado"),
+  ];
+  for (const paso of pasos) {
+    const { error } = await paso;
+    if (error) return { success: false, error: error.message };
+  }
+
+  // Avisos: restricciones y equipos que quedan jugando dos veces el mismo día.
+  const { data: todosData } = await svc
+    .from("encuentros")
+    .select("id, equipo_a_id, equipo_b_id, programado_at, estado")
+    .eq("torneo_id", a.torneo_id);
+  const ids = [a.equipo_a_id, a.equipo_b_id, b.equipo_a_id, b.equipo_b_id].filter((x): x is string => !!x);
+  const { data: eqs } = await svc.from("equipos_torneo").select("id, nombre, restricciones_horario").in("id", ids);
+  const equipos = (eqs as { id: string; nombre: string; restricciones_horario: unknown }[]) ?? [];
+  const eq = (id: string | null) => equipos.find((e) => e.id === id);
+  const avisos: string[] = [];
+  const todos = (todosData as Pick<Encuentro, "id" | "equipo_a_id" | "equipo_b_id" | "programado_at" | "estado">[]) ?? [];
+  for (const [m, nuevo] of [[a, b.programado_at], [b, a.programado_at]] as const) {
+    if (!nuevo) continue;
+    const choque = choquePartido(
+      nuevo,
+      [m.equipo_a_id, m.equipo_b_id].map((id) => ({
+        nombre: eq(id)?.nombre ?? "Equipo",
+        restricciones: leerRestricciones(eq(id)?.restricciones_horario),
+      })),
+    );
+    if (choque) avisos.push(choque);
+    const dia = fechaColombia(nuevo);
+    for (const id of [m.equipo_a_id, m.equipo_b_id]) {
+      const otro = todos.find(
+        (x) =>
+          x.id !== m.id &&
+          x.programado_at &&
+          fechaColombia(x.programado_at) === dia &&
+          (x.equipo_a_id === id || x.equipo_b_id === id),
+      );
+      if (otro) avisos.push(`${eq(id)?.nombre ?? "Un equipo"} queda con dos partidos el mismo día`);
+    }
+  }
+
+  revalidarTorneo(torneo);
+  return { success: true, data: { aviso: avisos.length > 0 ? [...new Set(avisos)].join(". ") : null } };
 }
 
 const resultadoSchema = z.discriminatedUnion("tipo", [
@@ -3251,6 +3529,8 @@ export async function guardarResultado(
 export async function marcarArbitrajePagado(
   encuentroId: string,
   pagado: boolean,
+  /** Lo que se cobró (COP). Con valor > 0 queda como ingreso de arbitraje del torneo. */
+  valor?: number | null,
 ): Promise<ActionResult> {
   const acceso = await accesoTorneos();
   if (!acceso.ok) return { success: false, error: acceso.error };
@@ -3271,7 +3551,27 @@ export async function marcarArbitrajePagado(
     .eq("id", encuentroId);
   if (error) return { success: false, error: error.message };
 
-  revalidatePath(`/admin/torneos/${torneo.id}`);
+  // El dinero del arbitraje queda como ingreso del torneo, ligado al partido.
+  if (pagado && valor && Number.isInteger(valor) && valor > 0) {
+    const { error: errIngreso } = await svc.from("ingresos_torneo").upsert(
+      {
+        tenant_id: torneo.tenant_id,
+        torneo_id: torneo.id,
+        encuentro_id: encuentroId,
+        tipo: "arbitraje",
+        descripcion: "Arbitraje del partido",
+        valor,
+        recibido: true,
+        fecha: fechaColombia(new Date()),
+      },
+      { onConflict: "encuentro_id" },
+    );
+    if (errIngreso) return { success: false, error: errIngreso.message };
+  } else if (!pagado || valor === 0) {
+    await svc.from("ingresos_torneo").delete().eq("encuentro_id", encuentroId);
+  }
+
+  revalidarTorneo(torneo);
   return { success: true, data: undefined };
 }
 
@@ -3383,4 +3683,304 @@ export async function traerMarcador(
   // Si falla, no afecta la lectura: el organizador igual ve el resultado.
   if (leido.terminado) await guardarConstanciaJuez(p.e, leido);
   return { success: true, data: { ...leido, enlaces: enlacesMarcador(p.e.sala_marcador) } };
+}
+
+
+// ---------------------------------------------------------------------------
+// Otros ingresos (arbitraje, patrocinios, otros)
+// ---------------------------------------------------------------------------
+const ingresoSchema = z.object({
+  tipo: z.enum(["arbitraje", "patrocinio", "otro"]),
+  descripcion: z.string().trim().max(200).nullable().optional(),
+  valor: z.number().int().min(0, "El valor no puede ser negativo"),
+  recibido: z.boolean().default(true),
+  fecha: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Fecha inválida"),
+  patrocinador_id: z.string().uuid().nullable().optional(),
+});
+
+/** Ingreso + torneo verificando acceso. */
+async function ingresoDelUsuario(id: string, membership: Membership) {
+  const svc = createServiceRoleClient();
+  const { data } = await svc.from("ingresos_torneo").select("*").eq("id", id).maybeSingle();
+  const ingreso = (data as IngresoTorneo | null) ?? null;
+  if (!ingreso) return null;
+  const torneo = await torneoDelUsuario(ingreso.torneo_id, membership);
+  return torneo ? { ingreso, torneo } : null;
+}
+
+/** El patrocinador, solo si es de ese torneo. */
+async function patrocinadorDelTorneo(torneoId: string, id: string | null | undefined): Promise<boolean> {
+  if (!id) return true;
+  const { data } = await createServiceRoleClient()
+    .from("patrocinadores_torneo")
+    .select("id")
+    .eq("id", id)
+    .eq("torneo_id", torneoId)
+    .maybeSingle();
+  return !!data;
+}
+
+/** Registra un ingreso del torneo (aparte de las inscripciones). */
+export async function crearIngresoTorneo(
+  torneoId: string,
+  input: z.input<typeof ingresoSchema>,
+): Promise<ActionResult<{ id: string }>> {
+  const acceso = await accesoTorneos();
+  if (!acceso.ok) return { success: false, error: acceso.error };
+  const torneo = await torneoDelUsuario(torneoId, acceso.membership);
+  if (!torneo) return { success: false, error: "Torneo no encontrado" };
+  const parsed = ingresoSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: parsed.error.issues[0].message };
+  const d = parsed.data;
+  if (!(await patrocinadorDelTorneo(torneoId, d.patrocinador_id))) {
+    return { success: false, error: "Ese patrocinador no es de este torneo" };
+  }
+  const { data, error } = await createServiceRoleClient()
+    .from("ingresos_torneo")
+    .insert({
+      torneo_id: torneoId,
+      tenant_id: torneo.tenant_id,
+      tipo: d.tipo,
+      descripcion: d.descripcion || null,
+      valor: d.valor,
+      recibido: d.recibido,
+      fecha: d.fecha,
+      patrocinador_id: d.tipo === "patrocinio" ? (d.patrocinador_id ?? null) : null,
+    })
+    .select("id")
+    .single();
+  if (error) return { success: false, error: error.message };
+  revalidarTorneo(torneo);
+  return { success: true, data: { id: (data as { id: string }).id } };
+}
+
+/** Edita un ingreso. Los de arbitraje de un partido se editan desde el partido. */
+export async function actualizarIngresoTorneo(
+  id: string,
+  input: z.input<typeof ingresoSchema>,
+): Promise<ActionResult> {
+  const acceso = await accesoTorneos();
+  if (!acceso.ok) return { success: false, error: acceso.error };
+  const dueno = await ingresoDelUsuario(id, acceso.membership);
+  if (!dueno) return { success: false, error: "Ingreso no encontrado" };
+  const parsed = ingresoSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: parsed.error.issues[0].message };
+  const d = parsed.data;
+  if (!(await patrocinadorDelTorneo(dueno.torneo.id, d.patrocinador_id))) {
+    return { success: false, error: "Ese patrocinador no es de este torneo" };
+  }
+  const { error } = await createServiceRoleClient()
+    .from("ingresos_torneo")
+    .update({
+      // El de un partido sigue siendo arbitraje.
+      tipo: dueno.ingreso.encuentro_id ? "arbitraje" : d.tipo,
+      descripcion: d.descripcion || null,
+      valor: d.valor,
+      recibido: d.recibido,
+      fecha: d.fecha,
+      patrocinador_id: d.tipo === "patrocinio" ? (d.patrocinador_id ?? null) : null,
+    })
+    .eq("id", id);
+  if (error) return { success: false, error: error.message };
+  revalidarTorneo(dueno.torneo);
+  return { success: true, data: undefined };
+}
+
+/** Borra un ingreso. Si era el arbitraje de un partido, el partido queda sin pagar. */
+export async function eliminarIngresoTorneo(id: string): Promise<ActionResult> {
+  const acceso = await accesoTorneos();
+  if (!acceso.ok) return { success: false, error: acceso.error };
+  const dueno = await ingresoDelUsuario(id, acceso.membership);
+  if (!dueno) return { success: false, error: "Ingreso no encontrado" };
+  const svc = createServiceRoleClient();
+  const { error } = await svc.from("ingresos_torneo").delete().eq("id", id);
+  if (error) return { success: false, error: error.message };
+  if (dueno.ingreso.encuentro_id) {
+    await svc.from("encuentros").update({ arbitraje_pagado: false }).eq("id", dueno.ingreso.encuentro_id);
+  }
+  revalidarTorneo(dueno.torneo);
+  return { success: true, data: undefined };
+}
+
+// ---------------------------------------------------------------------------
+// Patrocinadores (los habilita el superadmin por organizador)
+// ---------------------------------------------------------------------------
+/** ¿El organizador tiene habilitados los patrocinadores? El superadmin siempre. */
+async function patrociniosHabilitados(tenantId: string, membership: Membership): Promise<boolean> {
+  if (membership.rol === "superadmin") return true;
+  const { data } = await createServiceRoleClient()
+    .from("tenants")
+    .select("patrocinios_habilitado")
+    .eq("id", tenantId)
+    .maybeSingle();
+  return !!(data as { patrocinios_habilitado?: boolean } | null)?.patrocinios_habilitado;
+}
+
+const SIN_PATROCINIOS = "Tu cuenta no tiene habilitados los patrocinadores. Pídeselo al administrador de la plataforma.";
+
+const patrocinadorSchema = z.object({
+  nombre: z.string().trim().min(1, "Escribe el nombre").max(80),
+  rol: z.enum(["organiza", "gestor", "patrocinador"]),
+  logo_url: z.string().trim().url("Logo inválido").nullable().optional(),
+  enlace: z
+    .string()
+    .trim()
+    .max(300)
+    .nullable()
+    .optional()
+    .transform((v) => (v ? (/^https?:\/\//i.test(v) ? v : `https://${v}`) : null)),
+  aporte: z.number().int().min(0).nullable().optional(),
+  estado: z.enum(["borrador", "publicado"]),
+  orden: z.number().int().min(0).max(999).default(0),
+});
+
+export async function crearPatrocinadorTorneo(
+  torneoId: string,
+  input: z.input<typeof patrocinadorSchema>,
+): Promise<ActionResult<{ id: string }>> {
+  const acceso = await accesoTorneos();
+  if (!acceso.ok) return { success: false, error: acceso.error };
+  const torneo = await torneoDelUsuario(torneoId, acceso.membership);
+  if (!torneo) return { success: false, error: "Torneo no encontrado" };
+  if (!(await patrociniosHabilitados(torneo.tenant_id, acceso.membership))) {
+    return { success: false, error: SIN_PATROCINIOS };
+  }
+  const parsed = patrocinadorSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: parsed.error.issues[0].message };
+  const d = parsed.data;
+  if (d.estado === "publicado" && !d.logo_url) {
+    return { success: false, error: "Para publicarlo sube su logo o banner." };
+  }
+  const { data, error } = await createServiceRoleClient()
+    .from("patrocinadores_torneo")
+    .insert({ ...d, logo_url: d.logo_url ?? null, aporte: d.aporte ?? null, torneo_id: torneoId, tenant_id: torneo.tenant_id })
+    .select("id")
+    .single();
+  if (error) return { success: false, error: error.message };
+  revalidarTorneo(torneo);
+  return { success: true, data: { id: (data as { id: string }).id } };
+}
+
+async function patrocinadorDelUsuario(id: string, membership: Membership) {
+  const { data } = await createServiceRoleClient().from("patrocinadores_torneo").select("*").eq("id", id).maybeSingle();
+  const p = (data as PatrocinadorTorneo | null) ?? null;
+  if (!p) return null;
+  const torneo = await torneoDelUsuario(p.torneo_id, membership);
+  return torneo ? { p, torneo } : null;
+}
+
+export async function actualizarPatrocinadorTorneo(
+  id: string,
+  input: z.input<typeof patrocinadorSchema>,
+): Promise<ActionResult> {
+  const acceso = await accesoTorneos();
+  if (!acceso.ok) return { success: false, error: acceso.error };
+  const dueno = await patrocinadorDelUsuario(id, acceso.membership);
+  if (!dueno) return { success: false, error: "Patrocinador no encontrado" };
+  if (!(await patrociniosHabilitados(dueno.torneo.tenant_id, acceso.membership))) {
+    return { success: false, error: SIN_PATROCINIOS };
+  }
+  const parsed = patrocinadorSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: parsed.error.issues[0].message };
+  const d = parsed.data;
+  if (d.estado === "publicado" && !d.logo_url) {
+    return { success: false, error: "Para publicarlo sube su logo o banner." };
+  }
+  const { error } = await createServiceRoleClient()
+    .from("patrocinadores_torneo")
+    .update({ ...d, logo_url: d.logo_url ?? null, aporte: d.aporte ?? null })
+    .eq("id", id);
+  if (error) return { success: false, error: error.message };
+  revalidarTorneo(dueno.torneo);
+  return { success: true, data: undefined };
+}
+
+export async function eliminarPatrocinadorTorneo(id: string): Promise<ActionResult> {
+  const acceso = await accesoTorneos();
+  if (!acceso.ok) return { success: false, error: acceso.error };
+  const dueno = await patrocinadorDelUsuario(id, acceso.membership);
+  if (!dueno) return { success: false, error: "Patrocinador no encontrado" };
+  const { error } = await createServiceRoleClient().from("patrocinadores_torneo").delete().eq("id", id);
+  if (error) return { success: false, error: error.message };
+  revalidarTorneo(dueno.torneo);
+  return { success: true, data: undefined };
+}
+
+/** Bucket público de imágenes de la plataforma (el mismo de las rifas). */
+const BUCKET_IMAGENES = "rifa-imagenes";
+
+/**
+ * Sube el logo o banner de un patrocinador a Supabase Storage y devuelve su
+ * URL pública. Va al bucket de imágenes de siempre, ordenado por cuenta y
+ * producto para encontrarlo fácil en Supabase:
+ * `{tenant_id}/torneos/{torneo_id}/patrocinadores/{archivo}`.
+ */
+export async function subirLogoPatrocinador(
+  torneoId: string,
+  formData: FormData,
+): Promise<ActionResult<{ url: string }>> {
+  const acceso = await accesoTorneos();
+  if (!acceso.ok) return { success: false, error: acceso.error };
+  const torneo = await torneoDelUsuario(torneoId, acceso.membership);
+  if (!torneo) return { success: false, error: "Torneo no encontrado" };
+  if (!(await patrociniosHabilitados(torneo.tenant_id, acceso.membership))) {
+    return { success: false, error: SIN_PATROCINIOS };
+  }
+  const file = formData.get("file");
+  if (!(file instanceof File) || file.size === 0) return { success: false, error: "Selecciona una imagen" };
+  // Sin SVG: puede llevar scripts. PNG con transparencia sirve igual para logos.
+  if (!["image/png", "image/jpeg", "image/webp", "image/gif"].includes(file.type)) {
+    return { success: false, error: "Sube la imagen en PNG, JPG o WebP" };
+  }
+  if (file.size > 3 * 1024 * 1024) return { success: false, error: "La imagen no puede superar 3 MB" };
+
+  const ext = (file.name.split(".").pop() || "png").toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 5) || "png";
+  const path = `${torneo.tenant_id}/torneos/${torneo.id}/patrocinadores/${crypto.randomUUID().slice(0, 8)}.${ext}`;
+  const buffer = Buffer.from(await file.arrayBuffer());
+  const svc = createServiceRoleClient();
+  const subir = () => svc.storage.from(BUCKET_IMAGENES).upload(path, buffer, { contentType: file.type, upsert: true });
+  let { error } = await subir();
+  // Por si el bucket aún no existe en este proyecto de Supabase: se crea y se reintenta.
+  if (error && /bucket not found/i.test(error.message)) {
+    const { error: errCrear } = await svc.storage.createBucket(BUCKET_IMAGENES, { public: true, fileSizeLimit: "5MB" });
+    if (errCrear && !/already exists/i.test(errCrear.message)) {
+      return { success: false, error: `No se pudo crear el bucket: ${errCrear.message}` };
+    }
+    ({ error } = await subir());
+  }
+  if (error) return { success: false, error: error.message };
+  return { success: true, data: { url: svc.storage.from(BUCKET_IMAGENES).getPublicUrl(path).data.publicUrl } };
+}
+
+/** Superadmin: habilita o deshabilita los patrocinadores de un organizador. */
+export async function setPatrociniosTenant(tenantId: string, habilitado: boolean): Promise<ActionResult> {
+  if (!(await esSuperadmin())) return { success: false, error: "No autorizado" };
+  if (!z.string().uuid().safeParse(tenantId).success) return { success: false, error: "Organizador inválido" };
+  const { error } = await createServiceRoleClient()
+    .from("tenants")
+    .update({ patrocinios_habilitado: habilitado })
+    .eq("id", tenantId);
+  if (error) return { success: false, error: error.message };
+  revalidatePath("/superadmin");
+  revalidatePath("/admin/torneos");
+  return { success: true, data: undefined };
+}
+
+/**
+ * Patrocinadores que ve el público: solo publicados, con imagen, y solo si el
+ * organizador tiene la función habilitada. Lista vacía = no se muestra nada.
+ */
+async function patrocinadoresPublicos(torneo: Pick<Torneo, "id" | "tenant_id">): Promise<PatrocinadorPublico[]> {
+  const svc = createServiceRoleClient();
+  const { data: tenant } = await svc.from("tenants").select("patrocinios_habilitado").eq("id", torneo.tenant_id).maybeSingle();
+  if (!(tenant as { patrocinios_habilitado?: boolean } | null)?.patrocinios_habilitado) return [];
+  const { data } = await svc
+    .from("patrocinadores_torneo")
+    .select("id, nombre, rol, logo_url, enlace")
+    .eq("torneo_id", torneo.id)
+    .eq("estado", "publicado")
+    .not("logo_url", "is", null)
+    .order("orden")
+    .order("created_at");
+  return (data as PatrocinadorPublico[]) ?? [];
 }

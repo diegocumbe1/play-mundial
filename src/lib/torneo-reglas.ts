@@ -43,6 +43,11 @@ export const reglasSchema = z.object({
        * pantalla del marcador. Vacío = sin música.
        */
       musica_youtube: z.string().trim().max(300).default(""),
+      /**
+       * Lo que se cobra de arbitraje por partido (COP). Al marcar «Arbitraje
+       * pagado» se propone este valor y queda como ingreso. 0 = no se cobra.
+       */
+      valor_arbitraje: entero(0).default(0),
     })
     .prefault({}),
   tabla: z

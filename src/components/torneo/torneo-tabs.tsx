@@ -17,7 +17,10 @@ import { ConfigTorneoPanel } from "@/components/torneo/config-torneo-panel";
 import { EquiposPanel } from "@/components/torneo/equipos-panel";
 import { FixturePanel } from "@/components/torneo/fixture-panel";
 import { GastosPanel } from "@/components/torneo/gastos-panel";
-import { AlertasTorneo, ResumenTorneo } from "@/components/torneo/resumen-torneo";
+import { AlertasTorneo, CoberturaPremios, ResumenTorneo } from "@/components/torneo/resumen-torneo";
+import { IngresosPanel } from "@/components/torneo/ingresos-panel";
+import { PatrocinadoresPanel } from "@/components/torneo/patrocinadores-panel";
+import { calcularCoberturaTorneo } from "@/lib/torneos";
 import { formatCOP, recaudoPorMetodo } from "@/lib/torneos";
 import type { PasoConfiguracion, ReglasTorneo } from "@/lib/torneo-reglas";
 import { cn } from "@/lib/utils";
@@ -30,6 +33,8 @@ import type {
   PagoEquipoTorneo,
   EquipoTorneo,
   GastoTorneo,
+  IngresoTorneo,
+  PatrocinadorTorneo,
   PremioTorneo,
   Torneo,
 } from "@/types";
@@ -51,6 +56,9 @@ export function TorneoTabs({
   torneo,
   equipos,
   gastos,
+  ingresos,
+  patrocinadores,
+  patrociniosHabilitados = false,
   dashboard,
   alertas,
   categorias,
@@ -67,6 +75,10 @@ export function TorneoTabs({
   torneo: Torneo;
   equipos: EquipoTorneo[];
   gastos: GastoTorneo[];
+  ingresos: IngresoTorneo[];
+  patrocinadores: PatrocinadorTorneo[];
+  /** El superadmin habilitó los patrocinadores a este organizador. */
+  patrociniosHabilitados?: boolean;
   dashboard: DashboardTorneo;
   alertas: AlertaTorneo[];
   categorias: CategoriaTorneo[];
@@ -136,6 +148,9 @@ export function TorneoTabs({
           )}
           <ResumenTorneo dash={dashboard} />
           <AlertasTorneo alertas={alertas} />
+          <CoberturaPremios
+            cobertura={calcularCoberturaTorneo(torneo, categorias, equipos, gastos, premios, ingresos)}
+          />
         </div>
       )}
 
@@ -186,7 +201,11 @@ export function TorneoTabs({
             />
           </section>
           <CajaTorneo pagos={pagos} equipos={equipos} porCobrar={dashboard.porCobrar} />
+          <IngresosPanel torneo={torneo} ingresos={ingresos} equipos={equipos} patrocinadores={patrocinadores} />
           <GastosPanel torneoId={torneo.id} gastos={gastos} />
+          {patrociniosHabilitados && (
+            <PatrocinadoresPanel torneoId={torneo.id} slug={torneo.slug_publico} patrocinadores={patrocinadores} />
+          )}
         </div>
       )}
 

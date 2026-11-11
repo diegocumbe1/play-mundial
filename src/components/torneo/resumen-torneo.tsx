@@ -1,6 +1,6 @@
 import { AlertTriangle, Info, TriangleAlert } from "lucide-react";
 
-import { formatCOP } from "@/lib/torneos";
+import { formatCOP, type CoberturaTorneo } from "@/lib/torneos";
 import { cn } from "@/lib/utils";
 import type { AlertaTorneo, DashboardTorneo } from "@/types";
 
@@ -64,11 +64,142 @@ export function ResumenTorneo({ dash }: { dash: DashboardTorneo }) {
           sub={
             dash.puntoEquilibrioEquipos === null
               ? "Define un valor de inscripción"
-              : `${formatCOP(dash.utilidadPorEquipoConfirmado)} por equipo confirmado`
+              : `inscritos para cubrir premios y gastos (hoy ${dash.equiposRegistrados})`
           }
         />
       </section>
     </div>
+  );
+}
+
+/**
+ * ¿Los inscritos cubren la premiación? Por categoría (sus premios contra lo que
+ * pagan sus equipos) y el total (premios + gastos del torneo).
+ */
+export function CoberturaPremios({ cobertura }: { cobertura: CoberturaTorneo }) {
+  const { categorias, total } = cobertura;
+  const variasCategorias = categorias.length > 1 || categorias[0]?.categoriaId !== null;
+  return (
+    <section className="flex flex-col gap-3">
+      <div>
+        <p className="font-semibold">¿Alcanza para los premios?</p>
+        <p className="text-muted-foreground text-xs">
+          Con lo que deben pagar los inscritos (pagado o no). «Faltan» es cuántos equipos más
+          hacen falta en esa categoría para cubrir su premio en dinero.
+        </p>
+      </div>
+
+      {variasCategorias && (
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {categorias.map((c) => {
+            const cubre = c.diferencia >= 0;
+            return (
+              <div
+                key={c.categoriaId ?? "torneo"}
+                className={cn(
+                  "rounded-2xl border p-3",
+                  c.premios === 0
+                    ? "border-border"
+                    : cubre
+                      ? "border-emerald-500/40 bg-emerald-500/5"
+                      : "border-destructive/40 bg-destructive/5",
+                )}
+              >
+                <div className="flex items-baseline justify-between gap-2">
+                  <p className="truncate font-semibold">{c.nombre}</p>
+                  <span className="text-muted-foreground shrink-0 text-xs">{formatCOP(c.valorInscripcion)} c/u</span>
+                </div>
+                <p className="mt-1 text-sm">
+                  <b>{c.inscritos}</b>/{c.cupo} inscritos
+                  <span className="text-muted-foreground text-xs">
+                    {" "}· {c.confirmados} confirmados · {c.pendientes} pendientes
+                    {c.faltanParaCupo > 0 ? ` · ${c.faltanParaCupo} cupos libres` : " · cupo lleno"}
+                  </span>
+                </p>
+                <dl className="mt-2 grid grid-cols-2 gap-x-2 gap-y-0.5 text-xs">
+                  <dt className="text-muted-foreground">Inscripciones</dt>
+                  <dd className="text-right">{formatCOP(c.ingresoInscritos)}</dd>
+                  <dt className="text-muted-foreground">Recaudado</dt>
+                  <dd className="text-right">{formatCOP(c.recaudado)}</dd>
+                  <dt className="text-muted-foreground">Premios en dinero</dt>
+                  <dd className="text-right">{formatCOP(c.premios)}</dd>
+                </dl>
+                <p
+                  className={cn(
+                    "mt-2 text-sm font-semibold",
+                    c.premios === 0 ? "text-muted-foreground" : cubre ? "text-emerald-600 dark:text-emerald-400" : "text-destructive",
+                  )}
+                >
+                  {c.premios === 0
+                    ? "Sin premio en dinero"
+                    : cubre
+                      ? `Cubre el premio · sobran ${formatCOP(c.diferencia)}`
+                      : `No cubre: faltan ${formatCOP(-c.diferencia)}` +
+                        (c.equiposParaCubrir !== null ? ` (${c.equiposParaCubrir} equipo${c.equiposParaCubrir === 1 ? "" : "s"})` : "")}
+                </p>
+                {c.premios > 0 && !cubre && (
+                  <p className="text-muted-foreground mt-0.5 text-[11px]">
+                    {c.cubreConCupoLleno
+                      ? `Con el cupo lleno sí alcanza (${formatCOP(c.ingresoCupoLleno)}).`
+                      : `Ni con el cupo lleno alcanza (${formatCOP(c.ingresoCupoLleno)}).`}
+                  </p>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      <div
+        className={cn(
+          "rounded-2xl border p-3",
+          total.diferencia >= 0 ? "border-emerald-500/40 bg-emerald-500/5" : "border-destructive/40 bg-destructive/5",
+        )}
+      >
+        <p className="font-semibold">Total del torneo</p>
+        <p className="mt-1 text-sm">
+          <b>{total.inscritos}</b>/{total.cupo} inscritos
+          <span className="text-muted-foreground text-xs">
+            {" "}· {total.confirmados} confirmados · {total.pendientes} pendientes · {total.faltanParaCupo} cupos libres
+          </span>
+        </p>
+        <dl className="mt-2 grid grid-cols-2 gap-x-2 gap-y-0.5 text-xs sm:max-w-md">
+          <dt className="text-muted-foreground">Inscripciones de los inscritos</dt>
+          <dd className="text-right">{formatCOP(total.ingresoInscritos)}</dd>
+          {total.otrosIngresos > 0 && (
+            <>
+              <dt className="text-muted-foreground">Otros ingresos (arbitraje, patrocinios…)</dt>
+              <dd className="text-right">{formatCOP(total.otrosIngresos)}</dd>
+            </>
+          )}
+          <dt className="text-muted-foreground">Premios en dinero</dt>
+          <dd className="text-right">
+            {formatCOP(total.premios)}
+            {total.premiosGenerales > 0 ? ` (${formatCOP(total.premiosGenerales)} generales)` : ""}
+          </dd>
+          <dt className="text-muted-foreground">Gastos presupuestados</dt>
+          <dd className="text-right">{formatCOP(total.gastos)}</dd>
+          <dt className="text-muted-foreground">Costo total (premios + gastos)</dt>
+          <dd className="text-right font-semibold">{formatCOP(total.costoTotal)}</dd>
+        </dl>
+        <p
+          className={cn(
+            "mt-2 text-sm font-semibold",
+            total.diferencia >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-destructive",
+          )}
+        >
+          {total.diferencia >= 0
+            ? `Gana: quedan ${formatCOP(total.diferencia)} con los inscritos de hoy`
+            : `Pierde: faltan ${formatCOP(-total.diferencia)}` +
+              (total.equiposParaEquilibrio !== null ? ` (≈ ${total.equiposParaEquilibrio} equipos más)` : "")}
+        </p>
+        <p className="text-muted-foreground mt-0.5 text-[11px]">
+          Con el cupo lleno entrarían {formatCOP(total.ingresoCupoLleno)}:{" "}
+          {total.cubreConCupoLleno ? "alcanza." : "no alcanza ni llenando el cupo."} Los premios ya
+          registrados como gasto de premiación no se cuentan dos veces.
+        </p>
+      </div>
+    </section>
   );
 }
 

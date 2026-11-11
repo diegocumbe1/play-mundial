@@ -1,4 +1,5 @@
 import type { ReglasTorneo } from "@/lib/torneo-reglas";
+import { motivoRestriccion, tieneRestricciones, type RestriccionesEquipo } from "@/lib/torneo-restricciones";
 import type { Encuentro, FaseEncuentro } from "@/types";
 
 /**
@@ -489,6 +490,8 @@ type PartidoOcupado = Pick<Encuentro, "equipo_a_id" | "equipo_b_id" | "programad
  *
  * - Cada día tiene `partidos_por_dia` turnos desde `hora_inicio`, uno tras otro
  *   según la duración, llenando primero todas las canchas de cada turno.
+ * - Respeta las restricciones de horario de cada equipo (días, horas, fechas
+ *   bloqueadas): si un partido no cabe en ningún turno, queda sin fecha.
  * - Respeta lo ya programado: no usa un turno ocupado y un equipo nunca juega
  *   dos veces el mismo día.
  * - Alterna grupos (A, B, A, B…) y da prioridad a los equipos que llevan menos
@@ -507,6 +510,11 @@ export function proponerProgramacion(p: {
   calendario: ReglasTorneo["calendario"];
   canchas: number;
   duracionMin: number;
+  /**
+   * Cuándo puede jugar cada equipo (días, horas, fechas bloqueadas). Un partido
+   * solo va en un turno que les sirva a sus dos equipos.
+   */
+  restricciones?: Map<string, RestriccionesEquipo>;
 }): { id: string; programado_at: string; cancha: number }[] {
   const canchas = Math.max(1, p.canchas);
   const porDia = Math.max(1, p.calendario.partidos_por_dia);
@@ -545,14 +553,28 @@ export function proponerProgramacion(p: {
       const cancha = (k % canchas) + 1;
       if (turnoOcupado.has(`${inicio.getTime()}|${cancha}`)) continue;
 
-      const libres = restantes.filter(
+      const sinJugarHoy = restantes.filter(
         (m) => !ocupadosHoy.has(m.equipo_a_id!) && !ocupadosHoy.has(m.equipo_b_id!),
       );
-      if (libres.length === 0) break;
+      if (sinJugarHoy.length === 0) break;
+      // Solo los partidos cuyos dos equipos pueden jugar en este turno; si ninguno
+      // puede, se prueba el turno siguiente (más tarde puede servirle a alguien).
+      const libres = sinJugarHoy.filter(
+        (m) =>
+          !motivoRestriccion(p.restricciones?.get(m.equipo_a_id!), inicio) &&
+          !motivoRestriccion(p.restricciones?.get(m.equipo_b_id!), inicio),
+      );
+      if (libres.length === 0) continue;
       const peso = (m: PartidoProgramable) =>
         (carga.get(m.equipo_a_id!) ?? 0) + (carga.get(m.equipo_b_id!) ?? 0);
+      // Primero los partidos con equipos restringidos: tienen menos turnos posibles
+      // y los demás caben en cualquiera.
+      const rigidez = (m: PartidoProgramable) =>
+        Number(tieneRestricciones(p.restricciones?.get(m.equipo_a_id!))) +
+        Number(tieneRestricciones(p.restricciones?.get(m.equipo_b_id!)));
       libres.sort(
         (x, y) =>
+          rigidez(y) - rigidez(x) ||
           Number(x.grupo === ultimoGrupo && ultimoGrupo !== null) -
             Number(y.grupo === ultimoGrupo && ultimoGrupo !== null) ||
           peso(x) - peso(y) ||

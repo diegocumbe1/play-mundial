@@ -4,6 +4,7 @@ import { useState, useSyncExternalStore, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   AlertTriangle,
+  CalendarClock,
   Check,
   LayoutGrid,
   List,
@@ -29,6 +30,13 @@ import {
 } from "@/actions/torneos";
 import { Campo, Segmentado, Selector } from "@/components/torneo/campos";
 import { jugadorVacio, PlantillaEditor } from "@/components/torneo/plantilla-editor";
+import { RestriccionesEditor } from "@/components/torneo/restricciones-editor";
+import {
+  leerRestricciones,
+  resumenRestricciones,
+  tieneRestricciones,
+  type RestriccionesEquipo,
+} from "@/lib/torneo-restricciones";
 import type { JugadorInput } from "@/lib/torneo-jugadores";
 import type { ReglasTorneo } from "@/lib/torneo-reglas";
 import { Button } from "@/components/ui/button";
@@ -179,6 +187,15 @@ export function EquiposPanel({
         {categoria && (
           <span className="bg-muted inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-[11px] font-semibold">
             {categoria}
+          </span>
+        )}
+        {tieneRestricciones(leerRestricciones(e.restricciones_horario)) && (
+          <span
+            title={`Horario: ${resumenRestricciones(leerRestricciones(e.restricciones_horario))}`}
+            className="inline-flex shrink-0 cursor-help items-center gap-1 rounded-full bg-sky-500/15 px-2 py-0.5 text-[11px] font-semibold text-sky-700 dark:text-sky-300"
+          >
+            <CalendarClock className="size-3" />
+            {resumenRestricciones(leerRestricciones(e.restricciones_horario))}
           </span>
         )}
         {pendientes.length > 0 && (
@@ -673,6 +690,9 @@ function EditarEquipoModal({
   const [telefono, setTelefono] = useState("");
   const [correo, setCorreo] = useState("");
   const [nota, setNota] = useState("");
+  const [restricciones, setRestricciones] = useState<RestriccionesEquipo>(() =>
+    leerRestricciones(null),
+  );
   if (equipo && equipo.id !== ultimoId) {
     setUltimoId(equipo.id);
     setNombre(equipo.nombre);
@@ -681,6 +701,7 @@ function EditarEquipoModal({
     setTelefono(equipo.responsable_telefono ?? "");
     setCorreo(equipo.responsable_correo ?? "");
     setNota(equipo.nota_revision ?? "");
+    setRestricciones(leerRestricciones(equipo.restricciones_horario));
   }
   if (!equipo) return null;
 
@@ -699,6 +720,7 @@ function EditarEquipoModal({
         responsable_telefono: telefono.trim() || null,
         responsable_correo: correo.trim() || null,
         nota_revision: nota.trim() || null,
+        restricciones_horario: restricciones,
         // Lo que este formulario no edita se conserva.
         escudo_url: equipo.escudo_url,
         cantidad_jugadores: equipo.cantidad_jugadores,
@@ -755,6 +777,14 @@ function EditarEquipoModal({
           <Campo label="Correo (opcional)" className="sm:col-span-2">
             <Input value={correo} onChange={(e) => setCorreo(e.target.value)} inputMode="email" />
           </Campo>
+          <div className="border-border flex flex-col gap-2 rounded-xl border p-3 sm:col-span-2">
+            <p className="text-sm font-semibold">Horario disponible</p>
+            <p className="text-muted-foreground text-xs">
+              Cuándo puede jugar este equipo. «Programar partidos» lo respeta; si ya hay partidos
+              programados que no le sirven, el Fixture te avisa y los puedes reprogramar.
+            </p>
+            <RestriccionesEditor value={restricciones} onChange={setRestricciones} />
+          </div>
           <Campo label="Por revisar (nota interna)" className="sm:col-span-2">
             <div className="flex flex-col gap-1.5">
               <textarea

@@ -26,6 +26,7 @@ import {
   programarPartidos,
   generarFixture,
   guardarResultado,
+  intercambiarHorarios,
   marcarArbitrajePagado,
   probarVozPartido,
   traerMarcador,
@@ -43,7 +44,9 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { InputMoneda } from "@/components/rifa/input-moneda";
 import { formatFechaHoraCO } from "@/lib/fecha-co";
+import { formatCOP } from "@/lib/torneos";
 import {
   COLORES_MARCADOR,
   OPCIONES_MARCADOR_POR_DEFECTO,
@@ -60,6 +63,13 @@ import {
   validarSets,
 } from "@/lib/torneo-fixture";
 import { textoAlargue, type ReglasTorneo } from "@/lib/torneo-reglas";
+import {
+  choquePartido,
+  leerRestricciones,
+  resumenRestricciones,
+  tieneRestricciones,
+  type RestriccionesEquipo,
+} from "@/lib/torneo-restricciones";
 import type { CategoriaTorneo, Encuentro, EncuentroPublico, EquipoTorneo, Torneo } from "@/types";
 
 type Modo = OpcionesFixture["modo"];
@@ -107,6 +117,18 @@ export function FixturePanel({
   const grupos: { id: string | null; nombre: string }[] =
     categorias.length > 0 ? categorias : [{ id: null, nombre: "Torneo" }];
   const nombre = (id: string | null) => equipos.find((e) => e.id === id)?.nombre ?? "Por definir";
+  const restricciones = new Map<string, RestriccionesEquipo>(
+    equipos.map((e) => [e.id, leerRestricciones(e.restricciones_horario)]),
+  );
+  // Partidos con fecha, aún sin jugar, que chocan con las restricciones de un equipo.
+  const conflictos = encuentros.flatMap((e) => {
+    if (e.estado !== "programado" || !e.programado_at || !e.equipo_a_id || !e.equipo_b_id) return [];
+    const motivo = choquePartido(e.programado_at, [
+      { nombre: nombre(e.equipo_a_id), restricciones: restricciones.get(e.equipo_a_id) },
+      { nombre: nombre(e.equipo_b_id), restricciones: restricciones.get(e.equipo_b_id) },
+    ]);
+    return motivo ? [{ encuentro: e, motivo }] : [];
+  });
 
   return (
     <div className="flex flex-col gap-5">
@@ -125,6 +147,9 @@ export function FixturePanel({
             encuentros={encuentros.filter((e) => e.categoria_id === c.id)}
             clasificanPorDefecto={reglas.tabla.clasifican}
             calendario={reglas.calendario}
+            conflictos={conflictos.filter((x) => x.encuentro.categoria_id === c.id)}
+            nombreEquipo={nombre}
+            onAbrirPartido={setEditando}
           />
         ))}
       </div>
@@ -147,6 +172,8 @@ export function FixturePanel({
         // Siempre la versión más reciente: tras guardar horario o resultado se refresca.
         encuentro={editando ? (encuentros.find((e) => e.id === editando.id) ?? editando) : null}
         nombre={nombre}
+        restricciones={restricciones}
+        partidos={encuentros}
         juego={reglas.juego}
         marcadorDisponible={marcadorDisponible}
         canchas={torneo.cantidad_canchas}
@@ -169,6 +196,9 @@ function ControlCategoria({
   encuentros,
   clasificanPorDefecto,
   calendario,
+  conflictos,
+  nombreEquipo,
+  onAbrirPartido,
 }: {
   torneo: Torneo;
   categoriaId: string | null;
@@ -178,6 +208,10 @@ function ControlCategoria({
   /** Regla del torneo: cuántos pasan por grupo. */
   clasificanPorDefecto: number;
   calendario: ReglasTorneo["calendario"];
+  /** Partidos programados que chocan con las restricciones de horario de un equipo. */
+  conflictos: { encuentro: Encuentro; motivo: string }[];
+  nombreEquipo: (id: string | null) => string;
+  onAbrirPartido: (e: Encuentro) => void;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -229,6 +263,9 @@ function ControlCategoria({
 
   const sinFecha = encuentros.filter(
     (e) => e.estado === "programado" && !e.programado_at && e.equipo_a_id && e.equipo_b_id,
+  ).length;
+  const conFechaSinJugar = encuentros.filter(
+    (e) => e.estado === "programado" && e.programado_at && e.equipo_a_id && e.equipo_b_id,
   ).length;
 
   function llaveAnticipada() {
@@ -346,10 +383,33 @@ function ControlCategoria({
               avanzan solos al cargar cada resultado.
             </p>
           )}
+          {conflictos.length > 0 && (
+            <div className="flex flex-col gap-1.5 rounded-xl border border-amber-500/40 bg-amber-500/10 p-3">
+              <p className="text-sm font-semibold">
+                {conflictos.length} partido(s) chocan con las restricciones de horario
+              </p>
+              <ul className="flex flex-col gap-1 text-xs">
+                {conflictos.slice(0, 6).map(({ encuentro: e, motivo }) => (
+                  <li key={e.id}>
+                    <button type="button" className="text-left hover:underline" onClick={() => onAbrirPartido(e)}>
+                      {formatFechaHoraCO(e.programado_at!)} · {nombreEquipo(e.equipo_a_id)} vs{" "}
+                      {nombreEquipo(e.equipo_b_id)}: <b>{motivo}</b>
+                    </button>
+                  </li>
+                ))}
+                {conflictos.length > 6 && <li>y {conflictos.length - 6} más…</li>}
+              </ul>
+              <p className="text-muted-foreground text-xs">
+                Toca uno para cambiarle la hora a mano, o usa «Reprogramar» para moverlos solos.
+              </p>
+            </div>
+          )}
           <ProgramarPartidos
             torneoId={torneo.id}
             categoriaId={categoriaId}
             calendario={calendario}
+            conflictos={conflictos.length}
+            conFecha={conFechaSinJugar}
             sinFecha={sinFecha}
           />
           {!conResultados && (
@@ -382,6 +442,8 @@ const filasDeSets = (sets: [number, number][], total: number): [string, string][
 function ResultadoModal({
   encuentro,
   nombre,
+  restricciones,
+  partidos,
   juego,
   marcadorDisponible,
   canchas,
@@ -390,6 +452,9 @@ function ResultadoModal({
 }: {
   encuentro: EncuentroPublico | null;
   nombre: (id: string | null) => string;
+  restricciones: Map<string, RestriccionesEquipo>;
+  /** Todos los partidos del torneo (para intercambiar horario con otro). */
+  partidos: Encuentro[];
   juego: ReglasTorneo["juego"];
   marcadorDisponible: boolean;
   canchas: number;
@@ -489,6 +554,24 @@ function ResultadoModal({
     <HorarioPartido
       key={`h-${encuentro.id}`}
       encuentro={encuentro}
+      equipos={[encuentro.equipo_a_id, encuentro.equipo_b_id]
+        .filter((id): id is string => !!id)
+        .map((id) => ({ nombre: nombre(id), restricciones: restricciones.get(id) }))}
+      // Partidos no jugados con los que se puede cambiar el turno.
+      candidatos={partidos
+        .filter(
+          (p) =>
+            p.id !== encuentro.id &&
+            p.estado === "programado" &&
+            (p.programado_at || encuentro.programado_at) &&
+            p.equipo_a_id &&
+            p.equipo_b_id,
+        )
+        .sort((x, y) => (x.programado_at ?? "9").localeCompare(y.programado_at ?? "9"))
+        .map((p) => ({
+          id: p.id,
+          texto: `${p.programado_at ? formatFechaHoraCO(p.programado_at) : "Sin fecha"} · ${nombre(p.equipo_a_id)} vs ${nombre(p.equipo_b_id)}${p.grupo ? ` (Grupo ${p.grupo})` : ""}`,
+        }))}
       canchas={canchas}
       nombresCanchas={juego.nombres_canchas}
     />
@@ -631,7 +714,12 @@ function ResultadoModal({
         </DialogHeader>
 
         {horario}
-        <ArbitrajeCasilla key={encuentro.id} encuentroId={encuentro.id} inicial={!!encuentro.arbitraje_pagado} />
+        <ArbitrajeCasilla
+          key={encuentro.id}
+          encuentroId={encuentro.id}
+          inicial={!!encuentro.arbitraje_pagado}
+          valorPorDefecto={juego.valor_arbitraje}
+        />
 
         {terminado && !corrigiendo ? (
           <ResumenPartido
@@ -823,10 +911,16 @@ function partesColombia(iso: string | null): { fecha: string; hora: string } {
 /** Fecha, hora y cancha de un partido: el organizador las cambia a mano. */
 function HorarioPartido({
   encuentro,
+  equipos,
+  candidatos,
   canchas,
   nombresCanchas,
 }: {
   encuentro: EncuentroPublico;
+  /** Los equipos del partido con sus restricciones de horario. */
+  equipos: { nombre: string; restricciones: RestriccionesEquipo | undefined }[];
+  /** Otros partidos no jugados con los que se puede intercambiar el horario. */
+  candidatos: { id: string; texto: string }[];
   canchas: number;
   nombresCanchas: string[];
 }) {
@@ -837,6 +931,21 @@ function HorarioPartido({
   const [fecha, setFecha] = useState(inicial.fecha);
   const [hora, setHora] = useState(inicial.hora);
   const [cancha, setCancha] = useState(String(encuentro.cancha ?? 1));
+  const [intercambio, setIntercambio] = useState("");
+  const jugado = encuentro.estado !== "programado";
+
+  function intercambiar() {
+    if (!intercambio) return;
+    startTransition(async () => {
+      const r = await intercambiarHorarios(encuentro.id, intercambio);
+      if (!r.success) return void toast.error(r.error);
+      if (r.data.aviso) toast.warning(`Horarios intercambiados, pero: ${r.data.aviso}.`);
+      else toast.success("Horarios intercambiados");
+      setIntercambio("");
+      setEditando(false);
+      router.refresh();
+    });
+  }
   const nombreCancha = (n: number) => nombresCanchas[n - 1]?.trim() || `Cancha ${n}`;
 
   function guardar(quitar: boolean) {
@@ -847,7 +956,8 @@ function HorarioPartido({
         cancha: Number(cancha) || 1,
       });
       if (!r.success) return void toast.error(r.error);
-      toast.success(quitar ? "El partido quedó por programar" : "Horario guardado");
+      if (r.data.aviso) toast.warning(`Horario guardado, pero ${r.data.aviso}.`);
+      else toast.success(quitar ? "El partido quedó por programar" : "Horario guardado");
       setEditando(false);
       router.refresh();
     });
@@ -874,6 +984,23 @@ function HorarioPartido({
             <Input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} aria-label="Fecha" />
             <Input type="time" value={hora} onChange={(e) => setHora(e.target.value)} aria-label="Hora" />
           </div>
+          {equipos.some((e) => tieneRestricciones(e.restricciones)) && (
+            <ul className="text-muted-foreground text-xs">
+              {equipos
+                .filter((e) => tieneRestricciones(e.restricciones))
+                .map((e) => (
+                  <li key={e.nombre}>
+                    <b>{e.nombre}</b>: {resumenRestricciones(e.restricciones)}
+                  </li>
+                ))}
+            </ul>
+          )}
+          {fecha && hora && (() => {
+            const choque = choquePartido(new Date(`${fecha}T${hora}:00-05:00`), equipos);
+            return choque ? (
+              <p className="text-xs text-amber-600 dark:text-amber-400">⚠ {choque}. Puedes guardarlo igual.</p>
+            ) : null;
+          })()}
           {canchas > 1 && (
             <select
               value={cancha}
@@ -901,6 +1028,30 @@ function HorarioPartido({
               Guardar horario
             </Button>
           </div>
+          {!jugado && candidatos.length > 0 && (
+            <div className="border-border flex flex-col gap-2 border-t pt-2">
+              <p className="text-muted-foreground text-xs">
+                <b>Intercambiar horario</b> con otro partido: este pasa a su turno y aquel a este. Así
+                cambias quién juega a esta hora sin romper los cruces del grupo.
+              </p>
+              <select
+                value={intercambio}
+                onChange={(e) => setIntercambio(e.target.value)}
+                className="border-input bg-background h-9 rounded-md border px-2 text-sm"
+                aria-label="Partido con el que intercambiar"
+              >
+                <option value="">Elige el partido…</option>
+                {candidatos.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.texto}
+                  </option>
+                ))}
+              </select>
+              <Button size="sm" variant="outline" className="self-end" disabled={pending || !intercambio} onClick={intercambiar}>
+                Intercambiar horarios
+              </Button>
+            </div>
+          )}
         </>
       )}
     </div>
@@ -920,11 +1071,17 @@ function ProgramarPartidos({
   categoriaId,
   calendario,
   sinFecha,
+  conflictos,
+  conFecha,
 }: {
   torneoId: string;
   categoriaId: string | null;
   calendario: ReglasTorneo["calendario"];
   sinFecha: number;
+  /** Programados que chocan con restricciones de horario. */
+  conflictos: number;
+  /** Programados (con fecha) que aún no se juegan. */
+  conFecha: number;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -932,6 +1089,8 @@ function ProgramarPartidos({
   const [desde, setDesde] = useState(() => partesColombia(new Date().toISOString()).fecha);
   const [dias, setDias] = useState(String(Math.max(1, calendario.dias_juego.length || 1)));
   const [propuesta, setPropuesta] = useState<Propuesta | null>(null);
+  type ModoProgramar = "sin_fecha" | "conflictos" | "todo";
+  const [modo, setModo] = useState<ModoProgramar>(conflictos > 0 ? "conflictos" : "sin_fecha");
 
   const textoCalendario =
     (calendario.dias_juego.length > 0
@@ -941,24 +1100,51 @@ function ProgramarPartidos({
 
   function correr(aplicar: boolean) {
     startTransition(async () => {
-      const r = await programarPartidos(torneoId, categoriaId, { desde, dias: Number(dias) || 1 }, aplicar);
+      const r = await programarPartidos(torneoId, categoriaId, { desde, dias: Number(dias) || 1, modo }, aplicar);
       if (!r.success) return void toast.error(r.error);
       if (!aplicar) return void setPropuesta(r.data);
-      toast.success(`${r.data.propuesta.length} partidos programados`);
+      toast.success(
+        `${r.data.propuesta.length} partidos programados` +
+          (r.data.sinCupo.length > 0 ? ` · ${r.data.sinCupo.length} quedaron por programar` : ""),
+      );
       setPropuesta(null);
       setAbierto(false);
       router.refresh();
     });
   }
 
-  if (sinFecha === 0) return null;
+  if (sinFecha === 0 && conFecha === 0) return null;
   if (!abierto) {
+    const abrir = (m: ModoProgramar) => {
+      setModo(m);
+      setPropuesta(null);
+      setAbierto(true);
+    };
     return (
-      <Button size="sm" variant="outline" className="self-start" onClick={() => setAbierto(true)}>
-        <CalendarClock className="size-3.5" /> Programar partidos ({sinFecha} sin fecha)
-      </Button>
+      <div className="flex flex-wrap gap-2">
+        {sinFecha > 0 && (
+          <Button size="sm" variant="outline" onClick={() => abrir(conflictos > 0 ? "conflictos" : "sin_fecha")}>
+            <CalendarClock className="size-3.5" /> Programar partidos ({sinFecha} sin fecha)
+          </Button>
+        )}
+        {conflictos > 0 && sinFecha === 0 && (
+          <Button size="sm" variant="outline" onClick={() => abrir("conflictos")}>
+            <CalendarClock className="size-3.5" /> Reprogramar los que chocan ({conflictos})
+          </Button>
+        )}
+        {conFecha > 0 && (
+          <Button size="sm" variant="ghost" onClick={() => abrir("todo")}>
+            Reprogramar todo lo no jugado
+          </Button>
+        )}
+      </div>
     );
   }
+  const opcionesModo: { value: ModoProgramar; label: string }[] = [
+    ...(sinFecha > 0 ? [{ value: "sin_fecha" as const, label: `Solo sin fecha (${sinFecha})` }] : []),
+    ...(conflictos > 0 ? [{ value: "conflictos" as const, label: `Sin fecha + los que chocan (${conflictos})` }] : []),
+    { value: "todo", label: "Rehacer todo lo no jugado" },
+  ];
 
   return (
     <div className="bg-muted/40 flex flex-col gap-3 rounded-xl p-3">
@@ -966,6 +1152,23 @@ function ProgramarPartidos({
         Calendario: {textoCalendario}. Se cambia en Configuración. Alterna grupos, nadie juega dos
         veces el mismo día y van primero los equipos con menos partidos.
       </p>
+      <Campo
+        label="Qué programar"
+        info={
+          <>
+            <b>Solo sin fecha</b>: no toca lo ya programado. <b>Los que chocan</b>: mueve los
+            partidos cuya hora no le sirve a un equipo según sus restricciones. <b>Rehacer todo</b>:
+            vuelve a repartir todos los partidos no jugados desde la fecha «Desde» respetando las
+            restricciones (útil si cambiaste varias). Los partidos jugados nunca se tocan.
+          </>
+        }
+      >
+        <Segmentado
+          value={modo}
+          onChange={(v) => { setModo(v as ModoProgramar); setPropuesta(null); }}
+          options={opcionesModo}
+        />
+      </Campo>
       <div className="grid grid-cols-2 gap-3">
         <Campo label="Desde">
           <Input type="date" value={desde} onChange={(e) => { setDesde(e.target.value); setPropuesta(null); }} />
@@ -979,6 +1182,17 @@ function ProgramarPartidos({
         </Campo>
       </div>
 
+      {propuesta && propuesta.sinCupo.length > 0 && (
+        <div className="flex flex-col gap-1 rounded-lg border border-amber-500/40 bg-amber-500/10 p-2 text-xs">
+          <p className="font-semibold">{propuesta.sinCupo.length} partido(s) quedarán «Por programar»:</p>
+          {propuesta.sinCupo.slice(0, 6).map((x, i) => (
+            <p key={i}>
+              {x.a} vs {x.b}: {x.motivo}
+            </p>
+          ))}
+          {propuesta.sinCupo.length > 6 && <p>y {propuesta.sinCupo.length - 6} más…</p>}
+        </div>
+      )}
       {propuesta && (
         propuesta.propuesta.length === 0 ? (
           <p className="text-xs text-amber-600 dark:text-amber-400">
@@ -990,6 +1204,9 @@ function ProgramarPartidos({
               <li key={p.id} className="flex flex-wrap items-baseline gap-x-2 px-3 py-1.5">
                 <span className="text-muted-foreground w-36 shrink-0 text-xs">
                   {formatFechaHoraCO(p.programado_at)}
+                  {p.antes && p.antes !== p.programado_at && (
+                    <span className="block line-through opacity-70">{formatFechaHoraCO(p.antes)}</span>
+                  )}
                 </span>
                 <span className="text-muted-foreground text-xs">{p.grupo ? `Grupo ${p.grupo}` : labelFase(p.fase as Encuentro["fase"])}</span>
                 <span className="min-w-0">
@@ -1005,7 +1222,7 @@ function ProgramarPartidos({
         <Button size="sm" variant="ghost" disabled={pending} onClick={() => { setAbierto(false); setPropuesta(null); }}>
           Cancelar
         </Button>
-        {propuesta && propuesta.propuesta.length > 0 ? (
+        {propuesta && (propuesta.propuesta.length > 0 || (modo !== "sin_fecha" && propuesta.sinCupo.length > 0)) ? (
           <Button size="sm" disabled={pending} onClick={() => correr(true)}>
             Guardar programación
           </Button>
@@ -1023,39 +1240,63 @@ function ProgramarPartidos({
  * Casilla opcional del organizador: ¿ya se pagó el arbitraje? Se guarda al
  * marcarla. Solo existe en el panel: ni el juez ni la página pública la ven.
  */
-function ArbitrajeCasilla({ encuentroId, inicial }: { encuentroId: string; inicial: boolean }) {
+function ArbitrajeCasilla({
+  encuentroId,
+  inicial,
+  valorPorDefecto,
+}: {
+  encuentroId: string;
+  inicial: boolean;
+  /** Valor del arbitraje por partido (Configuración → reglas). 0 = no se registra dinero. */
+  valorPorDefecto: number;
+}) {
   const router = useRouter();
   const [pagado, setPagado] = useState(inicial);
+  const [valor, setValor] = useState(valorPorDefecto > 0 ? String(valorPorDefecto) : "");
   const [pending, startTransition] = useTransition();
 
-  function cambiar(valor: boolean) {
-    setPagado(valor);
+  function guardar(nuevo: boolean, monto: string) {
+    setPagado(nuevo);
     startTransition(async () => {
-      const r = await marcarArbitrajePagado(encuentroId, valor);
+      const r = await marcarArbitrajePagado(encuentroId, nuevo, Number(monto) || 0);
       if (!r.success) {
-        setPagado(!valor);
+        setPagado(!nuevo);
         return void toast.error(r.error);
       }
+      if (nuevo && Number(monto) > 0) toast.success(`Arbitraje ${formatCOP(Number(monto))}: quedó como ingreso del torneo`);
       router.refresh();
     });
   }
 
   return (
-    <label className="bg-muted/40 flex items-start gap-2 rounded-xl p-3 text-sm">
-      <input
-        type="checkbox"
-        checked={pagado}
-        disabled={pending}
-        onChange={(e) => cambiar(e.target.checked)}
-        className="mt-0.5 size-4 shrink-0"
-      />
-      <span>
-        Arbitraje pagado
-        <span className="text-muted-foreground block text-xs">
-          Opcional. Solo lo ves tú: no aparece para el juez ni en la página pública.
+    <div className="bg-muted/40 flex flex-col gap-2 rounded-xl p-3 text-sm">
+      <label className="flex items-start gap-2">
+        <input
+          type="checkbox"
+          checked={pagado}
+          disabled={pending}
+          onChange={(e) => guardar(e.target.checked, valor)}
+          className="mt-0.5 size-4 shrink-0"
+        />
+        <span>
+          Arbitraje pagado
+          <span className="text-muted-foreground block text-xs">
+            Con valor, queda como ingreso del torneo (Finanzas). Solo lo ves tú: no aparece para el
+            juez ni en la página pública.
+          </span>
         </span>
-      </span>
-    </label>
+      </label>
+      <div className="flex items-center gap-2 pl-6">
+        <div className="w-36">
+          <InputMoneda value={valor} onChange={setValor} placeholder="Valor cobrado" />
+        </div>
+        {pagado && (
+          <Button size="sm" variant="ghost" disabled={pending} onClick={() => guardar(true, valor)}>
+            Guardar valor
+          </Button>
+        )}
+      </div>
+    </div>
   );
 }
 

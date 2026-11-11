@@ -173,6 +173,9 @@ export default async function TorneoDetallePage({
         torneo={torneo}
         equipos={equipos}
         gastos={gastos}
+        ingresos={res.data.ingresos}
+        patrocinadores={res.data.patrocinadores}
+        patrociniosHabilitados={res.data.patrociniosHabilitados}
         dashboard={dashboard}
         alertas={alertas}
         categorias={categorias}

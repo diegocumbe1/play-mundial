@@ -424,6 +424,16 @@ export function ConfigTorneoPanel({
             </div>
           </Campo>
           <Campo
+            label="Arbitraje por partido (COP)"
+            ayuda="Al marcar «Arbitraje pagado» en un partido se propone este valor y queda como ingreso. 0 = no se registra dinero."
+          >
+            <InputMoneda
+              value={juego.valor_arbitraje ? String(juego.valor_arbitraje) : ""}
+              onChange={(v) => set("juego", { valor_arbitraje: Number(v) || 0 })}
+              placeholder="50.000"
+            />
+          </Campo>
+          <Campo
             label="Música en la pantalla del marcador (opcional)"
             className="sm:col-span-2"
             ayuda="Pega el enlace de una lista o canción de YouTube o YouTube Music. Suena en la pantalla del marcador (TV o PC) y baja sola cuando habla la voz."

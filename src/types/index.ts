@@ -342,6 +342,8 @@ export interface Tenant {
    * sin límite. Lo desbloquea el superadmin cuando el organizador paga.
    */
   max_torneos: number | null;
+  /** Si el superadmin le habilitó los patrocinadores de torneos (y su sección pública). */
+  patrocinios_habilitado?: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -884,6 +886,8 @@ export interface EquipoTorneo {
   confirmado_at: string | null;
   /** Qué hay que verificar del equipo (dato dudoso de la planilla). `null` = revisado. */
   nota_revision?: string | null;
+  /** Cuándo puede jugar (ver `torneo-restricciones.ts`). `null` = sin restricciones. */
+  restricciones_horario?: unknown;
   created_at: string;
   updated_at: string;
 }
@@ -957,6 +961,43 @@ export type PremioTorneoPublico = Pick<
   PremioTorneo,
   "puesto" | "tipo" | "descripcion" | "valor" | "categoria_id"
 >;
+
+/** Dinero que entra aparte de las inscripciones. Solo uso interno. */
+export interface IngresoTorneo {
+  id: string;
+  tenant_id: string;
+  torneo_id: string;
+  tipo: "arbitraje" | "patrocinio" | "otro";
+  descripcion: string | null;
+  valor: number;
+  recibido: boolean;
+  /** "YYYY-MM-DD". */
+  fecha: string;
+  patrocinador_id: string | null;
+  /** Partido donde se cobró el arbitraje (uno por partido). */
+  encuentro_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Quién organiza, gestiona o patrocina un torneo. */
+export interface PatrocinadorTorneo {
+  id: string;
+  tenant_id: string;
+  torneo_id: string;
+  nombre: string;
+  rol: "organiza" | "gestor" | "patrocinador";
+  logo_url: string | null;
+  enlace: string | null;
+  aporte: number | null;
+  estado: "borrador" | "publicado";
+  orden: number;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Lo que ve el público de un patrocinador publicado. */
+export type PatrocinadorPublico = Pick<PatrocinadorTorneo, "id" | "nombre" | "rol" | "logo_url" | "enlace">;
 
 /** Un gasto del torneo (cancha, arbitraje, premiación…). Solo uso interno. */
 export interface GastoTorneo {
@@ -1039,6 +1080,9 @@ export interface DashboardTorneo {
   utilidadActual: number;
   /** Equipos necesarios para cubrir los gastos. `null` si no es calculable. */
   puntoEquilibrioEquipos: number | null;
+  /** Otros ingresos (arbitraje, patrocinios…): registrados y ya recibidos. */
+  otrosIngresos: number;
+  otrosIngresosRecibidos: number;
   /** Cuánto aporta a la utilidad cada equipo confirmado. */
   utilidadPorEquipoConfirmado: number;
 }

@@ -1,5 +1,6 @@
 import type {
   AlertaTorneo,
+  CategoriaTorneo,
   DashboardTorneo,
   EquipoTorneo,
   EquipoTorneoPublico,
@@ -7,6 +8,7 @@ import type {
   EstadoTorneo,
   FormatoTorneo,
   GastoTorneo,
+  IngresoTorneo,
   PagoEquipoTorneo,
   PremioTorneo,
   Torneo,
@@ -258,6 +260,11 @@ export function calcularDashboardTorneo(
   torneo: Torneo,
   equipos: EquipoTorneo[],
   gastos: GastoTorneo[],
+  /** Con categorías y premios, el punto de equilibrio usa el valor de cada categoría y la premiación. */
+  categorias: CategoriaTorneo[] = [],
+  premios: PremioTorneo[] = [],
+  /** Otros ingresos (arbitraje, patrocinios…): suman a ingresos y utilidad. */
+  otros: IngresoTorneo[] = [],
 ): DashboardTorneo {
   const vigentes = equiposVigentes(equipos);
   const equiposRegistrados = vigentes.length;
@@ -271,8 +278,10 @@ export function calcularDashboardTorneo(
   const ingresos = calcularIngresosTorneo(torneo, equipos);
   const gastosCalc = calcularGastosTorneo(gastos);
 
-  const utilidadProyectada = ingresos.proyectados - gastosCalc.proyectados;
-  const utilidadActual = ingresos.recaudados - gastosCalc.pagados;
+  const otrosIngresos = otros.reduce((s, i) => s + i.valor, 0);
+  const otrosIngresosRecibidos = otros.filter((i) => i.recibido).reduce((s, i) => s + i.valor, 0);
+  const utilidadProyectada = ingresos.proyectados + otrosIngresos - gastosCalc.proyectados;
+  const utilidadActual = ingresos.recaudados + otrosIngresosRecibidos - gastosCalc.pagados;
 
   return {
     cupoTotal,
@@ -281,8 +290,10 @@ export function calcularDashboardTorneo(
     equiposPendientes,
     cuposDisponibles,
     pctOcupacion,
-    ingresosProyectados: ingresos.proyectados,
-    ingresosRecaudados: ingresos.recaudados,
+    ingresosProyectados: ingresos.proyectados + otrosIngresos,
+    ingresosRecaudados: ingresos.recaudados + otrosIngresosRecibidos,
+    otrosIngresos,
+    otrosIngresosRecibidos,
     porCobrar: ingresos.porCobrar,
     pctRecaudado: ingresos.pctRecaudado,
     gastosProyectados: gastosCalc.proyectados,
@@ -290,12 +301,174 @@ export function calcularDashboardTorneo(
     gastosPendientes: gastosCalc.pendientes,
     utilidadProyectada,
     utilidadActual,
-    puntoEquilibrioEquipos: calcularPuntoEquilibrio(
-      gastosCalc.proyectados,
-      torneo.valor_inscripcion,
-    ),
+    // Equipos inscritos que hacen falta (en total) para cubrir gastos y premios.
+    puntoEquilibrioEquipos: (() => {
+      const t = calcularCoberturaTorneo(torneo, categorias, equipos, gastos, premios, otros).total;
+      return t.equiposParaEquilibrio === null ? null : t.inscritos + t.equiposParaEquilibrio;
+    })(),
     utilidadPorEquipoConfirmado:
       equiposConfirmados > 0 ? Math.round(utilidadActual / equiposConfirmados) : 0,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Cobertura de la premiación y punto de equilibrio por categoría
+// ---------------------------------------------------------------------------
+/** Números clave de una categoría (o del torneo sin categorías). */
+export interface CoberturaCategoria {
+  categoriaId: string | null;
+  nombre: string;
+  cupo: number;
+  /** Pendientes + confirmados (los que ocupan cupo). */
+  inscritos: number;
+  confirmados: number;
+  pendientes: number;
+  /** Cupos que faltan por llenar. */
+  faltanParaCupo: number;
+  /** Valor de inscripción de la categoría (o el del torneo). */
+  valorInscripcion: number;
+  /** Lo que deben pagar los inscritos (pagado o no). */
+  ingresoInscritos: number;
+  /** Lo que ya pagaron. */
+  recaudado: number;
+  /** Con el cupo lleno: inscritos + cupos libres × valor. */
+  ingresoCupoLleno: number;
+  /** Premios en dinero de esta categoría. */
+  premios: number;
+  /** ingresoInscritos − premios (negativo = no alcanza). */
+  diferencia: number;
+  /** Equipos que hacen falta para cubrir el premio (0 = ya cubre). `null` si la inscripción es gratis. */
+  equiposParaCubrir: number | null;
+  /** ¿Alcanza a cubrir el premio si se llena el cupo? */
+  cubreConCupoLleno: boolean;
+}
+
+export interface CoberturaTorneo {
+  categorias: CoberturaCategoria[];
+  total: {
+    cupo: number;
+    inscritos: number;
+    confirmados: number;
+    pendientes: number;
+    faltanParaCupo: number;
+    ingresoInscritos: number;
+    /** Arbitraje, patrocinios y otros ingresos registrados. */
+    otrosIngresos: number;
+    recaudado: number;
+    ingresoCupoLleno: number;
+    /** Premios en dinero de todo el torneo (por categoría + generales). */
+    premios: number;
+    /** Premios generales (sin categoría). */
+    premiosGenerales: number;
+    /**
+     * Costo total: gastos presupuestados + la parte de los premios en dinero
+     * que no está registrada como gasto de premiación (para no contarla dos veces).
+     */
+    costoTotal: number;
+    gastos: number;
+    /** ingresoInscritos + otrosIngresos − costoTotal (negativo = pierde). */
+    diferencia: number;
+    /** Equipos que faltan para el punto de equilibrio (aprox., con el valor promedio). `null` si no se puede calcular. */
+    equiposParaEquilibrio: number | null;
+    cubreConCupoLleno: boolean;
+  };
+}
+
+/**
+ * ¿Los inscritos alcanzan a cubrir la premiación? Por categoría (sus premios
+ * contra lo que pagan sus equipos) y en total (premios + gastos del torneo).
+ * Todo sale de los datos: cupo y valor de cada categoría, premios y gastos.
+ */
+export function calcularCoberturaTorneo(
+  torneo: Torneo,
+  categorias: CategoriaTorneo[],
+  equipos: EquipoTorneo[],
+  gastos: GastoTorneo[],
+  premios: PremioTorneo[],
+  /** Otros ingresos (arbitraje, patrocinios…): ayudan a cubrir el total. */
+  otros: IngresoTorneo[] = [],
+): CoberturaTorneo {
+  const vigentes = equiposVigentes(equipos);
+  const enDinero = (p: PremioTorneo) => (p.tipo === "valor" ? (p.valor ?? 0) : 0);
+  // Sin categorías, el torneo entero es una sola.
+  const grupos =
+    categorias.length > 0
+      ? [...categorias]
+          .sort((a, b) => a.orden - b.orden)
+          .map((c) => ({ id: c.id as string | null, nombre: c.nombre, cupo: c.cupo_equipos, valor: c.valor_inscripcion ?? torneo.valor_inscripcion }))
+      : [{ id: null, nombre: torneo.nombre, cupo: torneo.cupo_equipos, valor: torneo.valor_inscripcion }];
+
+  const filas: CoberturaCategoria[] = grupos.map((g) => {
+    const deCat = vigentes.filter((e) => (g.id ? e.categoria_id === g.id : true));
+    const inscritos = deCat.length;
+    // Lo que debe cada equipo: su monto propio, o el valor de su categoría.
+    const ingresoInscritos = deCat.reduce((s, e) => s + (e.monto_inscripcion ?? g.valor), 0);
+    const faltanParaCupo = Math.max(0, g.cupo - inscritos);
+    const premiosCat = premios
+      .filter((p) => (g.id ? p.categoria_id === g.id : true))
+      .reduce((s, p) => s + enDinero(p), 0);
+    const diferencia = ingresoInscritos - premiosCat;
+    const ingresoCupoLleno = ingresoInscritos + faltanParaCupo * g.valor;
+    return {
+      categoriaId: g.id,
+      nombre: g.nombre,
+      cupo: g.cupo,
+      inscritos,
+      confirmados: deCat.filter((e) => e.estado === "confirmado").length,
+      pendientes: deCat.filter((e) => e.estado === "pendiente").length,
+      faltanParaCupo,
+      valorInscripcion: g.valor,
+      ingresoInscritos,
+      recaudado: deCat.reduce((s, e) => s + e.monto_pagado, 0),
+      ingresoCupoLleno,
+      premios: premiosCat,
+      diferencia,
+      equiposParaCubrir: diferencia >= 0 ? 0 : g.valor > 0 ? Math.ceil(-diferencia / g.valor) : null,
+      cubreConCupoLleno: ingresoCupoLleno >= premiosCat,
+    };
+  });
+
+  const suma = (k: keyof CoberturaCategoria) => filas.reduce((s, f) => s + (f[k] as number), 0);
+  // Con categorías, los premios sin categoría son generales del torneo.
+  const premiosGenerales =
+    categorias.length > 0
+      ? premios.filter((p) => !p.categoria_id || !categorias.some((c) => c.id === p.categoria_id)).reduce((s, p) => s + enDinero(p), 0)
+      : 0;
+  const premiosTotal = suma("premios") + premiosGenerales;
+  const gastosTotal = gastos.reduce((s, g) => s + g.valor_total, 0);
+  const gastosPremiacion = gastos
+    .filter((g) => CATEGORIAS_PREMIACION.includes(g.categoria))
+    .reduce((s, g) => s + g.valor_total, 0);
+  const costoTotal = gastosTotal + Math.max(0, premiosTotal - gastosPremiacion);
+  const ingresoInscritos = suma("ingresoInscritos");
+  const otrosIngresos = otros.reduce((s, i) => s + i.valor, 0);
+  const ingresoCupoLleno = suma("ingresoCupoLleno") + otrosIngresos;
+  const diferencia = ingresoInscritos + otrosIngresos - costoTotal;
+  // Valor promedio de los cupos que quedan (o de todas las categorías si no queda ninguno).
+  const libres = filas.filter((f) => f.faltanParaCupo > 0 && f.valorInscripcion > 0);
+  const base = libres.length > 0 ? libres : filas.filter((f) => f.valorInscripcion > 0);
+  const valorPromedio = base.length > 0 ? base.reduce((s, f) => s + f.valorInscripcion, 0) / base.length : 0;
+
+  return {
+    categorias: filas,
+    total: {
+      cupo: suma("cupo"),
+      inscritos: suma("inscritos"),
+      confirmados: suma("confirmados"),
+      pendientes: suma("pendientes"),
+      faltanParaCupo: suma("faltanParaCupo"),
+      ingresoInscritos,
+      otrosIngresos,
+      recaudado: suma("recaudado"),
+      ingresoCupoLleno,
+      premios: premiosTotal,
+      premiosGenerales,
+      costoTotal,
+      gastos: gastosTotal,
+      diferencia,
+      equiposParaEquilibrio: diferencia >= 0 ? 0 : valorPromedio > 0 ? Math.ceil(-diferencia / valorPromedio) : null,
+      cubreConCupoLleno: ingresoCupoLleno >= costoTotal,
+    },
   };
 }
 
@@ -309,8 +482,11 @@ export function validarViabilidadTorneo(
   gastos: GastoTorneo[],
   premios: PremioTorneo[] = [],
   ahora: number = Date.now(),
+  categorias: CategoriaTorneo[] = [],
+  otros: IngresoTorneo[] = [],
 ): AlertaTorneo[] {
-  const dash = calcularDashboardTorneo(torneo, equipos, gastos);
+  const dash = calcularDashboardTorneo(torneo, equipos, gastos, categorias, premios, otros);
+  const cobertura = calcularCoberturaTorneo(torneo, categorias, equipos, gastos, premios, otros);
   const alertas: AlertaTorneo[] = [];
   const enJuego = torneo.estado !== "cancelado" && torneo.estado !== "finalizado";
 
@@ -352,18 +528,24 @@ export function validarViabilidadTorneo(
     });
   }
 
-  // Punto de equilibrio.
-  if (dash.puntoEquilibrioEquipos !== null && enJuego) {
-    const faltan = dash.puntoEquilibrioEquipos - dash.equiposConfirmados;
-    if (faltan > 0) {
+  // Punto de equilibrio: lo que deben los inscritos contra premios + gastos.
+  const t = cobertura.total;
+  if (enJuego && t.costoTotal > 0) {
+    if (t.diferencia < 0) {
+      const equiposTxt =
+        t.equiposParaEquilibrio !== null
+          ? ` (≈ ${t.equiposParaEquilibrio} equipo${t.equiposParaEquilibrio === 1 ? "" : "s"} más)`
+          : "";
       alertas.push({
-        nivel: "info",
-        mensaje: `Necesitas ${faltan} equipo${faltan === 1 ? "" : "s"} adicional${faltan === 1 ? "" : "es"} para llegar al punto de equilibrio.`,
+        nivel: t.cubreConCupoLleno ? "info" : "alerta",
+        mensaje:
+          `Con los ${t.inscritos} inscritos${t.otrosIngresos > 0 ? ` y ${formatCOP(t.otrosIngresos)} de otros ingresos` : ""} faltan ${formatCOP(-t.diferencia)} para cubrir premios y gastos${equiposTxt}.` +
+          (t.cubreConCupoLleno ? "" : " Ni con el cupo lleno alcanza: revisa premios, gastos o valor de inscripción."),
       });
-    } else if (dash.gastosProyectados > 0) {
+    } else {
       alertas.push({
         nivel: "info",
-        mensaje: "Ya superaste el punto de equilibrio: de aquí en adelante es utilidad.",
+        mensaje: `Con los ${t.inscritos} inscritos${t.otrosIngresos > 0 ? ` y ${formatCOP(t.otrosIngresos)} de otros ingresos` : ""} ya cubres premios y gastos: quedan ${formatCOP(t.diferencia)} de margen.`,
       });
     }
   }
