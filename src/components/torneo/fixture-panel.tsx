@@ -423,6 +423,8 @@ function ControlCategoria({
   );
 }
 
+type Destino = "pantalla" | "juez";
+
 type LecturaMarcador = Extract<Awaited<ReturnType<typeof traerMarcador>>, { success: true }>["data"];
 type EnlacesMarcador = LecturaMarcador["enlaces"];
 
@@ -473,6 +475,8 @@ function ResultadoModal({
   const [leyendo, setLeyendo] = useState(false);
   /** Antes de abrir el marcador: colores y voz elegidos (null = panel cerrado). */
   const [opcionesVoz, setOpcionesVoz] = useState<OpcionesMarcador | null>(null);
+  /** A dónde llevar después de abrir la sala: la pantalla del organizador o el WhatsApp del juez. */
+  const [destino, setDestino] = useState<Destino>("pantalla");
   /** Cambio que afecta un resultado ya guardado, a la espera de confirmación. */
   const [confirmar, setConfirmar] = useState<{
     texto: string;
@@ -665,11 +669,26 @@ function ResultadoModal({
     });
   }
 
-  function abrir(opciones?: OpcionesMarcador) {
+  /**
+   * Abre (o reabre) la sala y, si se pidió, lleva directo a la pantalla del
+   * organizador o al WhatsApp del juez. La pestaña se abre dentro del toque
+   * (si se abre después de esperar al servidor, el navegador la bloquea).
+   */
+  function abrir(opciones?: OpcionesMarcador, ir?: Destino) {
     if (!encuentro) return;
+    const pestana = ir ? window.open("", "_blank") : null;
     startTransition(async () => {
       const r = await abrirMarcador(encuentro.id, opciones);
-      if (!r.success) return void toast.error(r.error);
+      if (!r.success) {
+        pestana?.close();
+        return void toast.error(r.error);
+      }
+      if (pestana) {
+        pestana.location.href =
+          ir === "pantalla"
+            ? r.data.pantalla
+            : `https://wa.me/?text=${encodeURIComponent(`Marcador de ${a} vs ${b} (modo juez): ${r.data.juez}`)}`;
+      }
       setOpcionesVoz(null);
       setEnlaces(r.data);
       toast.success("Marcador listo: compártelo con el juez");
@@ -760,10 +779,11 @@ function ResultadoModal({
         )}
         {marcadorDisponible && !corrigiendo && (
           <div className="bg-muted/40 flex flex-col gap-2 rounded-xl p-3">
-            <p className="text-sm font-semibold">Marcador del juez (opcional)</p>
+            <p className="text-sm font-semibold">Marcador en vivo (opcional)</p>
             <p className="text-muted-foreground text-xs">
-              El juez marca los puntos en vivo desde su celular. Cuando termine, aquí aparecerá
-              su resultado para aceptarlo o corregirlo.
+              <b>Pantalla</b>: la abres tú (organizador) en el PC o celular conectado a la TV y al
+              parlante; ahí suenan la voz y la música. <b>Juez</b>: marca los puntos desde su
+              celular. Al terminar, aquí aparece su resultado para aceptarlo o corregirlo.
             </p>
             <div className="flex flex-wrap gap-2">
               {!encuentro.sala_marcador && !enlaces ? (
@@ -775,29 +795,50 @@ function ResultadoModal({
                     equipoA={a}
                     equipoB={b}
                     pending={pending}
-                    onAbrir={() => abrir(opcionesVoz)}
+                    textoAbrir={destino === "pantalla" ? "Abrir pantalla" : "Abrir y enviar al juez"}
+                    onAbrir={() => abrir(opcionesVoz, destino)}
                     onCancelar={() => setOpcionesVoz(null)}
                   />
                 ) : (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => setOpcionesVoz(OPCIONES_MARCADOR_POR_DEFECTO)}
-                    disabled={pending}
-                  >
-                    <Smartphone className="size-3.5" /> Abrir marcador para el juez
-                  </Button>
+                  <>
+                    <Button
+                      size="sm"
+                      onClick={() => {
+                        setDestino("pantalla");
+                        setOpcionesVoz(OPCIONES_MARCADOR_POR_DEFECTO);
+                      }}
+                      disabled={pending}
+                    >
+                      <Monitor className="size-3.5" /> Abrir pantalla (organizador)
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        setDestino("juez");
+                        setOpcionesVoz(OPCIONES_MARCADOR_POR_DEFECTO);
+                      }}
+                      disabled={pending}
+                    >
+                      <Smartphone className="size-3.5" /> Enviar al juez
+                    </Button>
+                  </>
                 )
               ) : (
                 <>
-                  <Button size="sm" onClick={traer} disabled={pending}>
+                  {!enlaces && (
+                    <>
+                      <Button size="sm" onClick={() => abrir(undefined, "pantalla")} disabled={pending}>
+                        <Monitor className="size-3.5" /> Abrir pantalla (organizador)
+                      </Button>
+                      <Button size="sm" variant="outline" onClick={() => abrir(undefined, "juez")} disabled={pending}>
+                        <Smartphone className="size-3.5" /> Enviar al juez
+                      </Button>
+                    </>
+                  )}
+                  <Button size="sm" variant={enlaces ? "default" : "ghost"} onClick={traer} disabled={pending}>
                     <Download className="size-3.5" /> Traer marcador
                   </Button>
-                  {!enlaces && (
-                    <Button size="sm" variant="ghost" onClick={() => abrir()} disabled={pending}>
-                      Ver enlaces
-                    </Button>
-                  )}
                 </>
               )}
             </div>
@@ -1453,10 +1494,12 @@ function OpcionesVozMarcador({
   equipoA,
   equipoB,
   pending,
+  textoAbrir = "Abrir marcador",
   onAbrir,
   onCancelar,
 }: {
   encuentroId: string;
+  textoAbrir?: string;
   opciones: OpcionesMarcador;
   onChange: (o: OpcionesMarcador) => void;
   equipoA: string;
@@ -1552,7 +1595,7 @@ function OpcionesVozMarcador({
           <Volume2 className="size-3.5" /> {probando ? "Generando…" : "Probar voz"}
         </Button>
         <Button size="sm" onClick={onAbrir} disabled={pending}>
-          <Smartphone className="size-3.5" /> Abrir marcador
+          <Smartphone className="size-3.5" /> {textoAbrir}
         </Button>
         <Button size="sm" variant="ghost" onClick={onCancelar} disabled={pending}>
           Cancelar
