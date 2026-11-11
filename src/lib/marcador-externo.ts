@@ -142,6 +142,26 @@ export async function probarVozMarcador(voz: string, texto: string): Promise<{ a
 }
 
 /**
+ * Pone los nombres completos de los equipos en una sala que ya existe (por
+ * ejemplo, creada cuando los nombres se recortaban a 20 letras) sin tocar el
+ * marcador. Sin PIN no se intenta. Si falla, el partido sigue igual.
+ */
+export async function sincronizarNombresMarcador(sala: string, nombreA: string, nombreB: string): Promise<void> {
+  if (!URL_INTERNA || !ADMIN_PIN) return;
+  try {
+    await fetch(`${URL_INTERNA}/api/rooms/${sala}/teams`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-admin-pin": ADMIN_PIN },
+      body: JSON.stringify({ names: [nombreA.slice(0, 40), nombreB.slice(0, 40)] }),
+      signal: AbortSignal.timeout(3000),
+      cache: "no-store",
+    });
+  } catch {
+    // No es crítico: el juez puede seguir marcando con el nombre anterior.
+  }
+}
+
+/**
  * Borra la sala temporal cuando el partido ya tiene resultado oficial: el
  * histórico vive en `encuentros`. Si falla, la sala expira sola en el marcador.
  * Sin PIN no se intenta, para no sumar intentos fallidos en el marcador.

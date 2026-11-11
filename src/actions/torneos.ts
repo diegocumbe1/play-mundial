@@ -13,6 +13,7 @@ import {
   marcadorDisponible,
   probarVozMarcador,
   salaDePartido,
+  sincronizarNombresMarcador,
   type MarcadorLeido,
 } from "@/lib/marcador-externo";
 import { fraseDePrueba, limpiarOpcionesMarcador, type OpcionesMarcador } from "@/lib/marcador-voz";
@@ -3630,6 +3631,8 @@ export async function abrirMarcador(
     );
     if (err) return { success: false, error: err };
   }
+  // Sala que ya existía (o en curso, que /setup no reconfigura): nombres completos y al día.
+  if (p.e.sala_marcador) await sincronizarNombresMarcador(sala, p.nombreA, p.nombreB);
 
   const svc = createServiceRoleClient();
   await svc
