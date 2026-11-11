@@ -94,8 +94,8 @@ export async function crearSalaMarcador(
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         teams: [
-          { name: nombreA.slice(0, 20), color: opciones.colores[0] },
-          { name: nombreB.slice(0, 20), color: opciones.colores[1] },
+          { name: nombreA.slice(0, 40), color: opciones.colores[0] },
+          { name: nombreB.slice(0, 40), color: opciones.colores[1] },
         ],
         ...config,
         voice: {
