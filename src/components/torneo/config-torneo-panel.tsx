@@ -423,6 +423,20 @@ export function ConfigTorneoPanel({
               ))}
             </div>
           </Campo>
+          <Campo
+            label="Música en la pantalla del marcador (opcional)"
+            className="sm:col-span-2"
+            ayuda="Pega el enlace de una lista o canción de YouTube o YouTube Music. Suena en la pantalla del marcador (TV o PC) y baja sola cuando habla la voz."
+            info="Funciona con la pantalla encendida y la página abierta: si el celular se bloquea o cambias de app, la música se pausa. Sin YouTube Premium en ese navegador pueden salir anuncios."
+          >
+            <Input
+              value={juego.musica_youtube}
+              onChange={(e) => set("juego", { musica_youtube: e.target.value })}
+              placeholder="https://music.youtube.com/playlist?list=…"
+              inputMode="url"
+              aria-label="Enlace de música de YouTube"
+            />
+          </Campo>
         </div>
 
         <p className="mt-5 mb-1 text-sm font-semibold">Calendario</p>

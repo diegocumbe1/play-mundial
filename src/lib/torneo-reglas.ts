@@ -38,6 +38,11 @@ export const reglasSchema = z.object({
        * "Cancha N". Ej.: ["Cancha estándar"].
        */
       nombres_canchas: z.array(z.string().trim()).default([]),
+      /**
+       * Enlace de YouTube / YouTube Music (lista o video) que suena en la
+       * pantalla del marcador. Vacío = sin música.
+       */
+      musica_youtube: z.string().trim().max(300).default(""),
     })
     .prefault({}),
   tabla: z

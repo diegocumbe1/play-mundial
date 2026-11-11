@@ -1,5 +1,6 @@
 import "server-only";
 
+import { OPCIONES_MARCADOR_POR_DEFECTO, type OpcionesMarcador } from "@/lib/marcador-voz";
 import type { ReglasTorneo } from "@/lib/torneo-reglas";
 
 /**
@@ -25,7 +26,6 @@ export const marcadorDisponible = (): boolean => !!URL_INTERNA;
 const PUNTOS_VALIDOS = [10, 15, 20, 21, 25];
 const ALARGUES_VALIDOS = [0, 2, 4, 6];
 const ALARGUE_SIN_TOPE = 99;
-const COLORES = ["#1e6fd9", "#d62f4b"]; // azul y rojo
 
 /** Reglas del torneo → configuración del marcador. `null` si no se puede representar. */
 export function configMarcador(juego: ReglasTorneo["juego"]): {
@@ -64,17 +64,24 @@ export function enlacesMarcador(sala: string) {
     control: `${URL_PUBLICA}/control?sala=${sala}`,
     /** Solo celular (control + marcador + voz) cuando no hay TV. */
     soloCelular: `${URL_PUBLICA}/control?sala=${sala}&modo=uno`,
-    /** TV o computador junto a la cancha. */
+    /**
+     * Pantalla del organizador (TV, PC o celular conectado a la pantalla): muestra
+     * el marcador y desde ahí se configura el sonido (voz y música).
+     */
     pantalla: `${URL_PUBLICA}/marcador?sala=${sala}`,
   };
 }
 
-/** Crea (o reconfigura, si aún no empezó) la sala del partido. */
+/**
+ * Crea (o reconfigura, si aún no empezó) la sala del partido. `opciones`: colores
+ * de los equipos y la voz (quién habla y si anuncia el nombre o el color).
+ */
 export async function crearSalaMarcador(
   sala: string,
   nombreA: string,
   nombreB: string,
   juego: ReglasTorneo["juego"],
+  opciones: OpcionesMarcador = OPCIONES_MARCADOR_POR_DEFECTO,
 ): Promise<string | null> {
   if (!URL_INTERNA) return "El marcador en vivo no está configurado.";
   const config = configMarcador(juego);
@@ -87,10 +94,17 @@ export async function crearSalaMarcador(
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         teams: [
-          { name: nombreA.slice(0, 20), color: COLORES[0] },
-          { name: nombreB.slice(0, 20), color: COLORES[1] },
+          { name: nombreA.slice(0, 20), color: opciones.colores[0] },
+          { name: nombreB.slice(0, 20), color: opciones.colores[1] },
         ],
         ...config,
+        voice: {
+          enabled: true,
+          speaker: opciones.voz,
+          announce: opciones.anuncio === "color" ? "color" : "name",
+        },
+        // Música del torneo en la pantalla del marcador (enlace de YouTube; vacío = sin música).
+        music: { youtube: juego.musica_youtube ?? "" },
         torneo: true, // Sin música y el juez no puede borrar el partido desde el control.
       }),
       signal: AbortSignal.timeout(5000),
@@ -102,6 +116,28 @@ export async function crearSalaMarcador(
     return res.ok && body.ok ? null : (body.error ?? "El marcador no respondió bien.");
   } catch {
     return "No se pudo conectar con el marcador en vivo.";
+  }
+}
+
+/**
+ * Audio MP3 (base64) de una frase de prueba con la voz elegida, para escuchar
+ * cómo sonará el marcador antes de abrirlo. Requiere el PIN de administración.
+ */
+export async function probarVozMarcador(voz: string, texto: string): Promise<{ audio: string } | { error: string }> {
+  if (!URL_INTERNA) return { error: "El marcador en vivo no está configurado." };
+  if (!ADMIN_PIN) return { error: "Falta DC_SPORT_SCORE_ADMIN_PIN para probar la voz." };
+  try {
+    const res = await fetch(`${URL_INTERNA}/api/voz/prueba`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-admin-pin": ADMIN_PIN },
+      body: JSON.stringify({ speaker: voz, text: texto }),
+      signal: AbortSignal.timeout(15000),
+      cache: "no-store",
+    });
+    if (!res.ok) return { error: "El marcador no pudo generar la voz de prueba." };
+    return { audio: Buffer.from(await res.arrayBuffer()).toString("base64") };
+  } catch {
+    return { error: "No se pudo conectar con el marcador en vivo." };
   }
 }
 

@@ -1,11 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useState, useTransition } from "react";
+import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   CalendarClock,
   CalendarPlus,
   Check,
+  Volume2,
   Copy,
   Download,
   GitFork,
@@ -26,12 +27,13 @@ import {
   generarFixture,
   guardarResultado,
   marcarArbitrajePagado,
+  probarVozPartido,
   traerMarcador,
   type OpcionesFixture,
 } from "@/actions/torneos";
-import { Campo, InfoToggle, Segmentado } from "@/components/torneo/campos";
+import { Campo, InfoToggle, Segmentado, Selector } from "@/components/torneo/campos";
 import { FixtureVista } from "@/components/torneo/fixture-vista";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -42,6 +44,13 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { formatFechaHoraCO } from "@/lib/fecha-co";
+import {
+  COLORES_MARCADOR,
+  OPCIONES_MARCADOR_POR_DEFECTO,
+  VOCES_MARCADOR,
+  type OpcionesMarcador,
+  type VozMarcador,
+} from "@/lib/marcador-voz";
 import {
   armarGrupos,
   categoriaInicial,
@@ -397,6 +406,8 @@ function ResultadoModal({
   const [propuesta, setPropuesta] = useState<LecturaMarcador | null>(null);
   const [corrigiendo, setCorrigiendo] = useState(false);
   const [leyendo, setLeyendo] = useState(false);
+  /** Antes de abrir el marcador: colores y voz elegidos (null = panel cerrado). */
+  const [opcionesVoz, setOpcionesVoz] = useState<OpcionesMarcador | null>(null);
   /** Cambio que afecta un resultado ya guardado, a la espera de confirmación. */
   const [confirmar, setConfirmar] = useState<{
     texto: string;
@@ -414,6 +425,7 @@ function ResultadoModal({
     setUltimoId(encuentro.id);
     setEnlaces(null);
     setAviso(null);
+    setOpcionesVoz(null);
     setPropuesta(null);
     setCorrigiendo(false);
     setConfirmar(null);
@@ -570,11 +582,12 @@ function ResultadoModal({
     });
   }
 
-  function abrir() {
+  function abrir(opciones?: OpcionesMarcador) {
     if (!encuentro) return;
     startTransition(async () => {
-      const r = await abrirMarcador(encuentro.id);
+      const r = await abrirMarcador(encuentro.id, opciones);
       if (!r.success) return void toast.error(r.error);
+      setOpcionesVoz(null);
       setEnlaces(r.data);
       toast.success("Marcador listo: compártelo con el juez");
       router.refresh();
@@ -666,16 +679,34 @@ function ResultadoModal({
             </p>
             <div className="flex flex-wrap gap-2">
               {!encuentro.sala_marcador && !enlaces ? (
-                <Button size="sm" variant="outline" onClick={abrir} disabled={pending}>
-                  <Smartphone className="size-3.5" /> Abrir marcador para el juez
-                </Button>
+                opcionesVoz ? (
+                  <OpcionesVozMarcador
+                    encuentroId={encuentro.id}
+                    opciones={opcionesVoz}
+                    onChange={setOpcionesVoz}
+                    equipoA={a}
+                    equipoB={b}
+                    pending={pending}
+                    onAbrir={() => abrir(opcionesVoz)}
+                    onCancelar={() => setOpcionesVoz(null)}
+                  />
+                ) : (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setOpcionesVoz(OPCIONES_MARCADOR_POR_DEFECTO)}
+                    disabled={pending}
+                  >
+                    <Smartphone className="size-3.5" /> Abrir marcador para el juez
+                  </Button>
+                )
               ) : (
                 <>
                   <Button size="sm" onClick={traer} disabled={pending}>
                     <Download className="size-3.5" /> Traer marcador
                   </Button>
                   {!enlaces && (
-                    <Button size="sm" variant="ghost" onClick={abrir} disabled={pending}>
+                    <Button size="sm" variant="ghost" onClick={() => abrir()} disabled={pending}>
                       Ver enlaces
                     </Button>
                   )}
@@ -1169,6 +1200,127 @@ function PropuestaJuez({
 }
 
 /** Enlaces para el juez (celular) y la pantalla de la cancha. */
+/**
+ * Antes de abrir el marcador: cómo anuncia la voz a los equipos (por nombre,
+ * por defecto, o por color), los colores de cada uno y quién habla. El juez
+ * puede cambiar la voz durante el partido desde el menú ☰ del marcador.
+ */
+function OpcionesVozMarcador({
+  encuentroId,
+  opciones,
+  onChange,
+  equipoA,
+  equipoB,
+  pending,
+  onAbrir,
+  onCancelar,
+}: {
+  encuentroId: string;
+  opciones: OpcionesMarcador;
+  onChange: (o: OpcionesMarcador) => void;
+  equipoA: string;
+  equipoB: string;
+  pending: boolean;
+  onAbrir: () => void;
+  onCancelar: () => void;
+}) {
+  const setColor = (lado: 0 | 1, color: string) => {
+    const colores: [string, string] = [...opciones.colores];
+    colores[lado] = color;
+    // Si eligen el color del rival, se intercambian para que nunca queden iguales.
+    if (colores[0] === colores[1]) colores[1 - lado] = opciones.colores[lado];
+    onChange({ ...opciones, colores });
+  };
+  const porColor = opciones.anuncio === "color";
+  const [probando, setProbando] = useState(false);
+  const audio = useRef<HTMLAudioElement | null>(null);
+  useEffect(() => () => audio.current?.pause(), []);
+  async function probar() {
+    setProbando(true);
+    audio.current?.pause();
+    // Se crea dentro del toque: así iPhone deja sonarlo cuando llega el audio.
+    const el = (audio.current ??= new Audio());
+    try {
+      const r = await probarVozPartido(encuentroId, opciones);
+      if (!r.success) return void toast.error(r.error);
+      el.src = `data:audio/mpeg;base64,${r.data.audio}`;
+      await el.play().catch(() => toast.error("Toca otra vez «Probar voz» para escucharla"));
+    } finally {
+      setProbando(false);
+    }
+  }
+  return (
+    <div className="flex w-full flex-col gap-3">
+      <Campo
+        label="La voz anuncia a cada equipo por"
+        info={
+          <>
+            <b>Nombre</b>: «{equipoA}, 5. {equipoB}, 3». <b>Color</b>: «Azul, 5. Rojo, 3». El
+            color sirve si los nombres son largos o difíciles de pronunciar.
+          </>
+        }
+      >
+        <Segmentado
+          value={opciones.anuncio}
+          onChange={(v) => onChange({ ...opciones, anuncio: v === "color" ? "color" : "nombre" })}
+          options={[
+            { value: "nombre", label: "Nombre del equipo" },
+            { value: "color", label: "Color del equipo" },
+          ]}
+        />
+      </Campo>
+      <div className="grid grid-cols-2 gap-2">
+        {([equipoA, equipoB] as const).map((nombreEquipo, i) => {
+          const lado = i as 0 | 1;
+          return (
+            <Campo key={lado} label={`Color de ${nombreEquipo}`}>
+              <div className="flex items-center gap-2">
+                <span
+                  className="size-4 shrink-0 rounded-full border"
+                  style={{ background: opciones.colores[lado] }}
+                  aria-hidden
+                />
+                <Selector value={opciones.colores[lado]} onChange={(v) => setColor(lado, v)}>
+                  {COLORES_MARCADOR.map((c) => (
+                    <option key={c.value} value={c.value}>
+                      {c.label}
+                    </option>
+                  ))}
+                </Selector>
+              </div>
+            </Campo>
+          );
+        })}
+      </div>
+      {!porColor && (
+        <p className="text-muted-foreground -mt-1 text-xs">
+          Los colores se ven en la pantalla; la voz dice el nombre del equipo.
+        </p>
+      )}
+      <Campo label="Voz" ayuda="Se puede cambiar durante el partido desde el menú ☰ del marcador.">
+        <Selector value={opciones.voz} onChange={(v) => onChange({ ...opciones, voz: v as VozMarcador })}>
+          {VOCES_MARCADOR.map((v) => (
+            <option key={v.value} value={v.value}>
+              {v.label}
+            </option>
+          ))}
+        </Selector>
+      </Campo>
+      <div className="flex flex-wrap gap-2">
+        <Button size="sm" variant="outline" onClick={probar} disabled={pending || probando}>
+          <Volume2 className="size-3.5" /> {probando ? "Generando…" : "Probar voz"}
+        </Button>
+        <Button size="sm" onClick={onAbrir} disabled={pending}>
+          <Smartphone className="size-3.5" /> Abrir marcador
+        </Button>
+        <Button size="sm" variant="ghost" onClick={onCancelar} disabled={pending}>
+          Cancelar
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 function EnlacesJuez({
   enlaces,
   partido,
@@ -1180,12 +1332,30 @@ function EnlacesJuez({
     navigator.clipboard.writeText(url).then(() => toast.success("Enlace copiado"));
   const filas = [
     { icono: Smartphone, label: "Juez (celular, modo juez)", url: enlaces.juez },
+    { icono: Monitor, label: "Pantalla del organizador (TV)", url: enlaces.pantalla },
     { icono: Smartphone, label: "Control con doble toque", url: enlaces.control },
     { icono: Smartphone, label: "Solo celular, sin TV", url: enlaces.soloCelular },
-    { icono: Monitor, label: "Pantalla / TV", url: enlaces.pantalla },
   ];
   return (
-    <div className="flex flex-col gap-1.5">
+    <div className="flex flex-col gap-2">
+      {/* Las dos acciones del día de juego: la pantalla (el organizador, con voz y música) y el juez. */}
+      <div className="flex flex-wrap gap-2">
+        <a href={enlaces.pantalla} target="_blank" rel="noreferrer" className={buttonVariants({ size: "sm" })}>
+          <Monitor className="size-3.5" /> Abrir pantalla (admin)
+        </a>
+        <a
+          href={`https://wa.me/?text=${encodeURIComponent(`Marcador de ${partido} (modo juez): ${enlaces.juez}`)}`}
+          target="_blank"
+          rel="noreferrer"
+          className={buttonVariants({ size: "sm", variant: "outline" })}
+        >
+          <MessageCircle className="size-3.5" /> Compartir al juez
+        </a>
+      </div>
+      <p className="text-muted-foreground text-xs">
+        Abre la <b>pantalla</b> en el PC o celular conectado a la TV: ahí se activan la voz y la
+        música y se prueba cómo suena. El <b>juez</b> marca desde su celular con su enlace.
+      </p>
       {filas.map((f) => {
         const Icono = f.icono;
         return (
@@ -1200,14 +1370,6 @@ function EnlacesJuez({
           </div>
         );
       })}
-      <a
-        href={`https://wa.me/?text=${encodeURIComponent(`Marcador de ${partido}: ${enlaces.juez}`)}`}
-        target="_blank"
-        rel="noreferrer"
-        className="inline-flex items-center gap-1 self-start text-xs font-medium text-emerald-600 dark:text-emerald-400"
-      >
-        <MessageCircle className="size-3.5" /> Enviar al juez por WhatsApp
-      </a>
     </div>
   );
 }

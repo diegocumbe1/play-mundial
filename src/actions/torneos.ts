@@ -11,9 +11,11 @@ import {
   enlacesMarcador,
   leerMarcador,
   marcadorDisponible,
+  probarVozMarcador,
   salaDePartido,
   type MarcadorLeido,
 } from "@/lib/marcador-externo";
+import { fraseDePrueba, limpiarOpcionesMarcador, type OpcionesMarcador } from "@/lib/marcador-voz";
 import {
   avisarEnVivo,
   avisarFinalizado,
@@ -3297,9 +3299,13 @@ async function partidoDelUsuario(encuentroId: string, membership: Membership) {
  * Prepara el marcador del partido para el juez: crea la sala en
  * dc-sport-score con los equipos y las reglas del torneo, deja el partido "en
  * vivo" y devuelve los enlaces del juez y de la pantalla.
+ *
+ * `opciones` (colores y voz) se eligen antes de abrirlo. Sin opciones («Ver
+ * enlaces» de una sala ya abierta) la sala no se toca si sigue existiendo.
  */
 export async function abrirMarcador(
   encuentroId: string,
+  opciones?: Partial<OpcionesMarcador>,
 ): Promise<ActionResult<ReturnType<typeof enlacesMarcador>>> {
   const acceso = await accesoTorneos();
   if (!acceso.ok) return { success: false, error: acceso.error };
@@ -3313,8 +3319,17 @@ export async function abrirMarcador(
   }
 
   const sala = p.e.sala_marcador ?? salaDePartido(p.e.id);
-  const err = await crearSalaMarcador(sala, p.nombreA, p.nombreB, leerReglas(p.torneo.reglas).juego);
-  if (err) return { success: false, error: err };
+  const yaExiste = !opciones && p.e.sala_marcador ? !!(await leerMarcador(sala)) : false;
+  if (!yaExiste) {
+    const err = await crearSalaMarcador(
+      sala,
+      p.nombreA,
+      p.nombreB,
+      leerReglas(p.torneo.reglas).juego,
+      limpiarOpcionesMarcador(opciones),
+    );
+    if (err) return { success: false, error: err };
+  }
 
   const svc = createServiceRoleClient();
   await svc
@@ -3328,6 +3343,23 @@ export async function abrirMarcador(
 
   revalidarTorneo(p.torneo);
   return { success: true, data: enlacesMarcador(sala) };
+}
+
+/**
+ * Voz de prueba antes de abrir el marcador: una frase con los nombres reales
+ * del partido y la voz elegida. Devuelve el MP3 en base64.
+ */
+export async function probarVozPartido(
+  encuentroId: string,
+  opciones: Partial<OpcionesMarcador>,
+): Promise<ActionResult<{ audio: string }>> {
+  const acceso = await accesoTorneos();
+  if (!acceso.ok) return { success: false, error: acceso.error };
+  const p = await partidoDelUsuario(encuentroId, acceso.membership);
+  if (!p) return { success: false, error: "Partido no encontrado o sin equipos definidos" };
+  const o = limpiarOpcionesMarcador(opciones);
+  const r = await probarVozMarcador(o.voz, fraseDePrueba(p.nombreA, p.nombreB, o));
+  return "error" in r ? { success: false, error: r.error } : { success: true, data: r };
 }
 
 /**
