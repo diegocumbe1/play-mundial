@@ -12,6 +12,7 @@ import {
   leerMarcador,
   marcadorDisponible,
   probarVozMarcador,
+  reiniciarSalaMarcador,
   salaDePartido,
   sincronizarNombresMarcador,
   type MarcadorLeido,
@@ -3444,7 +3445,8 @@ export async function guardarResultado(
 
   let cambios: Partial<Encuentro>;
   if (d.tipo === "reiniciar") {
-    cambios = { estado: "programado", sets: [], ganador_id: null };
+    // También se olvida lo que reportó el juez: el partido vuelve a empezar.
+    cambios = { estado: "programado", sets: [], ganador_id: null, resultado_juez: null };
   } else if (d.tipo === "wo") {
     cambios = {
       estado: "wo",
@@ -3484,6 +3486,8 @@ export async function guardarResultado(
   const { error } = await svc.from("encuentros").update(cambios).eq("id", encuentroId);
   if (error) return { success: false, error: error.message };
   if (salaTerminada) await borrarSalaMarcador(salaTerminada);
+  // Reiniciar aquí reinicia también el marcador del juez (0-0), sin cerrar sus pantallas.
+  if (d.tipo === "reiniciar" && e.sala_marcador) await reiniciarSalaMarcador(e.sala_marcador);
 
   // Si el partido de la llave quedó sin ganador, se libera su lugar en el siguiente.
   if (e.fase !== "grupos" && e.ganador_id && !actualizado.ganador_id) {

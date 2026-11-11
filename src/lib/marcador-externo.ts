@@ -162,6 +162,25 @@ export async function sincronizarNombresMarcador(sala: string, nombreA: string, 
 }
 
 /**
+ * Deja la sala del partido en 0-0 (cuando el organizador reinicia el partido).
+ * Conserva equipos, reglas, voz y música; las pantallas conectadas ven el 0-0.
+ * Sin PIN no se intenta. Si falla, el partido igual queda reiniciado aquí.
+ */
+export async function reiniciarSalaMarcador(sala: string): Promise<void> {
+  if (!URL_INTERNA || !ADMIN_PIN) return;
+  try {
+    await fetch(`${URL_INTERNA}/api/rooms/${sala}/reset`, {
+      method: "POST",
+      headers: { "x-admin-pin": ADMIN_PIN },
+      signal: AbortSignal.timeout(3000),
+      cache: "no-store",
+    });
+  } catch {
+    // No es crítico: el organizador puede reiniciarlo desde el marcador.
+  }
+}
+
+/**
  * Borra la sala temporal cuando el partido ya tiene resultado oficial: el
  * histórico vive en `encuentros`. Si falla, la sala expira sola en el marcador.
  * Sin PIN no se intenta, para no sumar intentos fallidos en el marcador.
