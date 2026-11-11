@@ -3398,6 +3398,188 @@ export async function intercambiarHorarios(
   return { success: true, data: { aviso: avisos.length > 0 ? [...new Set(avisos)].join(". ") : null } };
 }
 
+const diaSchema = z.object({
+  fecha: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Elige el día"),
+  turnos: z
+    .array(
+      z.object({
+        hora: z.string().regex(/^\d{2}:\d{2}$/, "Hora inválida"),
+        cancha: z.number().int().min(1),
+        equipoAId: z.string().uuid(),
+        equipoBId: z.string().uuid(),
+      }),
+    )
+    .max(60),
+});
+
+/**
+ * Arma un día completo con libertad total: el organizador elige, hora por hora
+ * (y cancha), qué dos equipos juegan. Si ese cruce ya existe en el fixture
+ * (sin jugar) se usa ese partido; si no, se crea uno nuevo. El día queda
+ * exactamente como se envía: los partidos no jugados que estaban ese día y ya
+ * no aparecen vuelven a «Por programar». Los partidos en vivo o terminados nunca
+ * se tocan. Si algo choca con las restricciones de un equipo o un equipo juega
+ * dos veces el día, se guarda igual (manda el organizador) y vuelve un `aviso`.
+ */
+export async function programarDia(
+  torneoId: string,
+  input: z.input<typeof diaSchema>,
+): Promise<ActionResult<{ programados: number; liberados: number; creados: number; avisos: string[] }>> {
+  const acceso = await accesoTorneos();
+  if (!acceso.ok) return { success: false, error: acceso.error };
+  const torneo = await torneoDelUsuario(torneoId, acceso.membership);
+  if (!torneo) return { success: false, error: "Torneo no encontrado" };
+  const parsed = diaSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: parsed.error.issues[0].message };
+  const { fecha, turnos } = parsed.data;
+
+  const canchas = Math.max(1, torneo.cantidad_canchas);
+  const vistosTurno = new Set<string>();
+  for (const t of turnos) {
+    if (t.cancha > canchas) return { success: false, error: `El torneo tiene ${canchas} cancha(s).` };
+    if (t.equipoAId === t.equipoBId) return { success: false, error: `A las ${t.hora}: elige dos equipos distintos.` };
+    const llave = `${t.hora}|${t.cancha}`;
+    if (vistosTurno.has(llave)) return { success: false, error: `Dos partidos a las ${t.hora} en la misma cancha.` };
+    vistosTurno.add(llave);
+  }
+
+  const svc = createServiceRoleClient();
+  const [{ data: todosData }, { data: eqs }] = await Promise.all([
+    svc.from("encuentros").select("*").eq("torneo_id", torneoId),
+    svc.from("equipos_torneo").select("id, nombre, categoria_id, restricciones_horario").eq("torneo_id", torneoId),
+  ]);
+  const todos = (todosData as Encuentro[]) ?? [];
+  const equipos =
+    (eqs as { id: string; nombre: string; categoria_id: string | null; restricciones_horario: unknown }[]) ?? [];
+  const equipo = (id: string | null) => equipos.find((e) => e.id === id);
+  const nombre = (id: string | null) => equipo(id)?.nombre ?? "Equipo";
+  for (const t of turnos) {
+    if (!equipo(t.equipoAId) || !equipo(t.equipoBId)) return { success: false, error: "Equipo no encontrado" };
+  }
+
+  // Turnos del día ocupados por partidos que no se pueden mover (en vivo, terminados…).
+  const fijos = todos.filter(
+    (m) => m.estado !== "programado" && m.programado_at && fechaColombia(m.programado_at) === fecha,
+  );
+  const turnoFijo = new Set(fijos.map((m) => `${new Date(m.programado_at!).getTime()}|${m.cancha ?? 1}`));
+  const inicios = turnos.map((t) => new Date(`${fecha}T${t.hora}:00-05:00`).toISOString());
+  for (const [i, t] of turnos.entries()) {
+    if (turnoFijo.has(`${new Date(inicios[i]).getTime()}|${t.cancha}`)) {
+      return { success: false, error: `A las ${t.hora} esa cancha ya tiene un partido jugado o en vivo.` };
+    }
+  }
+
+  // Cada turno usa el partido sin jugar de ese cruce si existe (prefiere el que ya estaba ese día).
+  const usados = new Set<string>();
+  const asignado: (Encuentro | null)[] = turnos.map((t, i) => {
+    const candidatos = todos.filter(
+      (m) =>
+        m.estado === "programado" &&
+        !usados.has(m.id) &&
+        ((m.equipo_a_id === t.equipoAId && m.equipo_b_id === t.equipoBId) ||
+          (m.equipo_a_id === t.equipoBId && m.equipo_b_id === t.equipoAId)),
+    );
+    const mismoDia = candidatos.find((m) => m.programado_at && fechaColombia(m.programado_at) === fecha);
+    const m = mismoDia ?? candidatos[0] ?? null;
+    if (m) usados.add(m.id);
+    void i;
+    return m;
+  });
+
+  // Los que estaban ese día, sin jugar, y ya no están en el plan, quedan por programar.
+  const liberar = todos.filter(
+    (m) =>
+      m.estado === "programado" &&
+      m.programado_at &&
+      fechaColombia(m.programado_at) === fecha &&
+      !usados.has(m.id),
+  );
+  const mover = [...liberar.map((m) => m.id), ...usados];
+  const ocupadosOtros = new Set(
+    todos
+      .filter((m) => m.programado_at && !mover.includes(m.id))
+      .map((m) => `${new Date(m.programado_at!).getTime()}|${m.cancha ?? 1}`),
+  );
+  for (const [i, t] of turnos.entries()) {
+    if (ocupadosOtros.has(`${new Date(inicios[i]).getTime()}|${t.cancha}`)) {
+      return { success: false, error: `A las ${t.hora} esa cancha ya está ocupada por otro partido.` };
+    }
+  }
+
+  // Todos los que se mueven liberan su turno primero (así dos partidos pueden cambiar de turno entre sí).
+  if (mover.length > 0) {
+    const { error } = await svc
+      .from("encuentros")
+      .update({ programado_at: null, cancha: null })
+      .in("id", mover)
+      .eq("estado", "programado");
+    if (error) return { success: false, error: error.message };
+  }
+
+  let creados = 0;
+  for (const [i, t] of turnos.entries()) {
+    const m = asignado[i];
+    if (m) {
+      const { error } = await svc
+        .from("encuentros")
+        .update({ programado_at: inicios[i], cancha: t.cancha })
+        .eq("id", m.id)
+        .eq("estado", "programado");
+      if (error) return { success: false, error: error.message };
+      continue;
+    }
+    // Cruce que no está en el fixture: se crea (como partido de grupos de la categoría del equipo A).
+    const a = equipo(t.equipoAId)!;
+    const grupoDe = (id: string) => todos.find((x) => x.fase === "grupos" && (x.equipo_a_id === id || x.equipo_b_id === id))?.grupo ?? null;
+    const gA = grupoDe(t.equipoAId);
+    const { error } = await svc.from("encuentros").insert({
+      tenant_id: torneo.tenant_id,
+      torneo_id: torneo.id,
+      categoria_id: a.categoria_id,
+      fase: "grupos",
+      grupo: gA && gA === grupoDe(t.equipoBId) ? gA : null,
+      ronda: Math.max(1, ...todos.filter((x) => x.fase === "grupos" && x.categoria_id === a.categoria_id).map((x) => x.ronda)) + 1,
+      orden: 0,
+      equipo_a_id: t.equipoAId,
+      equipo_b_id: t.equipoBId,
+      cancha: t.cancha,
+      programado_at: inicios[i],
+      estado: "programado",
+      sets: [],
+      ganador_id: null,
+      sala_marcador: null,
+    });
+    if (error) return { success: false, error: error.message };
+    creados++;
+  }
+  revalidarTorneo(torneo);
+
+  // Avisos (no bloquean).
+  const avisos: string[] = [];
+  const restricciones = new Map<string, RestriccionesEquipo>(
+    equipos.map((e) => [e.id, leerRestricciones(e.restricciones_horario)]),
+  );
+  const contador = new Map<string, number>();
+  for (const [i, t] of turnos.entries()) {
+    const ids = [t.equipoAId, t.equipoBId];
+    const choque = choquePartido(
+      inicios[i],
+      ids.map((id) => ({ nombre: nombre(id), restricciones: restricciones.get(id) })),
+    );
+    if (choque) avisos.push(`${t.hora}: ${choque}`);
+    for (const id of ids) contador.set(id, (contador.get(id) ?? 0) + 1);
+  }
+  for (const m of fijos) {
+    for (const id of [m.equipo_a_id, m.equipo_b_id]) if (id) contador.set(id, (contador.get(id) ?? 0) + 1);
+  }
+  for (const [id, n] of contador) if (n > 1) avisos.push(`${nombre(id)} juega ${n} veces ese día`);
+
+  if (turnos.length > 0) {
+    await avisarPartidosNuevos(torneo, `Programación del ${fecha}: ${turnos.length} partidos`);
+  }
+  return { success: true, data: { programados: turnos.length, liberados: liberar.length, creados, avisos } };
+}
+
 const resultadoSchema = z.discriminatedUnion("tipo", [
   z.object({
     tipo: z.literal("sets"),

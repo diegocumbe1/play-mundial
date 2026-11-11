@@ -32,6 +32,7 @@ import {
   traerMarcador,
   type OpcionesFixture,
 } from "@/actions/torneos";
+import { ArmarDia } from "@/components/torneo/armar-dia";
 import { Campo, InfoToggle, Segmentado, Selector } from "@/components/torneo/campos";
 import { FixtureVista } from "@/components/torneo/fixture-vista";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -153,6 +154,14 @@ export function FixturePanel({
           />
         ))}
       </div>
+
+      <ArmarDia
+        torneo={torneo}
+        equipos={equipos}
+        encuentros={encuentros}
+        calendario={reglas.calendario}
+        nombresCanchas={reglas.juego.nombres_canchas}
+      />
 
       <FixtureVista
         categorias={categorias}
