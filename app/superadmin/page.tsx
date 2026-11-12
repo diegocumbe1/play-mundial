@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Settings } from "lucide-react";
+import { FileText, Settings } from "lucide-react";
 
 import { esSuperadmin } from "@/lib/auth";
 import { getSolicitudesCuenta, getSuperadminDashboard } from "@/actions/tenants";
@@ -47,7 +47,7 @@ export default async function SuperadminPage({
 }: {
   searchParams: Promise<{ mes?: string | string[] }>;
 }) {
-  if (!(await esSuperadmin())) redirect("/admin/rifas");
+  if (!(await esSuperadmin())) redirect("/admin");
 
   const params = await searchParams;
   const mes = Array.isArray(params.mes) ? params.mes[0] : params.mes;
@@ -80,9 +80,14 @@ export default async function SuperadminPage({
           <h1 className="text-2xl font-bold">Panel de plataforma</h1>
           <p className="text-muted-foreground text-sm">Organizadores, cobros y configuración.</p>
         </div>
-        <Link href="/superadmin/settings" className={buttonVariants({ variant: "outline", size: "sm" })}>
-          <Settings className="size-3.5" /> Precios
-        </Link>
+        <div className="flex flex-wrap gap-2">
+          <Link href="/superadmin/cuentas-cobro" className={buttonVariants({ variant: "outline", size: "sm" })}>
+            <FileText className="size-3.5" /> Cuentas de cobro
+          </Link>
+          <Link href="/superadmin/settings" className={buttonVariants({ variant: "outline", size: "sm" })}>
+            <Settings className="size-3.5" /> Precios
+          </Link>
+        </div>
       </header>
 
       {/* Cuentas nuevas: lo primero, porque hay gente esperando para publicar. */}

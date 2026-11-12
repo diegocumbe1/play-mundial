@@ -15,6 +15,7 @@ import {
 import { formatDiaCO, formatFechaHoraCO } from "@/lib/fecha-co";
 import { nombreCancha } from "@/lib/torneo-avisos-reglas";
 import type { ReglasTorneo } from "@/lib/torneo-reglas";
+import { Desplegable } from "@/components/torneo/desplegable";
 import { cn } from "@/lib/utils";
 import type { EncuentroPublico, FaseEncuentro } from "@/types";
 
@@ -82,7 +83,9 @@ export function FixtureVista({
   );
   const final = lista.find((e) => e.fase === "final");
   const tercero = lista.find((e) => e.fase === "tercer_puesto");
-  const proximos = lista.filter((e) => e.estado === "programado" && e.equipo_a_id && e.equipo_b_id);
+  const pendientes = lista.filter((e) => e.estado === "programado" && e.equipo_a_id && e.equipo_b_id);
+  const proximos = pendientes.filter((e) => e.programado_at);
+  const porProgramar = pendientes.filter((e) => !e.programado_at);
   const resultados = lista
     .filter((e) => e.estado === "finalizado" || e.estado === "wo")
     .reverse();
@@ -127,41 +130,6 @@ export function FixtureVista({
               <TarjetaPartido key={e.id} e={e} nombre={nombre} destacada onEditar={onEditar} canchas={nombresCanchas} />
             ))}
           </div>
-        </section>
-      )}
-
-      {fasesElim.length > 0 && (
-        <section>
-          <Titulo>Eliminatorias</Titulo>
-          <div className="flex gap-3 overflow-x-auto pb-2">
-            {fasesElim.map((f) => (
-              <div key={f} className="flex w-60 shrink-0 flex-col gap-2">
-                <p className="text-muted-foreground text-xs font-semibold uppercase tracking-wide">
-                  {labelFase(f)}
-                </p>
-                {lista
-                  .filter((e) => e.fase === f)
-                  .map((e) => (
-                    <TarjetaPartido
-                      key={e.id}
-                      e={e}
-                      nombre={nombre}
-                      onEditar={onEditar}
-                      canchas={nombresCanchas}
-                      primeraFase={fasesElim[0] ?? null}
-                    />
-                  ))}
-              </div>
-            ))}
-          </div>
-          {lista.some((e) => e.fase !== "grupos" && (!e.equipo_a_id || !e.equipo_b_id) && e.estado !== "wo") && (
-            <p className="text-muted-foreground mt-1 flex items-center gap-1.5 text-xs">
-              <span className="border-muted-foreground/40 inline-flex size-4 items-center justify-center rounded-full border border-dashed text-[10px] font-bold">
-                ?
-              </span>
-              Lugar por definir: se llena solo cuando termina el grupo o el partido del que sale.
-            </p>
-          )}
         </section>
       )}
 
@@ -226,6 +194,18 @@ export function FixtureVista({
         </section>
       )}
 
+      {resultados.length > 0 && (
+        <Desplegable titulo="Resultados" cuenta={resultados.length}>
+          <PartidosPorFecha
+            partidos={resultados}
+            orden="desc"
+            render={(e) => (
+              <TarjetaPartido key={e.id} e={e} nombre={nombre} onEditar={onEditar} canchas={nombresCanchas} />
+            )}
+          />
+        </Desplegable>
+      )}
+
       {proximos.length > 0 && (
         <section>
           <Titulo>Próximos partidos</Titulo>
@@ -239,18 +219,52 @@ export function FixtureVista({
         </section>
       )}
 
-      {resultados.length > 0 && (
+      {porProgramar.length > 0 && (
         <section>
-          <Titulo>Resultados</Titulo>
-          <PartidosPorFecha
-            partidos={resultados}
-            orden="desc"
-            render={(e) => (
+          <Titulo>Por programar ({porProgramar.length})</Titulo>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {porProgramar.map((e) => (
               <TarjetaPartido key={e.id} e={e} nombre={nombre} onEditar={onEditar} canchas={nombresCanchas} />
-            )}
-          />
+            ))}
+          </div>
         </section>
       )}
+
+      {fasesElim.length > 0 && (
+        <section>
+          <Titulo>Eliminatorias</Titulo>
+          <div className="flex gap-3 overflow-x-auto pb-2">
+            {fasesElim.map((f) => (
+              <div key={f} className="flex w-60 shrink-0 flex-col gap-2">
+                <p className="text-muted-foreground text-xs font-semibold uppercase tracking-wide">
+                  {labelFase(f)}
+                </p>
+                {lista
+                  .filter((e) => e.fase === f)
+                  .map((e) => (
+                    <TarjetaPartido
+                      key={e.id}
+                      e={e}
+                      nombre={nombre}
+                      onEditar={onEditar}
+                      canchas={nombresCanchas}
+                      primeraFase={fasesElim[0] ?? null}
+                    />
+                  ))}
+              </div>
+            ))}
+          </div>
+          {lista.some((e) => e.fase !== "grupos" && (!e.equipo_a_id || !e.equipo_b_id) && e.estado !== "wo") && (
+            <p className="text-muted-foreground mt-1 flex items-center gap-1.5 text-xs">
+              <span className="border-muted-foreground/40 inline-flex size-4 items-center justify-center rounded-full border border-dashed text-[10px] font-bold">
+                ?
+              </span>
+              Lugar por definir: se llena solo cuando termina el grupo o el partido del que sale.
+            </p>
+          )}
+        </section>
+      )}
+
     </div>
   );
 }

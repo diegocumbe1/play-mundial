@@ -15,6 +15,15 @@ const preferenciasSchema = z.object({
   en_vivo: z.boolean(),
   finalizado: z.boolean(),
   siguiente: z.boolean(),
+  /** Aviso al terminar cada set de un partido en vivo. */
+  fin_set: z.boolean(),
+  /** Equipos que sigue; vacío = todos. */
+  equipos_seguidos: z.array(z.string().uuid()).max(100),
+  /** No enviar nada hasta esta fecha (ISO); null = sin pausa. */
+  pausado_hasta: z
+    .string()
+    .refine((v) => !Number.isNaN(Date.parse(v)), "Fecha inválida")
+    .nullable(),
 });
 
 const suscripcionSchema = z.object({
@@ -41,7 +50,7 @@ export async function getPreferenciasAvisos(
   if (!m) return NO_AUTORIZADO;
   const { data } = await createServiceRoleClient()
     .from("suscripciones_avisos_torneo")
-    .select("minutos_antes, partido_nuevo, en_vivo, finalizado, siguiente")
+    .select("minutos_antes, partido_nuevo, en_vivo, finalizado, siguiente, fin_set, equipos_seguidos, pausado_hasta")
     .eq("endpoint", endpoint)
     .eq("tenant_id", m.tenant_id)
     .maybeSingle();

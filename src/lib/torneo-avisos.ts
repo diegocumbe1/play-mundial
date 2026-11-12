@@ -6,8 +6,12 @@ import { createServiceRoleClient } from "@/lib/supabase/server";
 import {
   cuandoYDonde,
   enlacePartido,
+  estaPausado,
   minutosParaEmpezar,
   setsEnTexto,
+  setsGanados,
+  sigueEquipos,
+  tipoSet,
   tocaRecordatorio,
   VENTANA_RECORDATORIO_MIN,
   type TipoAviso,
@@ -32,6 +36,10 @@ interface Suscripcion {
   en_vivo: boolean;
   finalizado: boolean;
   siguiente: boolean;
+  fin_set: boolean;
+  /** Equipos que sigue; vacío = todos. */
+  equipos_seguidos: string[];
+  pausado_hasta: string | null;
 }
 
 type TorneoAviso = Pick<Torneo, "id" | "tenant_id" | "nombre"> & { reglas?: unknown };
@@ -42,10 +50,25 @@ const canchasDe = (torneo: TorneoAviso): string[] =>
 
 const svc = () => createServiceRoleClient();
 
+/**
+ * Dispositivos que reciben los avisos de un torneo: los de su organización y los
+ * del superadmin (que puede estar siguiendo cualquier torneo). Sin los pausados.
+ */
 async function suscripciones(tenantId: string): Promise<Suscripcion[]> {
-  const { data } = await svc().from("suscripciones_avisos_torneo").select("*").eq("tenant_id", tenantId);
-  return (data as Suscripcion[]) ?? [];
+  const { data: supers } = await svc().from("memberships").select("user_id").eq("rol", "superadmin");
+  const ids = ((supers as { user_id: string }[]) ?? []).map((m) => m.user_id);
+  let consulta = svc().from("suscripciones_avisos_torneo").select("*");
+  consulta = ids.length > 0
+    ? consulta.or(`tenant_id.eq.${tenantId},user_id.in.(${ids.join(",")})`)
+    : consulta.eq("tenant_id", tenantId);
+  const { data } = await consulta;
+  const ahora = new Date();
+  return ((data as Suscripcion[]) ?? []).filter((s) => !estaPausado(s.pausado_hasta, ahora));
 }
+
+/** Los que siguen a alguno de los equipos del partido. */
+const queSiguen = (subs: Suscripcion[], e: Pick<Encuentro, "equipo_a_id" | "equipo_b_id">): Suscripcion[] =>
+  subs.filter((s) => sigueEquipos(s.equipos_seguidos, [e.equipo_a_id, e.equipo_b_id]));
 
 async function enviar(subs: Suscripcion[], payload: PushPayload): Promise<void> {
   await Promise.all(
@@ -128,7 +151,7 @@ export function avisarPartidosNuevos(torneo: TorneoAviso, titulo: string): Promi
 export function avisarEnVivo(torneo: TorneoAviso, e: Encuentro): Promise<void> {
   return seguro(async () => {
     const subs = await sinAvisoPrevio(
-      (await suscripciones(torneo.tenant_id)).filter((s) => s.en_vivo),
+      queSiguen((await suscripciones(torneo.tenant_id)).filter((s) => s.en_vivo), e),
       e.id,
       "en_vivo",
     );
@@ -148,7 +171,7 @@ export function avisarEnVivo(torneo: TorneoAviso, e: Encuentro): Promise<void> {
 export function avisarFinalizado(torneo: TorneoAviso, e: Encuentro): Promise<void> {
   return seguro(async () => {
     const todas = await suscripciones(torneo.tenant_id);
-    const subs = await sinAvisoPrevio(todas.filter((s) => s.finalizado), e.id, "finalizado");
+    const subs = await sinAvisoPrevio(queSiguen(todas.filter((s) => s.finalizado), e), e.id, "finalizado");
     const { data } = await svc()
       .from("encuentros")
       .select("*")
@@ -176,7 +199,7 @@ export function avisarFinalizado(torneo: TorneoAviso, e: Encuentro): Promise<voi
       });
     }
     if (!sig) return;
-    const paraSiguiente = await sinAvisoPrevio(todas.filter((s) => s.siguiente), sig.id, "siguiente");
+    const paraSiguiente = await sinAvisoPrevio(queSiguen(todas.filter((s) => s.siguiente), sig), sig.id, "siguiente");
     if (paraSiguiente.length === 0) return;
     await enviar(paraSiguiente, {
       torneo: torneo.nombre,
@@ -208,7 +231,7 @@ async function enviarRecordatorios(ahora: Date, torneos: Map<string, TorneoAviso
   for (const e of partidos) {
     const torneo = torneos.get(e.torneo_id);
     if (!torneo) continue;
-    const candidatas = (await suscripciones(torneo.tenant_id)).filter((s) =>
+    const candidatas = queSiguen(await suscripciones(torneo.tenant_id), e).filter((s) =>
       tocaRecordatorio(e.programado_at as string, s.minutos_antes, ahora),
     );
     const subs = await sinAvisoPrevio(candidatas, e.id, "recordatorio");
@@ -243,16 +266,41 @@ async function revisarMarcadores(torneos: Map<string, TorneoAviso>): Promise<num
     partidos.map(async (e) => {
       const torneo = torneos.get(e.torneo_id);
       const leido = await leerMarcador(e.sala_marcador as string);
-      if (!torneo || !leido?.terminado) return 0;
+      if (!torneo || !leido) return 0;
+      const A = nombre(e.equipo_a_id);
+      const B = nombre(e.equipo_b_id);
+
+      if (!leido.terminado) {
+        // Terminó un set y el partido sigue: se avisa el último set cerrado (uno por set).
+        const n = leido.setsCerrados;
+        if (n < 1) return 0;
+        const cerrados = leido.sets.slice(0, n);
+        const [x, y] = cerrados[n - 1];
+        const [ga, gb] = setsGanados(cerrados);
+        const subs = await sinAvisoPrevio(
+          queSiguen((await suscripciones(torneo.tenant_id)).filter((s) => s.fin_set), e),
+          e.id,
+          tipoSet(n),
+        );
+        await enviar(subs, {
+          torneo: torneo.nombre,
+          title: `Set ${n} terminado: ${A} ${x}-${y} ${B}`,
+          body: `Van ${ga}-${gb} en sets. Toca para ver el partido.`,
+          url: enlacePartido(torneo.id, e.id),
+          tag: `partido-${e.id}`,
+        });
+        return subs.length;
+      }
+
       await guardarConstanciaJuez(e, leido);
       const subs = await sinAvisoPrevio(
-        (await suscripciones(torneo.tenant_id)).filter((s) => s.finalizado),
+        queSiguen((await suscripciones(torneo.tenant_id)).filter((s) => s.finalizado), e),
         e.id,
         "por_aprobar",
       );
       await enviar(subs, {
         torneo: torneo.nombre,
-        title: `Resultado por aprobar: ${nombre(e.equipo_a_id)} vs ${nombre(e.equipo_b_id)}`,
+        title: `Resultado por aprobar: ${A} vs ${B}`,
         body: leido.setSinTerminar
           ? "El juez cerró el partido antes de terminar. Toca para corregirlo."
           : `El juez reportó ${setsEnTexto(leido.sets)}. Toca para aceptar o corregir.`,

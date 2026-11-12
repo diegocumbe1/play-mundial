@@ -861,7 +861,7 @@ export type EncuentroPublico = Omit<Encuentro, "tenant_id" | "created_at" | "upd
 export type CategoriaTorneoPublica = Pick<
   CategoriaTorneo,
   "id" | "nombre" | "jugadores_en_cancha" | "max_jugadores" | "cupo_equipos" | "valor_inscripcion"
-> & { cuposDisponibles: number };
+> & { cuposDisponibles: number; /** Equipos inscritos en la categoría. */ inscritos: number };
 
 /** Un equipo inscrito. Contiene datos personales: nunca sale tal cual al público. */
 export interface EquipoTorneo {
@@ -1120,4 +1120,73 @@ export interface TorneoInput {
   tema?: string;
   /** Solo superadmin: delegar el torneo a otro organizador. */
   tenant_id?: string | null;
+}
+
+
+// ---------------------------------------------------------------------------
+// Cuentas de cobro (documento independiente; opcionalmente ligado a un torneo)
+// ---------------------------------------------------------------------------
+export type EstadoCuentaCobro = "enviada" | "datos_completos" | "pagada" | "anulada";
+
+/** Un concepto de la cuenta de cobro. */
+export interface LineaCobro {
+  descripcion: string;
+  detalle: string | null;
+  cantidad: number;
+  valor_unitario: number;
+}
+
+export interface CuentaCobro {
+  id: string;
+  /** Enlace secreto del cliente: `/cobro/<clave>`. */
+  clave: string;
+  numero: number;
+  torneo_id: string | null;
+  tenant_id: string | null;
+  fecha: string;
+  fecha_limite: string | null;
+  cliente_nombre: string;
+  cliente_ciudad: string | null;
+  concepto: string;
+  concepto_detalle: string | null;
+  items: string[];
+  /** Varios conceptos; vacío = el concepto y valor únicos de siempre. */
+  lineas: LineaCobro[];
+  /** Total de la cuenta (lo calcula el servidor a partir de las líneas). */
+  valor: number;
+  nota: string | null;
+  recibe_nombre: string | null;
+  cliente_documento: string | null;
+  contacto_nombre: string | null;
+  contacto_whatsapp: string | null;
+  emisor_nombre: string;
+  emisor_documento: string | null;
+  emisor_marca: string;
+  emisor_whatsapp: string | null;
+  pago_llave: string | null;
+  pago_banco: string | null;
+  pago_titular: string | null;
+  estado: EstadoCuentaCobro;
+  datos_completados_at: string | null;
+  /** Cuándo el cliente marcó «Acepto» y por qué valor (para notar cambios posteriores). */
+  aceptada_at: string | null;
+  aceptada_valor: number | null;
+  pagada_at: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Datos por defecto de quien cobra y del pago. */
+export interface CuentaCobroConfig {
+  emisor_nombre: string | null;
+  emisor_documento: string | null;
+  emisor_marca: string;
+  emisor_whatsapp: string | null;
+  pago_llave: string | null;
+  pago_banco: string | null;
+  pago_titular: string | null;
+  nota: string | null;
+  /** Correo al que avisar cuando un cliente completa sus datos. */
+  aviso_correo: string | null;
 }

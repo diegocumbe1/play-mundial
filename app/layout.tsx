@@ -3,12 +3,13 @@ import { Bebas_Neue, Inter, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
 import { BackofficeHeader } from "@/components/backoffice-header";
+import { AvisoNavegacion } from "@/components/admin/aviso-navegacion";
 import { BottomNav } from "@/components/bottom-nav";
 import { PullToRefresh } from "@/components/pull-to-refresh";
 import { Toaster } from "@/components/ui/sonner";
 import { getIdioma } from "@/lib/idioma-server";
 import { getMembership } from "@/lib/auth";
-import { tieneProductoHabilitado } from "@/lib/productos";
+import { getProductosHabilitados } from "@/lib/productos";
 import { MARCA } from "@/lib/marca";
 import { SITE_URL } from "@/lib/site-url";
 
@@ -62,11 +63,13 @@ export default async function RootLayout({
   // Torneos es un módulo por invitación: la navegación solo lo muestra a quien
   // lo tenga habilitado (y al superadmin). El bloqueo de verdad está en las
   // Server Actions; esto evita ofrecer una puerta que no abre.
+  // Lo mismo con Rifas: quien no la tenga habilitada (p. ej. un organizador que
+  // solo usa torneos) no debe ver la pestaña.
   const membership = await getMembership();
-  const torneos = membership
-    ? membership.rol === "superadmin" ||
-      (await tieneProductoHabilitado(membership.tenant_id, "torneos"))
-    : false;
+  const productos = membership ? await getProductosHabilitados(membership.tenant_id) : [];
+  const superadmin = membership?.rol === "superadmin";
+  const torneos = membership ? superadmin || productos.includes("torneos") : false;
+  const rifas = membership ? superadmin || productos.includes("rifas") : false;
 
   return (
     <html
@@ -76,12 +79,14 @@ export default async function RootLayout({
       {/* Padding inferior en mobile para que la barra fija no tape el contenido. */}
       <body className="bg-polla-dark flex min-h-full flex-col pb-[calc(var(--bottom-nav-height)+env(safe-area-inset-bottom))] sm:pb-0">
         <PullToRefresh />
-        <BackofficeHeader torneos={torneos} sesion={Boolean(membership)} />
+        <BackofficeHeader torneos={torneos} rifas={rifas} sesion={Boolean(membership)} />
+        {membership && <AvisoNavegacion />}
         {children}
         <BottomNav
           idioma={idioma}
           modo={process.env.POLLA_ACTIVA === "true" ? "polla" : "rifas"}
           torneos={torneos}
+          rifas={rifas}
           sesion={Boolean(membership)}
         />
         <Toaster richColors position="top-center" theme="dark" />

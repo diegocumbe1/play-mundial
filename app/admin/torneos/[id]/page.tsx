@@ -188,7 +188,7 @@ export default async function TorneoDetallePage({
         pasos={pasos}
         configuracion={
           <div className="flex flex-col gap-6">
-            <AvisosTorneoPanel />
+            <AvisosTorneoPanel equipos={equipos.map((e) => ({ id: e.id, nombre: e.nombre }))} />
             <section className="border-border rounded-2xl border p-4">
               <p className="mb-1 text-sm font-semibold">Datos del torneo</p>
               <p className="text-muted-foreground mb-3 text-xs">

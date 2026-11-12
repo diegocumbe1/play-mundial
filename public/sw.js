@@ -36,7 +36,17 @@ self.addEventListener("notificationclick", function (event) {
   const url = (event.notification.data && event.notification.data.url) || "/admin";
 
   event.waitUntil(
-    clients
+    (async () => {
+      // En iPhone la app instalada puede abrirse sin respetar el enlace: se guarda a
+      // dónde iba y la propia app navega ahí al abrirse (aviso-navegacion.tsx).
+      try {
+        const cache = await caches.open("nav-aviso");
+        await cache.put("/__nav", new Response(JSON.stringify({ url, ts: Date.now() })));
+      } catch {
+        /* sin caché: se sigue con la navegación normal */
+      }
+    })().then(() =>
+      clients
       .matchAll({ type: "window", includeUncontrolled: true })
       .then(async (lista) => {
         for (const client of lista) {
@@ -52,5 +62,6 @@ self.addEventListener("notificationclick", function (event) {
         }
         if (clients.openWindow) return clients.openWindow(url);
       }),
+    ),
   );
 });

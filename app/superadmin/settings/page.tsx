@@ -12,7 +12,7 @@ import { getEmailConfigVista } from "@/actions/email";
 export const dynamic = "force-dynamic";
 
 export default async function SuperadminSettingsPage() {
-  if (!(await esSuperadmin())) redirect("/admin/rifas");
+  if (!(await esSuperadmin())) redirect("/admin");
 
   const [config, pago, emailRes] = await Promise.all([
     getPlataformaConfig(),

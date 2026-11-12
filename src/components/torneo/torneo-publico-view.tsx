@@ -15,6 +15,7 @@ import { toast } from "sonner";
 import { inscribirEquipoPublico } from "@/actions/torneos";
 import type { TorneoPublicoDetalle } from "@/actions/torneos";
 import { Campo, Selector } from "@/components/torneo/campos";
+import { Desplegable } from "@/components/torneo/desplegable";
 import { FixtureVista } from "@/components/torneo/fixture-vista";
 import { BannerPatrocinadores, FranjaPatrocinadores } from "@/components/torneo/patrocinadores-publicos";
 import { jugadorVacio, PlantillaEditor } from "@/components/torneo/plantilla-editor";
@@ -108,11 +109,28 @@ export function TorneoPublicoView({ datos }: { datos: TorneoPublicoDetalle }) {
         </p>
       </header>
 
+      {/* --- Torneo en juego: en vivo, posiciones, llaves y resultados --- */}
+      {encuentros.length > 0 && (
+        <section className="mb-6">
+          <FixtureVista
+            categorias={categorias}
+            equipos={equipos}
+            encuentros={encuentros}
+            tablaReglas={tablaReglas}
+            nombresCanchas={nombresCanchas}
+            categoriaInicial={datos.categoriaInicial}
+            autoRefrescar
+          />
+        </section>
+      )}
+
+      {/* --- Premiación: cerrada por defecto --- */}
       {(premios.length > 0 || torneo.premiacion_descripcion) && (
-        <section className="border-primary/40 bg-primary/5 mb-4 rounded-2xl border p-4">
-          <p className="text-primary mb-2 inline-flex items-center gap-1.5 text-xs font-semibold">
-            <Trophy className="size-3.5" /> Premiación
-          </p>
+        <Desplegable
+          titulo="Premiación"
+          icono={<Trophy className="text-primary size-4" />}
+          className="border-primary/40 bg-primary/5 mb-4"
+        >
 
           {categorias.length > 0 && (
             <div className="mb-2 grid gap-3 sm:grid-cols-2">
@@ -122,7 +140,7 @@ export function TorneoPublicoView({ datos }: { datos: TorneoPublicoDetalle }) {
                   <p className="text-muted-foreground mb-2 text-xs">
                     {c.jugadores_en_cancha ? `${c.jugadores_en_cancha} en cancha · ` : ""}
                     Inscripción {formatCOP(c.valor_inscripcion ?? torneo.valor_inscripcion)} ·{" "}
-                    {c.cuposDisponibles} cupos libres
+                    {c.inscritos} {c.inscritos === 1 ? "equipo inscrito" : "equipos inscritos"}
                   </p>
                   <ul className="flex flex-col gap-1">
                     {premios
@@ -170,23 +188,9 @@ export function TorneoPublicoView({ datos }: { datos: TorneoPublicoDetalle }) {
               {torneo.premiacion_descripcion}
             </p>
           )}
-        </section>
+        </Desplegable>
       )}
 
-      {/* --- Torneo en juego: en vivo, posiciones, llaves y resultados --- */}
-      {encuentros.length > 0 && (
-        <section className="mb-6">
-          <FixtureVista
-            categorias={categorias}
-            equipos={equipos}
-            encuentros={encuentros}
-            tablaReglas={tablaReglas}
-            nombresCanchas={nombresCanchas}
-            categoriaInicial={datos.categoriaInicial}
-            autoRefrescar
-          />
-        </section>
-      )}
 
       {/* --- Datos que deciden la inscripción --- */}
       <section className="border-border mb-4 grid gap-3 rounded-2xl border p-4 sm:grid-cols-2">

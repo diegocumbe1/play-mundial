@@ -1659,6 +1659,7 @@ export async function getTorneoPublico(
       0,
       c.cupo_equipos - vigentes.filter((e) => e.categoria_id === c.id).length,
     ),
+    inscritos: vigentes.filter((e) => e.categoria_id === c.id).length,
   }));
 
   return {

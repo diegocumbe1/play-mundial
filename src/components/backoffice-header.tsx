@@ -27,9 +27,12 @@ const LINKS = [
  */
 export function BackofficeHeader({
   torneos = false,
+  rifas = true,
   sesion = false,
 }: {
   torneos?: boolean;
+  /** Rifas se oculta a quien no la tenga habilitada. */
+  rifas?: boolean;
   /** Hay sesión iniciada: `/precios` es parte del panel y lleva su navegación. */
   sesion?: boolean;
 }) {
@@ -43,7 +46,9 @@ export function BackofficeHeader({
 
   if (!esBackoffice || pathname.startsWith("/admin/login")) return null;
 
-  const visibles = LINKS.filter((l) => l.href !== "/admin/torneos" || torneos);
+  const visibles = LINKS.filter(
+    (l) => (l.href !== "/admin/torneos" || torneos) && (l.href !== "/admin/rifas" || rifas),
+  );
   const links =
     pathname.startsWith("/superadmin")
       ? [...visibles, { href: "/superadmin", label: "Plataforma", icon: Settings }]

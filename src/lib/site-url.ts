@@ -18,3 +18,6 @@ export function urlPublicaRifa(slug: string, numeros?: number[]): string {
   // el comprador no tiene que buscar cuáles eran los suyos.
   return `${base}?n=${[...numeros].sort((a, b) => a - b).join(",")}`;
 }
+
+/** Enlace público de una cuenta de cobro, siempre absoluto (para WhatsApp). */
+export const urlCuentaCobro = (clave: string): string => `${SITE_URL}/cobro/${clave}`;

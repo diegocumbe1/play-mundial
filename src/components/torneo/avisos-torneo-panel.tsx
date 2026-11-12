@@ -21,9 +21,32 @@ const POR_DEFECTO: PreferenciasAvisos = {
   en_vivo: true,
   finalizado: true,
   siguiente: true,
+  fin_set: true,
+  equipos_seguidos: [],
+  pausado_hasta: null,
 };
 
-const OPCIONES: { id: keyof Omit<PreferenciasAvisos, "minutos_antes">; label: string; ayuda: string }[] = [
+type OpcionBooleana = "partido_nuevo" | "en_vivo" | "finalizado" | "siguiente" | "fin_set";
+
+/** Pausas rápidas: horas desde ahora, o hasta las 6 a. m. de mañana (hora de Colombia). */
+const PAUSAS: { id: string; label: string }[] = [
+  { id: "1h", label: "1 hora" },
+  { id: "3h", label: "3 horas" },
+  { id: "manana", label: "Hasta mañana 6 a. m." },
+];
+
+function hastaPausa(id: string): string {
+  const ahora = Date.now();
+  if (id === "1h") return new Date(ahora + 3_600_000).toISOString();
+  if (id === "3h") return new Date(ahora + 3 * 3_600_000).toISOString();
+  // Mañana a las 6:00 hora de Colombia (UTC-5) = 11:00 UTC.
+  const col = new Date(ahora - 5 * 3_600_000);
+  const manana = Date.UTC(col.getUTCFullYear(), col.getUTCMonth(), col.getUTCDate() + 1, 11, 0, 0);
+  return new Date(manana).toISOString();
+}
+
+const OPCIONES: { id: OpcionBooleana; label: string; ayuda: string }[] = [
+  { id: "fin_set", label: "Fin de cada set", ayuda: "Cuando termina un set, con el marcador y cómo van en sets. Puede llegar hasta un minuto después." },
   { id: "finalizado", label: "Resultado por aprobar y partido finalizado", ayuda: "Te lleva directo a aceptar o corregir lo que reportó el juez." },
   { id: "en_vivo", label: "Partido en vivo", ayuda: "Cuando empieza a marcarse." },
   { id: "siguiente", label: "Siguiente partido", ayuda: "Al terminar uno, cuál sigue, a qué hora y en qué cancha." },
@@ -37,11 +60,13 @@ function aClave(base64: string): Uint8Array<ArrayBuffer> {
 }
 
 /** Notificaciones de torneos en ESTE dispositivo: qué avisar y cuánto antes. */
-export function AvisosTorneoPanel() {
+export function AvisosTorneoPanel({ equipos = [] }: { equipos?: { id: string; nombre: string }[] }) {
   const [cap, setCap] = useState<"cargando" | "no" | "ios" | "bloqueado" | "si">("cargando");
   const [sub, setSub] = useState<PushSubscription | null>(null);
   const [prefs, setPrefs] = useState<PreferenciasAvisos | null>(null);
   const [pending, startTransition] = useTransition();
+  // Referencia de «ahora» para saber si la pausa sigue vigente; se renueva al cambiar algo.
+  const [ahora, setAhora] = useState(() => Date.now());
 
   useEffect(() => {
     const soportado = "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
@@ -100,6 +125,7 @@ export function AvisosTorneoPanel() {
   function cambiar(cambio: Partial<PreferenciasAvisos>) {
     if (!sub || !prefs) return;
     const anterior = prefs;
+    setAhora(Date.now());
     const nuevas = { ...prefs, ...cambio };
     setPrefs(nuevas);
     startTransition(async () => {
@@ -192,6 +218,82 @@ export function AvisosTorneoPanel() {
               </label>
             ))}
           </div>
+
+          <Campo
+            label="Equipos que sigo"
+            ayuda={
+              prefs.equipos_seguidos.length === 0
+                ? "Recibes avisos de todos los partidos."
+                : "Solo recibes avisos de los partidos donde juegue alguno de estos equipos."
+            }
+          >
+            <div className="flex flex-col gap-1.5">
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={prefs.equipos_seguidos.length === 0}
+                  onChange={() => cambiar({ equipos_seguidos: [] })}
+                  className="size-4 shrink-0"
+                />
+                Todos los equipos
+              </label>
+              {[...equipos]
+                .sort((a, b) => a.nombre.localeCompare(b.nombre))
+                .map((e) => {
+                  const marcado = prefs.equipos_seguidos.includes(e.id);
+                  return (
+                    <label key={e.id} className="flex items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={marcado}
+                        onChange={() =>
+                          cambiar({
+                            equipos_seguidos: marcado
+                              ? prefs.equipos_seguidos.filter((x) => x !== e.id)
+                              : [...prefs.equipos_seguidos, e.id],
+                          })
+                        }
+                        className="size-4 shrink-0"
+                      />
+                      {e.nombre}
+                    </label>
+                  );
+                })}
+            </div>
+          </Campo>
+
+          <Campo label="Pausar notificaciones" ayuda="No te llega nada hasta que pase el tiempo o las reanudes.">
+            {prefs.pausado_hasta && new Date(prefs.pausado_hasta).getTime() > ahora ? (
+              <div className="flex flex-wrap items-center gap-2 text-sm">
+                <span>
+                  Pausadas hasta{" "}
+                  {new Intl.DateTimeFormat("es-CO", {
+                    timeZone: "America/Bogota",
+                    weekday: "short",
+                    hour: "numeric",
+                    minute: "2-digit",
+                  }).format(new Date(prefs.pausado_hasta))}
+                </span>
+                <Button size="sm" variant="outline" onClick={() => cambiar({ pausado_hasta: null })} disabled={pending}>
+                  Reanudar
+                </Button>
+              </div>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {PAUSAS.map((p) => (
+                  <Button
+                    key={p.id}
+                    size="sm"
+                    variant="outline"
+                    onClick={() => cambiar({ pausado_hasta: hastaPausa(p.id) })}
+                    disabled={pending}
+                  >
+                    {p.label}
+                  </Button>
+                ))}
+              </div>
+            )}
+          </Campo>
 
           <div className="flex flex-wrap gap-2">
             <Button size="sm" variant="outline" onClick={probar} disabled={pending}>

@@ -49,12 +49,15 @@ export function BottomNav({
   idioma = "es",
   modo = "polla",
   torneos = false,
+  rifas = true,
   sesion = false,
 }: {
   idioma?: Idioma;
   modo?: "polla" | "rifas";
   /** Torneos es por invitación: se oculta a quien no lo tenga habilitado. */
   torneos?: boolean;
+  /** Rifas se oculta a quien no la tenga habilitada (p. ej. un organizador solo de torneos). */
+  rifas?: boolean;
   /** Hay sesión: `/precios` forma parte del panel. */
   sesion?: boolean;
 }) {
@@ -73,7 +76,9 @@ export function BottomNav({
 
   const items =
     modo === "rifas"
-      ? ITEMS_BACKOFFICE.filter((i) => i.href !== "/admin/torneos" || torneos)
+      ? ITEMS_BACKOFFICE.filter(
+          (i) => (i.href !== "/admin/torneos" || torneos) && (i.href !== "/admin/rifas" || rifas),
+        )
       : ITEMS_POLLA[idioma];
 
   const esActivo = (href: string) =>

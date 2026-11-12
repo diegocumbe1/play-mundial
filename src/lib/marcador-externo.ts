@@ -213,6 +213,8 @@ interface EstadoSala {
 export interface MarcadorLeido {
   /** Sets con el puntaje de A y B (incluye el set en curso si ya tiene puntos). */
   sets: [number, number][];
+  /** Cuántos de esos sets ya terminaron (el último de `sets` puede estar en curso). */
+  setsCerrados: number;
   /** El juez ya no va a marcar más: falta que el organizador acepte o corrija. */
   terminado: boolean;
   /** Set que quedó a medias al finalizar; no está en `sets`. */
@@ -235,6 +237,7 @@ export function estadoASets(e: EstadoSala): MarcadorLeido {
   const abierto = e.phase === "finished" ? e.openSet : null;
   return {
     sets,
+    setsCerrados: e.setResults.length,
     terminado: e.phase === "matchOver" || e.phase === "finished",
     setSinTerminar: abierto
       ? [deEquipo(abierto.teams, abierto.points, 0), deEquipo(abierto.teams, abierto.points, 1)]

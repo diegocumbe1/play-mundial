@@ -1,6 +1,43 @@
 /** Reglas puras de los avisos de torneo: cuándo y con qué texto (sin I/O). */
 
-export type TipoAviso = "recordatorio" | "en_vivo" | "por_aprobar" | "finalizado" | "siguiente";
+export type TipoAviso =
+  | "recordatorio"
+  | "en_vivo"
+  | "por_aprobar"
+  | "finalizado"
+  | "siguiente"
+  | "set_1"
+  | "set_2"
+  | "set_3"
+  | "set_4"
+  | "set_5";
+
+/** Aviso del set `n` (1…5), uno por set para no repetirlo. */
+export const tipoSet = (n: number): TipoAviso => `set_${Math.min(Math.max(n, 1), 5)}` as TipoAviso;
+
+/** ¿El dispositivo está en pausa ahora? */
+export const estaPausado = (pausadoHasta: string | null | undefined, ahora: Date): boolean =>
+  !!pausadoHasta && new Date(pausadoHasta).getTime() > ahora.getTime();
+
+/** ¿Sigue a alguno de estos equipos? Lista vacía = los sigue a todos. */
+export function sigueEquipos(
+  seguidos: readonly string[] | null | undefined,
+  equipos: readonly (string | null)[],
+): boolean {
+  if (!seguidos || seguidos.length === 0) return true;
+  return equipos.some((id) => !!id && seguidos.includes(id));
+}
+
+/** Sets ganados por A y por B a partir de los sets cerrados. */
+export function setsGanados(sets: readonly [number, number][]): [number, number] {
+  let a = 0;
+  let b = 0;
+  for (const [x, y] of sets) {
+    if (x > y) a++;
+    else if (y > x) b++;
+  }
+  return [a, b];
+}
 
 /** Opciones de "avisar X minutos antes". 0 = sin recordatorio. */
 export const MINUTOS_RECORDATORIO = [0, 5, 10, 15, 30, 60] as const;

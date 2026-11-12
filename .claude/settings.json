@@ -33,7 +33,19 @@
       "Bash(sed -i '' 's/^const MAX_NAME = 20;/const MAX_NAME = 40; \\\\/\\\\/ nombres reales de torneo: «Universidad Surcolombiana» \\(25\\)/' src/volley.js)",
       "Bash(sed -i '' 's/if \\(!text || text.length > 20 || !teamNameExists\\(text\\)\\)/if \\(!text || text.length > 40 || !teamNameExists\\(text\\)\\)/' server.js)",
       "Bash(sed -i '' 's/<input class=\"t-name\" maxlength=\"20\"/<input class=\"t-name\" maxlength=\"40\"/' public/admin.html public/index.html)",
-      "Bash(sed -i '' 's/name: nombreA.slice\\(0, 20\\)/name: nombreA.slice\\(0, 40\\)/; s/name: nombreB.slice\\(0, 20\\)/name: nombreB.slice\\(0, 40\\)/' /Users/DiegoCumbe/Documents/personal/projects/polla-futbolera/src/lib/marcador-externo.ts)"
+      "Bash(sed -i '' 's/name: nombreA.slice\\(0, 20\\)/name: nombreA.slice\\(0, 40\\)/; s/name: nombreB.slice\\(0, 20\\)/name: nombreB.slice\\(0, 40\\)/' /Users/DiegoCumbe/Documents/personal/projects/polla-futbolera/src/lib/marcador-externo.ts)",
+      "Bash(node_modules/.bin/tsc --noEmit -p .)",
+      "Bash(node_modules/.bin/eslint src/lib/marcador-externo.ts src/actions/torneos.ts)",
+      "Bash(node_modules/.bin/eslint src/actions/torneos.ts src/components/torneo/fixture-panel.tsx)",
+      "Bash(node_modules/.bin/eslint src/actions/torneos.ts src/lib/marcador-externo.ts)",
+      "Bash(node --check /tmp/ctl_check.js)",
+      "Bash(rm -f /tmp/ctl_check.js)",
+      "Bash(node --check /tmp/c.js)",
+      "Bash(rm -f /tmp/c.js)",
+      "Bash(grep -n \"\\\\$\\('summary'\\).textContent\" public/admin.html)",
+      "Bash(curl -s -m 8 -w \"\\\\nHTTP %{http_code} en %{time_total}s\\\\n\" https://sport.uselynko.com/api/health)",
+      "Bash(node --experimental-strip-types /tmp/chk-reglas.mts)",
+      "Bash(grep -n \"En vivo$\\\\|<Titulo>\\\\|titulo=\\\\\"\\\\|<Podio\\\\|Titulo>$\" src/components/torneo/fixture-vista.tsx)"
     ],
     "additionalDirectories": [
       "/Users/DiegoCumbe/Documents/personal/projects/polla-futbolera"
