@@ -46,22 +46,45 @@ export async function getCanalPorSala(sala: string): Promise<CanalMarcador | nul
   return (data as CanalMarcador | null) ?? null;
 }
 
+/** Partidos por cargar en esta cancha, en orden: programados con equipos y hora, sin sala. */
+export function pendientesDeCancha(todos: Encuentro[], cancha: number, excluirId?: string | null): Encuentro[] {
+  return todos
+    .filter(
+      (e) =>
+        e.estado === "programado" &&
+        !!e.equipo_a_id &&
+        !!e.equipo_b_id &&
+        !!e.programado_at &&
+        (e.cancha ?? 1) === cancha &&
+        !e.sala_marcador &&
+        e.id !== excluirId,
+    )
+    .sort((a, b) => a.programado_at!.localeCompare(b.programado_at!) || a.orden - b.orden);
+}
+
 /** El partido que sigue en esta cancha: el próximo programado con sus dos equipos y su hora. */
 export function siguienteDeCancha(todos: Encuentro[], cancha: number, excluirId?: string | null): Encuentro | null {
-  return (
-    todos
-      .filter(
-        (e) =>
-          e.estado === "programado" &&
-          !!e.equipo_a_id &&
-          !!e.equipo_b_id &&
-          !!e.programado_at &&
-          (e.cancha ?? 1) === cancha &&
-          !e.sala_marcador &&
-          e.id !== excluirId,
-      )
-      .sort((a, b) => a.programado_at!.localeCompare(b.programado_at!) || a.orden - b.orden)[0] ?? null
-  );
+  return pendientesDeCancha(todos, cancha, excluirId)[0] ?? null;
+}
+
+/** Cuántos partidos próximos puede elegir el juez: pocos, para no confundirlo. */
+export const OPCIONES_JUEZ = 3;
+
+/** Los próximos partidos que el juez puede elegir en esta cancha (con su texto para mostrar). */
+export async function proximosParaJuez(canal: CanalMarcador): Promise<{ id: string; texto: string; hora: string | null }[]> {
+  const db = svc();
+  const [{ data: encData }, { data: eqData }] = await Promise.all([
+    db.from("encuentros").select("*").eq("torneo_id", canal.torneo_id),
+    db.from("equipos_torneo").select("id, nombre").eq("torneo_id", canal.torneo_id),
+  ]);
+  const nombre = (id: string | null) => ((eqData as { id: string; nombre: string }[]) ?? []).find((e) => e.id === id)?.nombre ?? "Por definir";
+  return pendientesDeCancha((encData as Encuentro[]) ?? [], canal.cancha, canal.encuentro_id)
+    .slice(0, OPCIONES_JUEZ)
+    .map((e) => ({
+      id: e.id,
+      hora: e.programado_at,
+      texto: `${nombre(e.equipo_a_id)} vs ${nombre(e.equipo_b_id)}`,
+    }));
 }
 
 /**
@@ -87,9 +110,19 @@ export async function cargarPartidoEnCanal(
   const todos = (todosData as Encuentro[]) ?? [];
   if (!torneo) return { ok: false, error: "Torneo no encontrado" };
 
+  // El juez solo puede elegir entre los próximos partidos (para no confundirlo).
+  if (opts.por === "juez" && opts.encuentroId) {
+    const permitidos = pendientesDeCancha(todos, canal.cancha, canal.encuentro_id).slice(0, OPCIONES_JUEZ).map((e) => e.id);
+    if (!permitidos.includes(opts.encuentroId)) {
+      return { ok: false, error: "Ese partido no está entre los próximos. Elige uno de la lista." };
+    }
+  }
+
   // 1) Lo que hay cargado ahora: se lee y se guarda antes de tocar nada.
   const actual = canal.encuentro_id ? (todos.find((e) => e.id === canal.encuentro_id) ?? null) : null;
   const sinAceptar = !!actual && actual.estado === "en_vivo";
+  // Cargado pero sin empezar (sin un solo punto): no hay resultado que guardar; vuelve a «programado».
+  let devolverActual = false;
   if (sinAceptar) {
     const leido = await leerMarcador(canal.sala, 4000);
     if (!leido) {
@@ -99,6 +132,8 @@ export async function cargarPartidoEnCanal(
           error: "No se pudo leer el marcador, así que no se cambia de partido para no perder el resultado.",
         };
       }
+    } else if (!leido.terminado && leido.sets.length === 0) {
+      devolverActual = true;
     } else {
       if (!leido.terminado && !opts.forzar) {
         return { ok: false, error: "El partido sigue en juego: termínalo antes de pasar al siguiente." };
@@ -152,7 +187,12 @@ export async function cargarPartidoEnCanal(
 
   // 5) El anterior deja la sala (queda pendiente de aceptar con lo que guardó el juez);
   //    el nuevo la ocupa y pasa a «en vivo».
-  if (sinAceptar && actual) await db.from("encuentros").update({ sala_marcador: null }).eq("id", actual.id);
+  if (sinAceptar && actual) {
+    await db
+      .from("encuentros")
+      .update(devolverActual ? { sala_marcador: null, estado: "programado" } : { sala_marcador: null })
+      .eq("id", actual.id);
+  }
   await db.from("encuentros").update({ sala_marcador: canal.sala, estado: "en_vivo" }).eq("id", nuevo.id);
   if (torneo.estado === "inscripciones" || torneo.estado === "programado") {
     await db.from("torneos").update({ estado: "en_curso" }).eq("id", torneo.id);
@@ -203,4 +243,41 @@ export async function regenerarSalaCanal(canal: CanalMarcador): Promise<{ ok: tr
     }
   }
   return { ok: true, sala: nueva };
+}
+
+/**
+ * Vuelve a cargar en la sala el partido que ya figura como actual. Sirve cuando el marcador se
+ * reinició y la sala volvió a nacer en blanco: se le ponen otra vez los equipos y las reglas.
+ * Lo que ya se había marcado en ese partido se pierde (estaba en la memoria del marcador).
+ */
+export async function recargarPartidoActual(canal: CanalMarcador): Promise<ResultadoCambio> {
+  if (!marcadorDisponible()) return { ok: false, error: "El marcador en vivo no está configurado." };
+  if (!canal.encuentro_id) return { ok: false, error: "Esta cancha no tiene un partido cargado." };
+  const db = svc();
+  const { data } = await db.from("encuentros").select("*").eq("id", canal.encuentro_id).maybeSingle();
+  const e = (data as Encuentro | null) ?? null;
+  if (!e || !e.equipo_a_id || !e.equipo_b_id) return { ok: false, error: "Partido no encontrado." };
+  if (e.estado === "finalizado" || e.estado === "wo") return { ok: false, error: "Ese partido ya terminó." };
+
+  const [{ data: torneoData }, { data: eqs }] = await Promise.all([
+    db.from("torneos").select("*").eq("id", canal.torneo_id).maybeSingle(),
+    db.from("equipos_torneo").select("id, nombre").in("id", [e.equipo_a_id, e.equipo_b_id]),
+  ]);
+  const torneo = (torneoData as Torneo | null) ?? null;
+  if (!torneo) return { ok: false, error: "Torneo no encontrado" };
+  const nombre = (id: string) => (eqs as { id: string; nombre: string }[] | null)?.find((x) => x.id === id)?.nombre ?? "Equipo";
+
+  const err = await crearSalaMarcador(
+    canal.sala,
+    nombre(e.equipo_a_id),
+    nombre(e.equipo_b_id),
+    leerReglas(torneo.reglas).juego,
+    OPCIONES_MARCADOR_POR_DEFECTO,
+    await patrociniosParaMarcador(torneo),
+    { canal: true, reconfigurar: true },
+  );
+  if (err) return { ok: false, error: err };
+  await db.from("encuentros").update({ sala_marcador: canal.sala, estado: "en_vivo" }).eq("id", e.id);
+  revalidatePath(`/admin/torneos/${torneo.id}`);
+  return { ok: true, partido: `${nombre(e.equipo_a_id)} vs ${nombre(e.equipo_b_id)}`, encuentroId: e.id };
 }

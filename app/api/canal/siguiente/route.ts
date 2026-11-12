@@ -23,11 +23,12 @@ export async function POST(request: Request) {
   if (!pinValido(request.headers.get("x-admin-pin"))) {
     return Response.json({ ok: false, error: "No autorizado" }, { status: 401 });
   }
-  const { sala } = (await request.json().catch(() => ({}))) as { sala?: string };
+  const { sala, encuentroId } = (await request.json().catch(() => ({}))) as { sala?: string; encuentroId?: string };
   const canal = sala ? await getCanalPorSala(sala) : null;
   if (!canal) return Response.json({ ok: false, error: "Esta sala no es de una cancha del torneo." }, { status: 404 });
 
-  const r = await cargarPartidoEnCanal(canal, { por: "juez" });
+  const idValido = typeof encuentroId === "string" && /^[0-9a-f-]{36}$/.test(encuentroId) ? encuentroId : undefined;
+  const r = await cargarPartidoEnCanal(canal, { por: "juez", encuentroId: idValido });
   return r.ok
     ? Response.json({ ok: true, partido: r.partido })
     : Response.json({ ok: false, error: r.error }, { status: 409 });
