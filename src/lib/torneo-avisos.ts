@@ -248,6 +248,31 @@ async function enviarRecordatorios(ahora: Date, torneos: Map<string, TorneoAviso
   return enviados;
 }
 
+/**
+ * El juez terminó: deja constancia de lo que reportó y avisa «Resultado por aprobar» (una sola
+ * vez por partido y dispositivo). Lo usa la revisión de cada minuto y también el cambio de partido
+ * de una cancha con sala fija, que libera la sala antes de que la revisión alcance a verla.
+ */
+export async function avisarPorAprobar(torneo: TorneoAviso, e: Encuentro, leido: MarcadorLeido): Promise<number> {
+  await guardarConstanciaJuez(e, leido);
+  const nombre = await nombresDe([e]);
+  const subs = await sinAvisoPrevio(
+    queSiguen((await suscripciones(torneo.tenant_id)).filter((s) => s.finalizado), e),
+    e.id,
+    "por_aprobar",
+  );
+  await enviar(subs, {
+    torneo: torneo.nombre,
+    title: `Resultado por aprobar: ${nombre(e.equipo_a_id)} vs ${nombre(e.equipo_b_id)}`,
+    body: leido.setSinTerminar
+      ? "El juez cerró el partido antes de terminar. Toca para corregirlo."
+      : `El juez reportó ${setsEnTexto(leido.sets)}. Toca para aceptar o corregir.`,
+    url: enlacePartido(torneo.id, e.id),
+    tag: `partido-${e.id}`,
+  });
+  return subs.length;
+}
+
 /** Revisa los marcadores abiertos: si el juez terminó, pide aprobar el resultado. */
 async function revisarMarcadores(torneos: Map<string, TorneoAviso>): Promise<number> {
   if (!marcadorDisponible()) return 0;
@@ -292,22 +317,7 @@ async function revisarMarcadores(torneos: Map<string, TorneoAviso>): Promise<num
         return subs.length;
       }
 
-      await guardarConstanciaJuez(e, leido);
-      const subs = await sinAvisoPrevio(
-        queSiguen((await suscripciones(torneo.tenant_id)).filter((s) => s.finalizado), e),
-        e.id,
-        "por_aprobar",
-      );
-      await enviar(subs, {
-        torneo: torneo.nombre,
-        title: `Resultado por aprobar: ${A} vs ${B}`,
-        body: leido.setSinTerminar
-          ? "El juez cerró el partido antes de terminar. Toca para corregirlo."
-          : `El juez reportó ${setsEnTexto(leido.sets)}. Toca para aceptar o corregir.`,
-        url: enlacePartido(torneo.id, e.id),
-        tag: `partido-${e.id}`,
-      });
-      return subs.length;
+      return avisarPorAprobar(torneo, e, leido);
     }),
   );
   return conteos.reduce((a, b) => a + b, 0);
