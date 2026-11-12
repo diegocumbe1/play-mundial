@@ -26,7 +26,8 @@ import {
   guardarJugadoresEquipo,
   registrarPagoEquipo,
   rechazarEquipoTorneo,
-  retirarEquipoTorneo,
+  reintegrarEquipoAlFixture,
+  retirarEquipoDelFixture,
 } from "@/actions/torneos";
 import { Campo, Segmentado, Selector } from "@/components/torneo/campos";
 import { jugadorVacio, PlantillaEditor } from "@/components/torneo/plantilla-editor";
@@ -62,7 +63,7 @@ import type {
   Torneo,
 } from "@/types";
 
-type Filtro = "todos" | "pendiente" | "confirmado" | "deben";
+type Filtro = "todos" | "pendiente" | "confirmado" | "retirado" | "deben";
 type Vista = "tarjetas" | "lista";
 const CLAVE_VISTA = "torneo:equipos:vista";
 const oyentesVista = new Set<() => void>();
@@ -166,6 +167,40 @@ export function EquiposPanel({
         return;
       }
       toast.success(ok);
+      router.refresh();
+    });
+  }
+
+  /** Retira al equipo: sus partidos sin jugar se borran y los ya jugados se conservan para sus rivales. */
+  function retirar(e: EquipoTorneo) {
+    const ok = confirm(
+      `¿Retirar a ${e.nombre} del torneo?\n\nSe borran sus partidos sin jugar. Los que ya jugó se conservan: sus rivales mantienen esos puntos, y ${e.nombre} deja de salir en la tabla de posiciones. Si te equivocas, lo reintegras desde «Retirados» mientras la llave de eliminatorias no esté armada.`,
+    );
+    if (!ok) return;
+    startTransition(async () => {
+      const r = await retirarEquipoDelFixture(e.id);
+      if (!r.success) return void toast.error(r.error);
+      toast.success(
+        `${e.nombre} retirado: ${r.data.quitados} partido(s) sin jugar quitados, ${r.data.conservados} ya jugado(s) conservado(s).`,
+      );
+      router.refresh();
+    });
+  }
+
+  /** Deshace un retiro: vuelve a la tabla y se le crean de nuevo los partidos que le faltan. */
+  function reintegrar(e: EquipoTorneo) {
+    const ok = confirm(
+      `¿Reintegrar a ${e.nombre} al torneo?\n\nVuelve a la tabla de posiciones con lo que ya jugó y se le crean de nuevo, sin fecha, los partidos que le falten contra los demás de su grupo. Después los programas.`,
+    );
+    if (!ok) return;
+    startTransition(async () => {
+      const r = await reintegrarEquipoAlFixture(e.id);
+      if (!r.success) return void toast.error(r.error);
+      toast.success(
+        r.data.creados > 0
+          ? `${e.nombre} reintegrado: se crearon ${r.data.creados} partido(s) por programar.`
+          : `${e.nombre} reintegrado.`,
+      );
       router.refresh();
     });
   }
@@ -289,13 +324,24 @@ export function EquiposPanel({
             <X className="size-3.5" /> {!compacto && "Rechazar"}
           </Button>
         )}
-        {e.estado === "confirmado" && (
+        {e.estado === "retirado" && (
+          <Button
+            variant="outline"
+            size={compacto ? "xs" : "sm"}
+            disabled={pending}
+            title="Reintegrar equipo al torneo"
+            onClick={() => reintegrar(e)}
+          >
+            Reintegrar
+          </Button>
+        )}
+        {(e.estado === "confirmado" || e.estado === "pendiente") && (
           <Button
             variant="ghost"
             size={compacto ? "xs" : "sm"}
             disabled={pending}
             title="Retirar equipo"
-            onClick={() => accion(() => retirarEquipoTorneo(e.id), "Equipo retirado")}
+            onClick={() => retirar(e)}
           >
             Retirar
           </Button>
@@ -320,6 +366,14 @@ export function EquiposPanel({
               value: "confirmado",
               label: `Confirmados (${equipos.filter((e) => e.estado === "confirmado").length})`,
             },
+            ...(equipos.some((e) => e.estado === "retirado")
+              ? [
+                  {
+                    value: "retirado",
+                    label: `Retirados (${equipos.filter((e) => e.estado === "retirado").length})`,
+                  },
+                ]
+              : []),
             { value: "deben", label: "Deben" },
           ]}
         />

@@ -748,6 +748,8 @@ export type EstadoEquipoTorneo =
 /** Un campeonato que organiza un tenant. */
 export interface Torneo {
   id: string;
+  /** El organizador puede ocultar todos los patrocinadores (página y TV) sin borrarlos. */
+  mostrar_patrocinadores?: boolean;
   tenant_id: string;
   nombre: string;
   slug_publico: string;

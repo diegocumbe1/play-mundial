@@ -82,6 +82,13 @@ export async function crearSalaMarcador(
   nombreB: string,
   juego: ReglasTorneo["juego"],
   opciones: OpcionesMarcador = OPCIONES_MARCADOR_POR_DEFECTO,
+  /** Logos de quien organiza y patrocina; salen en una franja al pie de la pantalla. */
+  patrocinadores: { name: string; logo: string; role: "organiza" | "gestor" | "patrocinador" }[] = [],
+  /**
+   * `canal`: sala fija de una cancha (el juez ve «Siguiente partido →»). `reconfigurar`:
+   * la sala ya tiene un partido jugado, así que se manda el PIN para cargarle el siguiente.
+   */
+  extra: { canal?: boolean; reconfigurar?: boolean } = {},
 ): Promise<string | null> {
   if (!URL_INTERNA) return "El marcador en vivo no está configurado.";
   const config = configMarcador(juego);
@@ -106,6 +113,10 @@ export async function crearSalaMarcador(
         // Música del torneo en la pantalla del marcador (enlace de YouTube; vacío = sin música).
         music: { youtube: juego.musica_youtube ?? "" },
         torneo: true, // Sin música y el juez no puede borrar el partido desde el control.
+        sponsors: patrocinadores,
+        ...(extra.canal ? { canal: true } : {}),
+        // Con un partido ya jugado en la sala, el marcador exige el PIN para reconfigurarla.
+        ...(extra.reconfigurar && ADMIN_PIN ? { pin: ADMIN_PIN } : {}),
       }),
       signal: AbortSignal.timeout(5000),
       cache: "no-store",
@@ -158,6 +169,28 @@ export async function sincronizarNombresMarcador(sala: string, nombreA: string, 
     });
   } catch {
     // No es crítico: el juez puede seguir marcando con el nombre anterior.
+  }
+}
+
+/**
+ * Cambia (o quita, con lista vacía) los patrocinadores de una sala ya abierta, sin
+ * tocar el marcador. Sin PIN no se intenta. Si falla, la pantalla conserva los que tenía.
+ */
+export async function sincronizarPatrocinadoresMarcador(
+  sala: string,
+  patrocinadores: { name: string; logo: string; role: "organiza" | "gestor" | "patrocinador" }[],
+): Promise<void> {
+  if (!URL_INTERNA || !ADMIN_PIN) return;
+  try {
+    await fetch(`${URL_INTERNA}/api/rooms/${sala}/sponsors`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-admin-pin": ADMIN_PIN },
+      body: JSON.stringify({ sponsors: patrocinadores }),
+      signal: AbortSignal.timeout(3000),
+      cache: "no-store",
+    });
+  } catch {
+    // No es crítico: la pantalla sigue con los patrocinadores que tenía.
   }
 }
 

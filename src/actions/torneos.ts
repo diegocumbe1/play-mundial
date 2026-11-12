@@ -5,6 +5,7 @@ import { z } from "zod";
 
 import { esSuperadmin, getMembership } from "@/lib/auth";
 import { ESTADOS_TENANT_BLOQUEADO } from "@/lib/errores";
+import { formatFechaHoraCO } from "@/lib/fecha-co";
 import {
   borrarSalaMarcador,
   crearSalaMarcador,
@@ -13,6 +14,7 @@ import {
   marcadorDisponible,
   probarVozMarcador,
   reiniciarSalaMarcador,
+  sincronizarPatrocinadoresMarcador,
   salaDePartido,
   sincronizarNombresMarcador,
   type MarcadorLeido,
@@ -31,6 +33,14 @@ import {
   avisarPartidosNuevos,
   guardarConstanciaJuez,
 } from "@/lib/torneo-avisos";
+import {
+  cargarPartidoEnCanal,
+  regenerarSalaCanal,
+  salaDeCanal,
+  siguienteDeCancha,
+  type CanalMarcador,
+} from "@/lib/canal-marcador";
+import { patrocinadoresPublicos, patrociniosParaMarcador } from "@/lib/patrocinadores-db";
 import { resolverActivacion } from "@/lib/planes";
 import { habilitarProductosIniciales, tieneProductoHabilitado } from "@/lib/productos";
 import {
@@ -439,7 +449,7 @@ export async function getTorneo(id: string): Promise<ActionResult<TorneoDetalle>
   const [{ data: ingresos }, { data: patrocinadores }, habilitaPatrocinios] = await Promise.all([
     svc.from("ingresos_torneo").select("*").eq("torneo_id", id).order("fecha", { ascending: false }),
     svc.from("patrocinadores_torneo").select("*").eq("torneo_id", id).order("orden").order("created_at"),
-    patrociniosHabilitados(torneo.tenant_id, acceso.membership),
+    patrociniosHabilitados(torneo.tenant_id),
   ]);
   const listaIngresos = (ingresos as IngresoTorneo[]) ?? [];
 
@@ -460,7 +470,8 @@ export async function getTorneo(id: string): Promise<ActionResult<TorneoDetalle>
       pagos: (pagos as PagoEquipoTorneo[]) ?? [],
       jugadores: (jugadores as JugadorTorneo[]) ?? [],
       ingresos: listaIngresos,
-      patrocinadores: (patrocinadores as PatrocinadorTorneo[]) ?? [],
+      // Inhabilitados por el superadmin: ni el panel ni los patrocinios de ingresos los ven.
+      patrocinadores: habilitaPatrocinios ? ((patrocinadores as PatrocinadorTorneo[]) ?? []) : [],
       patrociniosHabilitados: habilitaPatrocinios,
       dashboard: calcularDashboardTorneo(torneo, listaEquipos, listaGastos, listaCategorias, listaPremios, listaIngresos),
       alertas: validarViabilidadTorneo(torneo, listaEquipos, listaGastos, listaPremios, Date.now(), listaCategorias, listaIngresos),
@@ -1211,6 +1222,16 @@ export async function actualizarEquipoTorneo(
 }
 
 /** Cambia el estado de un equipo verificando pertenencia y cupo. */
+/** Equipos que ya no juegan (retirados o rechazados): no aparecen en tablas ni clasifican. */
+async function idsFueraDeJuego(torneoId: string): Promise<Set<string>> {
+  const { data } = await createServiceRoleClient()
+    .from("equipos_torneo")
+    .select("id")
+    .eq("torneo_id", torneoId)
+    .in("estado", ["retirado", "rechazado"]);
+  return new Set(((data as { id: string }[]) ?? []).map((e) => e.id));
+}
+
 async function cambiarEstadoEquipo(
   id: string,
   estado: EquipoTorneo["estado"],
@@ -1270,6 +1291,142 @@ export async function rechazarEquipoTorneo(id: string): Promise<ActionResult> {
 /** Marca un equipo como retirado del torneo (libera el cupo). */
 export async function retirarEquipoTorneo(id: string): Promise<ActionResult> {
   return cambiarEstadoEquipo(id, "retirado");
+}
+
+/**
+ * Retira a un equipo que ya está en el fixture: lo marca «retirado», borra sus
+ * partidos SIN JUGAR de grupos y deja los ya jugados tal cual, para que sus rivales
+ * conserven sus puntos. El equipo retirado deja de salir en la tabla y no clasifica.
+ * Si ya está en la llave o tiene un partido en vivo, no se toca nada: hay que
+ * resolver eso primero.
+ */
+export async function retirarEquipoDelFixture(
+  id: string,
+): Promise<ActionResult<{ quitados: number; conservados: number }>> {
+  const acceso = await accesoTorneos();
+  if (!acceso.ok) return { success: false, error: acceso.error };
+
+  const svc = createServiceRoleClient();
+  const { data: equipoData } = await svc.from("equipos_torneo").select("*").eq("id", id).maybeSingle();
+  const equipo = (equipoData as EquipoTorneo | null) ?? null;
+  if (!equipo) return { success: false, error: "Equipo no encontrado" };
+  const torneo = await torneoDelUsuario(equipo.torneo_id, acceso.membership);
+  if (!torneo) return { success: false, error: "No autorizado" };
+
+  const { data } = await svc
+    .from("encuentros")
+    .select("id, fase, estado")
+    .eq("torneo_id", torneo.id)
+    .or(`equipo_a_id.eq.${id},equipo_b_id.eq.${id}`);
+  const suyos = (data as Pick<Encuentro, "id" | "fase" | "estado">[]) ?? [];
+
+  if (suyos.some((m) => m.estado === "en_vivo")) {
+    return { success: false, error: "Tiene un partido en vivo: termínalo primero." };
+  }
+  if (suyos.some((m) => m.fase !== "grupos" && m.estado === "programado")) {
+    return { success: false, error: "Ya está en la llave de eliminatorias: ajústala primero." };
+  }
+
+  const r = await cambiarEstadoEquipo(id, "retirado");
+  if (!r.success) return r;
+
+  const sinJugar = suyos.filter((m) => m.fase === "grupos" && m.estado === "programado").map((m) => m.id);
+  if (sinJugar.length > 0) {
+    const { error } = await svc.from("encuentros").delete().in("id", sinJugar).eq("estado", "programado");
+    if (error) return { success: false, error: error.message };
+  }
+  revalidarTorneo(torneo);
+  return {
+    success: true,
+    data: { quitados: sinJugar.length, conservados: suyos.length - sinJugar.length },
+  };
+}
+
+/**
+ * Deshace un retiro: el equipo vuelve a «pendiente» y se le crean de nuevo los
+ * partidos que le faltan contra los demás de su grupo (sin fecha, para programarlos).
+ * Lo que ya jugó se conserva tal cual. Solo se puede mientras la llave de
+ * eliminatorias no tenga equipos reales: después, la tabla ya decidió quién pasa.
+ */
+export async function reintegrarEquipoAlFixture(
+  id: string,
+): Promise<ActionResult<{ creados: number }>> {
+  const acceso = await accesoTorneos();
+  if (!acceso.ok) return { success: false, error: acceso.error };
+
+  const svc = createServiceRoleClient();
+  const { data: equipoData } = await svc.from("equipos_torneo").select("*").eq("id", id).maybeSingle();
+  const equipo = (equipoData as EquipoTorneo | null) ?? null;
+  if (!equipo) return { success: false, error: "Equipo no encontrado" };
+  if (equipo.estado !== "retirado") return { success: false, error: "Este equipo no está retirado." };
+  const torneo = await torneoDelUsuario(equipo.torneo_id, acceso.membership);
+  if (!torneo) return { success: false, error: "No autorizado" };
+
+  const { data } = await svc.from("encuentros").select("*").eq("torneo_id", torneo.id);
+  const todos = (data as Encuentro[]) ?? [];
+  const suyos = todos.filter((m) => m.equipo_a_id === id || m.equipo_b_id === id);
+
+  // Su grupo y categoría salen de lo que ya jugó (lo único que quedó de él).
+  const base = suyos.find((m) => m.fase === "grupos");
+  if (!base) {
+    return {
+      success: false,
+      error: "No quedó ningún partido suyo para saber su grupo. Vuelve a generar el fixture.",
+    };
+  }
+  const categoriaId = base.categoria_id;
+  const grupo = base.grupo;
+
+  // Con la llave ya armada con equipos reales, volver a meterlo cambiaría quién pasa.
+  const llaveReal = todos.some(
+    (m) => m.categoria_id === categoriaId && m.fase !== "grupos" && !!m.equipo_a_id && !!m.equipo_b_id,
+  );
+  if (llaveReal) {
+    return { success: false, error: "La llave de eliminatorias ya tiene equipos: no se puede reintegrar." };
+  }
+
+  const fuera = await idsFueraDeJuego(torneo.id);
+  const delGrupo = todos.filter((m) => m.fase === "grupos" && m.categoria_id === categoriaId && m.grupo === grupo);
+  const rivales = [
+    ...new Set(delGrupo.flatMap((m) => [m.equipo_a_id, m.equipo_b_id]).filter((x): x is string => !!x)),
+  ].filter((r) => r !== id && !fuera.has(r));
+
+  const yaTiene = (rival: string) =>
+    delGrupo.some(
+      (m) =>
+        (m.equipo_a_id === id && m.equipo_b_id === rival) || (m.equipo_a_id === rival && m.equipo_b_id === id),
+    );
+  const faltan = rivales.filter((r) => !yaTiene(r));
+
+  // Primero vuelve al torneo; luego se le crean los partidos que faltan.
+  const r = await cambiarEstadoEquipo(id, "pendiente");
+  if (!r.success) return r;
+
+  if (faltan.length > 0) {
+    const ronda = Math.max(1, ...delGrupo.map((m) => m.ronda)) + 1;
+    const { error } = await svc.from("encuentros").insert(
+      faltan.map((rival, i) => ({
+        tenant_id: torneo.tenant_id,
+        torneo_id: torneo.id,
+        categoria_id: categoriaId,
+        fase: "grupos" as const,
+        grupo,
+        ronda,
+        orden: i,
+        equipo_a_id: id,
+        equipo_b_id: rival,
+        cancha: null,
+        programado_at: null,
+        estado: "programado" as const,
+        sets: [],
+        ganador_id: null,
+        sala_marcador: null,
+      })),
+    );
+    if (error) return { success: false, error: error.message };
+  }
+  revalidarTorneo(torneo);
+  return { success: true, data: { creados: faltan.length } };
 }
 
 /** Recalcula el total pagado del equipo a partir de sus abonos. */
@@ -1580,6 +1737,8 @@ export interface TorneoPublicoDetalle {
   /** Reglas de quién puede jugar: el formulario valida la plantilla con ellas. */
   participacion: ReturnType<typeof leerReglas>["participacion"];
   equipos: EquipoTorneoPublico[];
+  /** Retirados: su nombre se ve en los partidos que jugaron, pero no salen en las tablas. */
+  equiposRetirados: { id: string; nombre: string }[];
   equiposConfirmados: number;
   cuposDisponibles: number;
   /** Si en este momento se pueden enviar solicitudes de inscripción. */
@@ -1700,6 +1859,11 @@ export async function getTorneoPublico(
       ),
       participacion: leerReglas(torneo.reglas).participacion,
       equipos: construirEquiposPublicos(equipos),
+      // Retirados que jugaron algo: sus partidos siguen en «Resultados» con su nombre,
+      // pero no salen en las tablas.
+      equiposRetirados: equipos
+        .filter((e) => e.estado === "retirado")
+        .map((e) => ({ id: e.id, nombre: e.nombre })),
       equiposConfirmados: vigentes.filter((e) => e.estado === "confirmado").length,
       cuposDisponibles: Math.max(0, torneo.cupo_equipos - vigentes.length),
       inscripcionesAbiertas: !bloqueado && inscripcionesVigentes(torneo, vigentes.length),
@@ -2955,10 +3119,13 @@ export async function generarEliminatorias(
   }
 
   const reglas = leerReglas(torneo.reglas);
+  const fuera = await idsFueraDeJuego(torneo.id);
   const grupos = [...new Set(deGrupos.map((e) => e.grupo ?? ""))].sort();
   const tablas = grupos.map((g) => {
     const partidos = deGrupos.filter((e) => (e.grupo ?? "") === g);
-    const ids = [...new Set(partidos.flatMap((e) => [e.equipo_a_id, e.equipo_b_id]).filter(Boolean))] as string[];
+    const ids = ([...new Set(partidos.flatMap((e) => [e.equipo_a_id, e.equipo_b_id]).filter(Boolean))] as string[]).filter(
+      (id) => !fuera.has(id),
+    );
     return calcularTabla(ids, partidos, reglas.tabla);
   });
   const sembrados: string[] = [];
@@ -3060,11 +3227,14 @@ async function completarLlaveDesdeGrupos(torneo: Torneo, categoriaId: string | n
 
   const reglas = leerReglas(torneo.reglas);
   const deGrupos = todos.filter((m) => m.fase === "grupos");
+  const fuera = await idsFueraDeJuego(torneo.id);
   const posiciones = new Map<string, string[] | null>();
   for (const g of new Set(deGrupos.map((m) => m.grupo ?? ""))) {
     const partidos = deGrupos.filter((m) => (m.grupo ?? "") === g);
     const completo = partidos.every((m) => m.estado === "finalizado" || m.estado === "wo");
-    const ids = [...new Set(partidos.flatMap((m) => [m.equipo_a_id, m.equipo_b_id]).filter(Boolean))] as string[];
+    const ids = ([...new Set(partidos.flatMap((m) => [m.equipo_a_id, m.equipo_b_id]).filter(Boolean))] as string[]).filter(
+      (id) => !fuera.has(id),
+    );
     posiciones.set(g, completo ? calcularTabla(ids, partidos, reglas.tabla).map((f) => f.equipoId) : null);
   }
 
@@ -3809,17 +3979,25 @@ export async function abrirMarcador(
   const sala = p.e.sala_marcador ?? salaDePartido(p.e.id);
   const yaExiste = !opciones && p.e.sala_marcador ? !!(await leerMarcador(sala)) : false;
   if (!yaExiste) {
+    // Quién organiza y patrocina el torneo (solo los publicados con logo) sale en la franja
+    // al pie de la pantalla del marcador. Si no hay, la pantalla queda como siempre.
+    const patrocinadores = await patrociniosParaMarcador(p.torneo);
     const err = await crearSalaMarcador(
       sala,
       p.nombreA,
       p.nombreB,
       leerReglas(p.torneo.reglas).juego,
       limpiarOpcionesMarcador(opciones),
+      patrocinadores,
     );
     if (err) return { success: false, error: err };
   }
   // Sala que ya existía (o en curso, que /setup no reconfigura): nombres completos y al día.
-  if (p.e.sala_marcador) await sincronizarNombresMarcador(sala, p.nombreA, p.nombreB);
+  if (p.e.sala_marcador) {
+    await sincronizarNombresMarcador(sala, p.nombreA, p.nombreB);
+    // Y sus patrocinadores: si se ocultaron o cambiaron mientras tanto, la TV se pone al día.
+    await sincronizarPatrocinadoresMarcador(sala, await patrociniosParaMarcador(p.torneo));
+  }
 
   const svc = createServiceRoleClient();
   await svc
@@ -3998,9 +4176,12 @@ export async function eliminarIngresoTorneo(id: string): Promise<ActionResult> {
 // ---------------------------------------------------------------------------
 // Patrocinadores (los habilita el superadmin por organizador)
 // ---------------------------------------------------------------------------
-/** ¿El organizador tiene habilitados los patrocinadores? El superadmin siempre. */
-async function patrociniosHabilitados(tenantId: string, membership: Membership): Promise<boolean> {
-  if (membership.rol === "superadmin") return true;
+/**
+ * ¿El organizador tiene habilitados los patrocinadores? Es lo que decide el superadmin con su
+ * interruptor, y vale para todos: si está inhabilitado, el panel no se muestra ni al organizador
+ * ni al superadmin que mira su torneo, y no se pueden crear ni editar patrocinadores.
+ */
+async function patrociniosHabilitados(tenantId: string): Promise<boolean> {
   const { data } = await createServiceRoleClient()
     .from("tenants")
     .select("patrocinios_habilitado")
@@ -4035,7 +4216,7 @@ export async function crearPatrocinadorTorneo(
   if (!acceso.ok) return { success: false, error: acceso.error };
   const torneo = await torneoDelUsuario(torneoId, acceso.membership);
   if (!torneo) return { success: false, error: "Torneo no encontrado" };
-  if (!(await patrociniosHabilitados(torneo.tenant_id, acceso.membership))) {
+  if (!(await patrociniosHabilitados(torneo.tenant_id))) {
     return { success: false, error: SIN_PATROCINIOS };
   }
   const parsed = patrocinadorSchema.safeParse(input);
@@ -4051,6 +4232,7 @@ export async function crearPatrocinadorTorneo(
     .single();
   if (error) return { success: false, error: error.message };
   revalidarTorneo(torneo);
+  await sincronizarPatrociniosTorneo(torneo);
   return { success: true, data: { id: (data as { id: string }).id } };
 }
 
@@ -4070,7 +4252,7 @@ export async function actualizarPatrocinadorTorneo(
   if (!acceso.ok) return { success: false, error: acceso.error };
   const dueno = await patrocinadorDelUsuario(id, acceso.membership);
   if (!dueno) return { success: false, error: "Patrocinador no encontrado" };
-  if (!(await patrociniosHabilitados(dueno.torneo.tenant_id, acceso.membership))) {
+  if (!(await patrociniosHabilitados(dueno.torneo.tenant_id))) {
     return { success: false, error: SIN_PATROCINIOS };
   }
   const parsed = patrocinadorSchema.safeParse(input);
@@ -4085,6 +4267,7 @@ export async function actualizarPatrocinadorTorneo(
     .eq("id", id);
   if (error) return { success: false, error: error.message };
   revalidarTorneo(dueno.torneo);
+  await sincronizarPatrociniosTorneo(dueno.torneo);
   return { success: true, data: undefined };
 }
 
@@ -4096,6 +4279,7 @@ export async function eliminarPatrocinadorTorneo(id: string): Promise<ActionResu
   const { error } = await createServiceRoleClient().from("patrocinadores_torneo").delete().eq("id", id);
   if (error) return { success: false, error: error.message };
   revalidarTorneo(dueno.torneo);
+  await sincronizarPatrociniosTorneo(dueno.torneo);
   return { success: true, data: undefined };
 }
 
@@ -4116,7 +4300,7 @@ export async function subirLogoPatrocinador(
   if (!acceso.ok) return { success: false, error: acceso.error };
   const torneo = await torneoDelUsuario(torneoId, acceso.membership);
   if (!torneo) return { success: false, error: "Torneo no encontrado" };
-  if (!(await patrociniosHabilitados(torneo.tenant_id, acceso.membership))) {
+  if (!(await patrociniosHabilitados(torneo.tenant_id))) {
     return { success: false, error: SIN_PATROCINIOS };
   }
   const file = formData.get("file");
@@ -4156,24 +4340,172 @@ export async function setPatrociniosTenant(tenantId: string, habilitado: boolean
   if (error) return { success: false, error: error.message };
   revalidatePath("/superadmin");
   revalidatePath("/admin/torneos");
+  // Al deshabilitar (o habilitar), las pantallas de sus partidos en vivo se ajustan al momento.
+  const { data: torneos } = await createServiceRoleClient().from("torneos").select("id, tenant_id, slug_publico").eq("tenant_id", tenantId);
+  for (const t of (torneos as Pick<Torneo, "id" | "tenant_id" | "slug_publico">[]) ?? []) {
+    revalidatePath(`/t/${t.slug_publico}`);
+    await sincronizarPatrociniosTorneo(t);
+  }
   return { success: true, data: undefined };
 }
 
 /**
- * Patrocinadores que ve el público: solo publicados, con imagen, y solo si el
- * organizador tiene la función habilitada. Lista vacía = no se muestra nada.
+ * Pone en las pantallas de los partidos con sala abierta de un torneo los patrocinadores que hoy
+ * corresponden (o ninguno, si se ocultaron o se deshabilitaron). Las salas nuevas ya
+ * nacen con la lista vigente; esto cubre las que ya estaban abiertas. Nunca falla.
  */
-async function patrocinadoresPublicos(torneo: Pick<Torneo, "id" | "tenant_id">): Promise<PatrocinadorPublico[]> {
+async function sincronizarPatrociniosTorneo(torneo: Pick<Torneo, "id" | "tenant_id">): Promise<void> {
+  try {
+    const { data } = await createServiceRoleClient()
+      .from("encuentros")
+      .select("sala_marcador")
+      .eq("torneo_id", torneo.id)
+      .in("estado", ["programado", "en_vivo"])
+      .not("sala_marcador", "is", null);
+    const salas = ((data as { sala_marcador: string }[]) ?? []).map((e) => e.sala_marcador);
+    if (salas.length === 0) return;
+    const lista = await patrociniosParaMarcador(torneo);
+    await Promise.all(salas.map((sala) => sincronizarPatrocinadoresMarcador(sala, lista)));
+  } catch {
+    /* las pantallas conservan lo que tenían */
+  }
+}
+
+/** El organizador oculta o vuelve a mostrar TODOS los patrocinadores de su torneo (página y TV). */
+export async function setMostrarPatrocinadores(torneoId: string, mostrar: boolean): Promise<ActionResult> {
+  const acceso = await accesoTorneos();
+  if (!acceso.ok) return { success: false, error: acceso.error };
+  const torneo = await torneoDelUsuario(torneoId, acceso.membership);
+  if (!torneo) return { success: false, error: "Torneo no encontrado" };
+  const { error } = await createServiceRoleClient()
+    .from("torneos")
+    .update({ mostrar_patrocinadores: mostrar })
+    .eq("id", torneo.id);
+  if (error) return { success: false, error: error.message };
+  revalidarTorneo(torneo);
+  await sincronizarPatrociniosTorneo(torneo);
+  return { success: true, data: undefined };
+}
+
+
+// ---------------------------------------------------------------------------
+// Canales del marcador: una sala FIJA por cancha (mismo enlace para TV y juez)
+// ---------------------------------------------------------------------------
+export interface CanalVista {
+  id: string;
+  cancha: number;
+  /** Enlaces fijos de la cancha. */
+  enlaces: { tv: string; juez: string };
+  /** Partido cargado ahora en la sala. */
+  actual: { id: string; texto: string; estado: Encuentro["estado"] } | null;
+  /** El que cargaría «Siguiente partido». */
+  siguiente: string | null;
+  /** Partidos que se pueden cargar a mano (programados, con equipos). */
+  pendientes: { id: string; texto: string }[];
+}
+
+async function canalDelUsuario(canalId: string, membership: Membership) {
+  const { data } = await createServiceRoleClient().from("canales_marcador").select("*").eq("id", canalId).maybeSingle();
+  const canal = (data as CanalMarcador | null) ?? null;
+  if (!canal) return null;
+  const torneo = await torneoDelUsuario(canal.torneo_id, membership);
+  return torneo ? { canal, torneo } : null;
+}
+
+/** Canales del torneo con sus enlaces y el partido que tienen cargado. */
+export async function getCanalesMarcador(torneoId: string): Promise<ActionResult<CanalVista[]>> {
+  const acceso = await accesoTorneos();
+  if (!acceso.ok) return { success: false, error: acceso.error };
+  const torneo = await torneoDelUsuario(torneoId, acceso.membership);
+  if (!torneo) return { success: false, error: "Torneo no encontrado" };
+
   const svc = createServiceRoleClient();
-  const { data: tenant } = await svc.from("tenants").select("patrocinios_habilitado").eq("id", torneo.tenant_id).maybeSingle();
-  if (!(tenant as { patrocinios_habilitado?: boolean } | null)?.patrocinios_habilitado) return [];
-  const { data } = await svc
-    .from("patrocinadores_torneo")
-    .select("id, nombre, rol, logo_url, enlace")
-    .eq("torneo_id", torneo.id)
-    .eq("estado", "publicado")
-    .not("logo_url", "is", null)
-    .order("orden")
-    .order("created_at");
-  return (data as PatrocinadorPublico[]) ?? [];
+  const [{ data: canalesData }, { data: encData }, { data: eqData }] = await Promise.all([
+    svc.from("canales_marcador").select("*").eq("torneo_id", torneo.id).order("cancha"),
+    svc.from("encuentros").select("*").eq("torneo_id", torneo.id),
+    svc.from("equipos_torneo").select("id, nombre").eq("torneo_id", torneo.id),
+  ]);
+  const encuentros = (encData as Encuentro[]) ?? [];
+  const nombre = (id: string | null) => ((eqData as { id: string; nombre: string }[]) ?? []).find((e) => e.id === id)?.nombre ?? "Por definir";
+  const texto = (e: Encuentro) =>
+    `${e.programado_at ? `${formatFechaHoraCO(e.programado_at)} · ` : ""}${nombre(e.equipo_a_id)} vs ${nombre(e.equipo_b_id)}`;
+
+  const canales = ((canalesData as CanalMarcador[]) ?? []).map((c): CanalVista => {
+    const enl = enlacesMarcador(c.sala);
+    const actual = encuentros.find((e) => e.id === c.encuentro_id) ?? null;
+    const sig = siguienteDeCancha(encuentros, c.cancha, c.encuentro_id);
+    return {
+      id: c.id,
+      cancha: c.cancha,
+      enlaces: { tv: enl.pantalla, juez: enl.juez },
+      actual: actual ? { id: actual.id, texto: texto(actual), estado: actual.estado } : null,
+      siguiente: sig ? texto(sig) : null,
+      pendientes: encuentros
+        .filter((e) => e.estado === "programado" && e.equipo_a_id && e.equipo_b_id && !e.sala_marcador && (e.cancha ?? 1) === c.cancha)
+        .sort((x, y) => (x.programado_at ?? "9").localeCompare(y.programado_at ?? "9"))
+        .map((e) => ({ id: e.id, texto: texto(e) })),
+    };
+  });
+  return { success: true, data: canales };
+}
+
+/** Crea la sala fija de una cancha y le carga el primer partido. Los enlaces ya no cambian. */
+export async function prepararCanalMarcador(
+  torneoId: string,
+  cancha: number,
+): Promise<ActionResult<{ id: string; cargado: string | null; aviso: string | null }>> {
+  const acceso = await accesoTorneos();
+  if (!acceso.ok) return { success: false, error: acceso.error };
+  const torneo = await torneoDelUsuario(torneoId, acceso.membership);
+  if (!torneo) return { success: false, error: "Torneo no encontrado" };
+  if (!marcadorDisponible()) {
+    return { success: false, error: "El marcador en vivo no está configurado (DC_SPORT_SCORE_URL)." };
+  }
+  if (!Number.isInteger(cancha) || cancha < 1 || cancha > Math.max(1, torneo.cantidad_canchas)) {
+    return { success: false, error: `El torneo tiene ${torneo.cantidad_canchas} cancha(s).` };
+  }
+
+  const svc = createServiceRoleClient();
+  const { data: previo } = await svc.from("canales_marcador").select("id").eq("torneo_id", torneo.id).eq("cancha", cancha).maybeSingle();
+  if (previo) return { success: false, error: "Esa cancha ya tiene sus enlaces." };
+
+  const { data, error } = await svc
+    .from("canales_marcador")
+    .insert({ tenant_id: torneo.tenant_id, torneo_id: torneo.id, cancha, sala: salaDeCanal() })
+    .select("*")
+    .single();
+  if (error) return { success: false, error: error.message };
+  const canal = data as CanalMarcador;
+
+  const r = await cargarPartidoEnCanal(canal, { por: "owner" });
+  revalidarTorneo(torneo);
+  return {
+    success: true,
+    data: { id: canal.id, cargado: r.ok ? r.partido : null, aviso: r.ok ? null : r.error },
+  };
+}
+
+/** Carga un partido en la cancha: el siguiente programado o uno elegido. El owner puede forzar. */
+export async function cargarPartidoCanal(
+  canalId: string,
+  opciones: { encuentroId?: string; forzar?: boolean } = {},
+): Promise<ActionResult<{ partido: string }>> {
+  const acceso = await accesoTorneos();
+  if (!acceso.ok) return { success: false, error: acceso.error };
+  const dueno = await canalDelUsuario(canalId, acceso.membership);
+  if (!dueno) return { success: false, error: "Cancha no encontrada" };
+  const r = await cargarPartidoEnCanal(dueno.canal, { por: "owner", ...opciones });
+  return r.ok ? { success: true, data: { partido: r.partido } } : { success: false, error: r.error };
+}
+
+/** Cambia el código de la sala: los enlaces anteriores dejan de funcionar. */
+export async function regenerarCanalMarcador(canalId: string): Promise<ActionResult> {
+  const acceso = await accesoTorneos();
+  if (!acceso.ok) return { success: false, error: acceso.error };
+  const dueno = await canalDelUsuario(canalId, acceso.membership);
+  if (!dueno) return { success: false, error: "Cancha no encontrada" };
+  const r = await regenerarSalaCanal(dueno.canal);
+  if (!r.ok) return { success: false, error: r.error };
+  revalidarTorneo(dueno.torneo);
+  return { success: true, data: undefined };
 }

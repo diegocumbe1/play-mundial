@@ -2,10 +2,11 @@
 
 import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { ExternalLink, ImagePlus, Plus, Trash2 } from "lucide-react";
+import { Eye, EyeOff, ExternalLink, ImagePlus, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import {
+  setMostrarPatrocinadores,
   actualizarPatrocinadorTorneo,
   crearPatrocinadorTorneo,
   eliminarPatrocinadorTorneo,
@@ -36,22 +37,34 @@ const labelRol = (r: PatrocinadorTorneo["rol"]) => ROLES.find((x) => x.value ===
 
 /**
  * Quién organiza, gestiona o patrocina el torneo. Solo los publicados con logo
- * salen en la página pública (franja de logos y banner que rota).
+ * salen en la página pública (una línea bajo el título y una franja al final).
  */
 export function PatrocinadoresPanel({
   torneoId,
   slug,
   patrocinadores,
+  mostrar = true,
 }: {
   torneoId: string;
   slug: string;
   patrocinadores: PatrocinadorTorneo[];
+  /** Si el organizador los tiene visibles; `false` los oculta todos (página y TV) sin borrarlos. */
+  mostrar?: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [editando, setEditando] = useState<PatrocinadorTorneo | null>(null);
   const [nuevo, setNuevo] = useState(false);
   const publicados = patrocinadores.filter((p) => p.estado === "publicado" && p.logo_url).length;
+
+  function alternarVisibilidad() {
+    startTransition(async () => {
+      const r = await setMostrarPatrocinadores(torneoId, !mostrar);
+      if (!r.success) return void toast.error(r.error);
+      toast.success(mostrar ? "Patrocinadores ocultos en la página y en la TV" : "Patrocinadores visibles otra vez");
+      router.refresh();
+    });
+  }
 
   function alternarEstado(p: PatrocinadorTorneo) {
     startTransition(async () => {
@@ -93,13 +106,26 @@ export function PatrocinadoresPanel({
             <a href={`/t/${slug}`} target="_blank" rel="noreferrer" className="underline">
               la página del torneo
             </a>
-            : franja de logos y banner que rota abajo (en computador, también a los lados).
+            : una cinta de logos bajo el título y la franja «Organiza / Gestores y patrocinadores» al final.
+            También salen en la pantalla de la TV de los partidos.
           </p>
         </div>
-        <Button size="sm" onClick={() => setNuevo(true)}>
-          <Plus className="size-3.5" /> Agregar
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button size="sm" variant={mostrar ? "outline" : "default"} disabled={pending} onClick={alternarVisibilidad}>
+            {mostrar ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
+            {mostrar ? "Ocultar todos" : "Mostrar todos"}
+          </Button>
+          <Button size="sm" onClick={() => setNuevo(true)}>
+            <Plus className="size-3.5" /> Agregar
+          </Button>
+        </div>
       </div>
+      {!mostrar && (
+        <p className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-3 text-xs">
+          Los patrocinadores están <b>ocultos</b>: no se ven en la página del torneo ni en la TV. No se borró nada;
+          toca «Mostrar todos» para volver a verlos.
+        </p>
+      )}
 
       {patrocinadores.length === 0 ? (
         <p className="border-border text-muted-foreground rounded-xl border border-dashed p-6 text-center text-sm">

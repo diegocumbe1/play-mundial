@@ -33,6 +33,7 @@ import {
   type OpcionesFixture,
 } from "@/actions/torneos";
 import { ArmarDia } from "@/components/torneo/armar-dia";
+import { CanalesPanel } from "@/components/torneo/canales-panel";
 import { QrEnlace } from "@/components/torneo/qr-enlace";
 import { Campo, InfoToggle, Segmentado, Selector } from "@/components/torneo/campos";
 import { FixtureVista } from "@/components/torneo/fixture-vista";
@@ -156,6 +157,14 @@ export function FixturePanel({
         ))}
       </div>
 
+      {marcadorDisponible && (
+        <CanalesPanel
+          torneoId={torneo.id}
+          canchas={Math.max(1, torneo.cantidad_canchas)}
+          nombresCanchas={reglas.juego.nombres_canchas}
+        />
+      )}
+
       <ArmarDia
         torneo={torneo}
         equipos={equipos}
@@ -167,6 +176,7 @@ export function FixturePanel({
       <FixtureVista
         categorias={categorias}
         equipos={equipos}
+        retirados={equipos.filter((e) => e.estado === "retirado")}
         encuentros={encuentros}
         tablaReglas={reglas.tabla}
         categoriaInicial={categoriaInicial(
@@ -447,6 +457,21 @@ const filasDeSets = (sets: [number, number][], total: number): [string, string][
   });
 
 /**
+ * Partido que el juez terminó pero cuya sala ya pasó al siguiente (cancha con sala fija):
+ * lo que reportó quedó guardado y se ofrece aceptarlo o corregirlo, sin depender de la sala.
+ */
+function propuestaGuardada(e: EncuentroPublico): LecturaMarcador | null {
+  if (e.estado !== "en_vivo" || e.sala_marcador || !e.resultado_juez) return null;
+  return {
+    sets: e.resultado_juez.sets,
+    setSinTerminar: e.resultado_juez.set_sin_terminar,
+    terminado: true,
+    setsCerrados: e.resultado_juez.sets.length,
+    enlaces: null,
+  } as unknown as LecturaMarcador;
+}
+
+/**
  * Carga del marcador por sets, con validación en vivo según las reglas. Si el
  * juez ya terminó, solo se ofrece aceptar su resultado o corregirlo. Un partido
  * finalizado se muestra como resumen: cambiarlo es una corrección que se confirma.
@@ -505,7 +530,7 @@ function ResultadoModal({
     setEnlaces(null);
     setAviso(null);
     setOpcionesVoz(null);
-    setPropuesta(null);
+    setPropuesta(propuestaGuardada(encuentro));
     setCorrigiendo(false);
     setConfirmar(null);
     setLeyendo(!!leerAlAbrir);

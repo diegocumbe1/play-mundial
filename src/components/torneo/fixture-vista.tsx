@@ -36,11 +36,17 @@ export function FixtureVista({
   autoRefrescar = false,
   onEditar,
   categoriaInicial = null,
+  retirados = [],
 }: {
   /** Categoría que se muestra primero (la elegida por el organizador o la de más inscritos). */
   categoriaInicial?: string | null;
   categorias: { id: string; nombre: string }[];
   equipos: { id: string; nombre: string }[];
+  /**
+   * Equipos retirados: no salen en las tablas de posiciones, pero sus partidos ya
+   * jugados se conservan (los rivales mantienen sus puntos) y se ven con su nombre.
+   */
+  retirados?: { id: string; nombre: string }[];
   encuentros: EncuentroPublico[];
   tablaReglas: ReglasTorneo["tabla"];
   /** Nombres de las canchas (vacío = "Cancha N"). */
@@ -56,9 +62,10 @@ export function FixtureVista({
     categorias.some((c) => c.id === categoriaInicial) ? categoriaInicial : (categorias[0]?.id ?? null),
   );
   const nombre = useMemo(() => {
-    const mapa = new Map(equipos.map((e) => [e.id, e.nombre]));
+    const mapa = new Map([...equipos, ...retirados].map((e) => [e.id, e.nombre]));
     return (id: string | null) => (id ? (mapa.get(id) ?? "Equipo") : "Por definir");
-  }, [equipos]);
+  }, [equipos, retirados]);
+  const retiradoIds = useMemo(() => new Set(retirados.map((r) => r.id)), [retirados]);
 
   const hayEnVivo = encuentros.some((e) => e.estado === "en_vivo");
   useEffect(() => {
@@ -139,9 +146,11 @@ export function FixtureVista({
           <div className="grid gap-3 lg:grid-cols-2">
             {grupos.map((g) => {
               const delGrupo = lista.filter((e) => e.fase === "grupos" && e.grupo === g);
-              const ids = [
-                ...new Set(delGrupo.flatMap((e) => [e.equipo_a_id, e.equipo_b_id]).filter(Boolean)),
-              ] as string[];
+              const ids = (
+                [
+                  ...new Set(delGrupo.flatMap((e) => [e.equipo_a_id, e.equipo_b_id]).filter(Boolean)),
+                ] as string[]
+              ).filter((id) => !retiradoIds.has(id));
               const filas = calcularTabla(ids, delGrupo, tablaReglas);
               return (
                 <div key={g} className="border-border overflow-hidden rounded-xl border">

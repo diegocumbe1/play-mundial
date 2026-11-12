@@ -174,31 +174,38 @@ export function calcularTabla(
   for (const e of jugados) {
     const a = filas.get(e.equipo_a_id!);
     const b = filas.get(e.equipo_b_id!);
-    if (!a || !b) continue;
+    // Si uno de los dos ya no está en la tabla (equipo retirado), el otro CONSERVA
+    // lo que ganó o perdió en ese partido; el retirado simplemente no aparece.
+    if (!a && !b) continue;
     const r = resultadoPartido(e);
-    a.pj += 1;
-    b.pj += 1;
-    a.setsFavor += r.setsA;
-    a.setsContra += r.setsB;
-    b.setsFavor += r.setsB;
-    b.setsContra += r.setsA;
-    a.puntosFavor += r.puntosA;
-    a.puntosContra += r.puntosB;
-    b.puntosFavor += r.puntosB;
-    b.puntosContra += r.puntosA;
-    const [gana, pierde] = r.ganador === "a" ? [a, b] : [b, a];
-    gana.pg += 1;
-    pierde.pp += 1;
+    if (a) {
+      a.pj += 1;
+      a.setsFavor += r.setsA;
+      a.setsContra += r.setsB;
+      a.puntosFavor += r.puntosA;
+      a.puntosContra += r.puntosB;
+    }
+    if (b) {
+      b.pj += 1;
+      b.setsFavor += r.setsB;
+      b.setsContra += r.setsA;
+      b.puntosFavor += r.puntosB;
+      b.puntosContra += r.puntosA;
+    }
+    const gana = r.ganador === "a" ? a : b;
+    const pierde = r.ganador === "a" ? b : a;
+    if (gana) gana.pg += 1;
+    if (pierde) pierde.pp += 1;
     if (e.estado === "wo") {
-      gana.pts += tabla.victoria;
-      pierde.pts += tabla.wo;
+      if (gana) gana.pts += tabla.victoria;
+      if (pierde) pierde.pts += tabla.wo;
     } else if (tabla.modo === "sets") {
       // Cada set ganado es un punto, para los dos: 3-2 → 3 y 2.
-      a.pts += r.setsA;
-      b.pts += r.setsB;
+      if (a) a.pts += r.setsA;
+      if (b) b.pts += r.setsB;
     } else {
-      gana.pts += tabla.victoria;
-      pierde.pts += tabla.derrota;
+      if (gana) gana.pts += tabla.victoria;
+      if (pierde) pierde.pts += tabla.derrota;
     }
   }
 

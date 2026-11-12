@@ -207,7 +207,12 @@ export function TorneoTabs({
           <IngresosPanel torneo={torneo} ingresos={ingresos} equipos={equipos} patrocinadores={patrocinadores} />
           <GastosPanel torneoId={torneo.id} gastos={gastos} />
           {patrociniosHabilitados && (
-            <PatrocinadoresPanel torneoId={torneo.id} slug={torneo.slug_publico} patrocinadores={patrocinadores} />
+            <PatrocinadoresPanel
+              torneoId={torneo.id}
+              slug={torneo.slug_publico}
+              patrocinadores={patrocinadores}
+              mostrar={torneo.mostrar_patrocinadores !== false}
+            />
           )}
         </div>
       )}

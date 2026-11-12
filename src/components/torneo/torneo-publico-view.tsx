@@ -17,7 +17,8 @@ import type { TorneoPublicoDetalle } from "@/actions/torneos";
 import { Campo, Selector } from "@/components/torneo/campos";
 import { Desplegable } from "@/components/torneo/desplegable";
 import { FixtureVista } from "@/components/torneo/fixture-vista";
-import { BannerPatrocinadores, FranjaPatrocinadores } from "@/components/torneo/patrocinadores-publicos";
+import { BannerPatrocinadores } from "@/components/torneo/patrocinadores-banner";
+import { FranjaPatrocinadores } from "@/components/torneo/patrocinadores-publicos";
 import { jugadorVacio, PlantillaEditor } from "@/components/torneo/plantilla-editor";
 import type { JugadorInput } from "@/lib/torneo-jugadores";
 import { Button } from "@/components/ui/button";
@@ -88,11 +89,7 @@ export function TorneoPublicoView({ datos }: { datos: TorneoPublicoDetalle }) {
 
   return (
     <main
-      className={
-        "mx-auto max-w-xl px-4 py-8 md:max-w-3xl lg:max-w-5xl" +
-        // Espacio para el banner fijo de patrocinadores (abajo).
-        (patrocinadores.length > 0 ? " pb-24 2xl:pb-8" : "")
-      }
+      className="mx-auto max-w-xl px-4 py-8 md:max-w-3xl lg:max-w-5xl"
     >
       {/* --- Promesa --- */}
       <header className="mb-5">
@@ -109,12 +106,15 @@ export function TorneoPublicoView({ datos }: { datos: TorneoPublicoDetalle }) {
         </p>
       </header>
 
+      <BannerPatrocinadores patrocinadores={patrocinadores} />
+
       {/* --- Torneo en juego: en vivo, posiciones, llaves y resultados --- */}
       {encuentros.length > 0 && (
         <section className="mb-6">
           <FixtureVista
             categorias={categorias}
             equipos={equipos}
+            retirados={datos.equiposRetirados}
             encuentros={encuentros}
             tablaReglas={tablaReglas}
             nombresCanchas={nombresCanchas}
@@ -360,8 +360,13 @@ export function TorneoPublicoView({ datos }: { datos: TorneoPublicoDetalle }) {
         <a href="/terminos" className="hover:text-foreground underline">
           Términos y tratamiento de datos
         </a>
+        {/* Firma mínima de la plataforma: tenue, sin enlaces ni banners. */}
+        <p className="text-muted-foreground/60 mt-3 flex items-center justify-center gap-1.5 text-[10px] tracking-wide">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/brand/lynko-lince.png" alt="" width={14} height={14} className="size-3.5 rounded-[4px] opacity-70" />
+          Desarrollado por <span className="font-semibold">Lynko</span> · Play Mundial
+        </p>
       </footer>
-      <BannerPatrocinadores patrocinadores={patrocinadores} />
     </main>
   );
 }
