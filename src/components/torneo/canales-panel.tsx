@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import {
   cargarPartidoCanal,
   getCanalesMarcador,
+  liberarCanalMarcador,
   prepararCanalMarcador,
   recargarPartidoCanal,
   regenerarCanalMarcador,
@@ -117,6 +118,19 @@ export function CanalesPanel({
     });
   }
 
+  function liberar(canal: CanalVista) {
+    const ok = confirm(
+      `¿Quitar «${canal.actual?.texto ?? "el partido"}» de la cancha?\n\nDeja de salir «en vivo» y vuelve a «programado». Se borra lo que se haya marcado en la sala y queda en 0-0 esperando el siguiente.`,
+    );
+    if (!ok) return;
+    startTransition(async () => {
+      const r = await liberarCanalMarcador(canal.id);
+      if (!r.success) return void toast.error(r.error);
+      toast.success("Cancha libre: el partido volvió a programado");
+      await recargar_lista();
+    });
+  }
+
   function regenerar(canal: CanalVista) {
     const ok = confirm(
       "¿Regenerar los enlaces de esta cancha?\n\nLos actuales (TV y juez) dejan de funcionar y hay que compartir los nuevos. Si hay un partido en juego, su marcador arranca de cero.",
@@ -213,6 +227,11 @@ export function CanalesPanel({
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
+                {c.actual?.estado === "en_vivo" && (
+                  <Button size="sm" variant="outline" disabled={pending} onClick={() => liberar(c)}>
+                    Quitar de en vivo
+                  </Button>
+                )}
                 <Button size="sm" disabled={pending || !c.siguiente} onClick={() => cargar(c)}>
                   <SkipForward className="size-3.5" /> Cargar siguiente partido
                 </Button>

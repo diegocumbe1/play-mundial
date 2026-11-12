@@ -4,7 +4,7 @@ import { randomBytes } from "node:crypto";
 
 import { revalidatePath } from "next/cache";
 
-import { crearSalaMarcador, leerMarcador, marcadorDisponible } from "@/lib/marcador-externo";
+import { crearSalaMarcador, leerMarcador, marcadorDisponible, reiniciarSalaMarcador } from "@/lib/marcador-externo";
 import { OPCIONES_MARCADOR_POR_DEFECTO } from "@/lib/marcador-voz";
 import { patrociniosParaMarcador } from "@/lib/patrocinadores-db";
 import { createServiceRoleClient } from "@/lib/supabase/server";
@@ -280,4 +280,32 @@ export async function recargarPartidoActual(canal: CanalMarcador): Promise<Resul
   await db.from("encuentros").update({ sala_marcador: canal.sala, estado: "en_vivo" }).eq("id", e.id);
   revalidatePath(`/admin/torneos/${torneo.id}`);
   return { ok: true, partido: `${nombre(e.equipo_a_id)} vs ${nombre(e.equipo_b_id)}`, encuentroId: e.id };
+}
+
+/**
+ * Vacía la cancha: el partido cargado vuelve a «programado» (ya no sale «en vivo»), se olvida lo
+ * marcado y la sala queda en 0-0 esperando el próximo. Sirve para quitar un partido de prueba o
+ * uno cargado por error. Un partido ya aceptado (finalizado) no se toca.
+ */
+export async function liberarCanal(canal: CanalMarcador): Promise<{ ok: true } | { ok: false; error: string }> {
+  const db = svc();
+  const { data } = canal.encuentro_id
+    ? await db.from("encuentros").select("*").eq("id", canal.encuentro_id).maybeSingle()
+    : { data: null };
+  const e = (data as Encuentro | null) ?? null;
+  if (e && (e.estado === "finalizado" || e.estado === "wo")) {
+    // Ya es oficial: solo se desocupa la cancha, el resultado no se toca.
+    await db.from("encuentros").update({ sala_marcador: null }).eq("id", e.id);
+  } else if (e) {
+    const { error } = await db
+      .from("encuentros")
+      .update({ estado: "programado", sala_marcador: null, sets: [], ganador_id: null, resultado_juez: null })
+      .eq("id", e.id);
+    if (error) return { ok: false, error: error.message };
+  }
+  const { error } = await db.from("canales_marcador").update({ encuentro_id: null }).eq("id", canal.id);
+  if (error) return { ok: false, error: error.message };
+  await reiniciarSalaMarcador(canal.sala);
+  revalidatePath(`/admin/torneos/${canal.torneo_id}`);
+  return { ok: true };
 }

@@ -36,6 +36,7 @@ import {
 } from "@/lib/torneo-avisos";
 import {
   cargarPartidoEnCanal,
+  liberarCanal,
   recargarPartidoActual,
   regenerarSalaCanal,
   salaDeCanal,
@@ -3800,8 +3801,15 @@ export async function guardarResultado(
 
   let cambios: Partial<Encuentro>;
   if (d.tipo === "reiniciar") {
-    // También se olvida lo que reportó el juez: el partido vuelve a empezar.
-    cambios = { estado: "programado", sets: [], ganador_id: null, resultado_juez: null };
+    // También se olvida lo que reportó el juez: el partido vuelve a empezar. Si está en la sala FIJA
+    // de una cancha sigue en pantalla, así que continúa «en vivo» y no vuelve a «programado».
+    const enSalaFija = !!e.sala_marcador && /^c-[0-9a-f]{18}$/.test(e.sala_marcador);
+    cambios = {
+      estado: enSalaFija ? "en_vivo" : "programado",
+      sets: [],
+      ganador_id: null,
+      resultado_juez: null,
+    };
   } else if (d.tipo === "wo") {
     cambios = {
       estado: "wo",
@@ -4541,4 +4549,17 @@ export async function recargarPartidoCanal(canalId: string): Promise<ActionResul
   if (!dueno) return { success: false, error: "Cancha no encontrada" };
   const r = await recargarPartidoActual(dueno.canal);
   return r.ok ? { success: true, data: { partido: r.partido } } : { success: false, error: r.error };
+}
+
+/** Vacía la cancha: el partido cargado vuelve a «programado» y deja de salir «en vivo». */
+export async function liberarCanalMarcador(canalId: string): Promise<ActionResult> {
+  const acceso = await accesoTorneos();
+  if (!acceso.ok) return { success: false, error: acceso.error };
+  const dueno = await canalDelUsuario(canalId, acceso.membership);
+  if (!dueno) return { success: false, error: "Cancha no encontrada" };
+  const r = await liberarCanal(dueno.canal);
+  if (!r.ok) return { success: false, error: r.error };
+  revalidatePath(`/t/${dueno.torneo.slug_publico}`);
+  revalidarTorneo(dueno.torneo);
+  return { success: true, data: undefined };
 }
