@@ -33,6 +33,7 @@ import {
   type OpcionesFixture,
 } from "@/actions/torneos";
 import { ArmarDia } from "@/components/torneo/armar-dia";
+import { QrEnlace } from "@/components/torneo/qr-enlace";
 import { Campo, InfoToggle, Segmentado, Selector } from "@/components/torneo/campos";
 import { FixtureVista } from "@/components/torneo/fixture-vista";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -1644,6 +1645,12 @@ function EnlacesJuez({
         >
           <MessageCircle className="size-3.5" /> Compartir al juez
         </a>
+        <QrEnlace
+          url={enlaces.juez}
+          titulo={`QR del juez · ${partido}`}
+          descripcion="El juez lo escanea con la cámara de su celular y se abre su marcador."
+          etiqueta="QR del juez"
+        />
       </div>
       <p className="text-muted-foreground text-xs">
         Abre la <b>pantalla</b> en el PC o celular conectado a la TV: ahí se activan la voz y la
