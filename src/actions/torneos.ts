@@ -3838,7 +3838,9 @@ export async function guardarResultado(
 
   const { error } = await svc.from("encuentros").update(cambios).eq("id", encuentroId);
   if (error) return { success: false, error: error.message };
-  if (salaTerminada) await borrarSalaMarcador(salaTerminada);
+  // La sala de un partido suelto se cierra (el juez ve «Resultado confirmado»). La sala FIJA de una
+  // cancha NO: sigue viva para el próximo partido, con el mismo enlace de la TV y del juez.
+  if (salaTerminada && !/^c-[0-9a-f]{18}$/.test(salaTerminada)) await borrarSalaMarcador(salaTerminada);
   // Reiniciar aquí reinicia también el marcador del juez (0-0), sin cerrar sus pantallas.
   if (d.tipo === "reiniciar" && e.sala_marcador) await reiniciarSalaMarcador(e.sala_marcador);
 
