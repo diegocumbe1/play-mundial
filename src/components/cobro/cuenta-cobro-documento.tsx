@@ -1,3 +1,4 @@
+import { CopiarLlave } from "@/components/cobro/copiar-llave";
 import { MARCA, MARCA_SIMBOLO_PATH } from "@/lib/marca";
 import {
   ETIQUETA_ESTADO,
@@ -143,7 +144,12 @@ export function CuentaCobroDocumento({ cuenta: c }: { cuenta: CuentaCobro }) {
               <div className="cc-ico">Bre-B</div>
               <div>
                 <h2>Forma de pago · Transferencia con llave Bre-B</h2>
-                {c.pago_llave && <div className="cc-llave">{c.pago_llave}</div>}
+                {c.pago_llave && (
+                  <div className="cc-llaverow">
+                    <div className="cc-llave">{c.pago_llave}</div>
+                    <CopiarLlave llave={c.pago_llave} />
+                  </div>
+                )}
                 <div className="cc-pdet">
                   {c.pago_banco && (
                     <>
@@ -250,7 +256,11 @@ const CSS = `
 .cc-pago{display:grid;grid-template-columns:auto 1fr;gap:16px;align-items:center;border:1.5px solid var(--signal-400);border-radius:14px;padding:14px 16px;margin-bottom:16px;background:linear-gradient(135deg,rgba(34,211,238,.08),rgba(34,211,238,0) 60%)}
 .cc-ico{min-width:68px;height:46px;padding:0 12px;white-space:nowrap;border-radius:12px;background:var(--ink-950);color:var(--signal-400);display:grid;place-items:center;font-family:var(--font-bebas),Impact,sans-serif;font-size:22px;letter-spacing:.04em}
 .cc-pago h2{margin:0 0 4px;font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--signal-deep);font-weight:700}
+.cc-llaverow{display:flex;align-items:center;flex-wrap:wrap;gap:10px}
 .cc-llave{font-size:22px;font-weight:700;word-break:break-all}
+.cc-copiar{display:inline-flex;align-items:center;gap:6px;border:1.5px solid var(--signal-deep);background:#fff;color:var(--signal-deep);border-radius:999px;padding:6px 12px;font:600 12px/1 var(--font-inter),system-ui,sans-serif;cursor:pointer;transition:background .15s}
+.cc-copiar:hover{background:rgba(34,211,238,.12)}
+.cc-copiar:active{transform:translateY(1px)}
 .cc-pdet{color:var(--muted);font-size:12px}
 .cc-notas{font-size:11.5px;color:var(--muted);margin:0 0 18px}
 .cc-notas p{margin:2px 0}
