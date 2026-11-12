@@ -8,10 +8,21 @@ import {
   cargarPartidoCanal,
   getCanalesMarcador,
   prepararCanalMarcador,
+  recargarPartidoCanal,
   regenerarCanalMarcador,
   type CanalVista,
 } from "@/actions/torneos";
 import { QrEnlace } from "@/components/torneo/qr-enlace";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { formatFechaHoraCO } from "@/lib/fecha-co";
+import type { Encuentro } from "@/types";
 import { Button } from "@/components/ui/button";
 
 /**
@@ -23,14 +34,31 @@ export function CanalesPanel({
   torneoId,
   canchas,
   nombresCanchas,
+  encuentros,
+  nombreEquipo,
 }: {
   torneoId: string;
   canchas: number;
   nombresCanchas: string[];
+  /** Todos los partidos del torneo: para mostrar el orden antes de preparar la cancha. */
+  encuentros: Encuentro[];
+  nombreEquipo: (id: string | null) => string;
 }) {
   const [canales, setCanales] = useState<CanalVista[] | null>(null);
   const [pending, startTransition] = useTransition();
   const [elegido, setElegido] = useState<Record<string, string>>({});
+  /** Cancha cuyo orden se está revisando antes de preparar sus enlaces. */
+  const [revisando, setRevisando] = useState<number | null>(null);
+  /** Partidos de la cancha en el orden en que se irán cargando: por hora; los sin fecha no se cargan solos. */
+  function ordenDeCancha(n: number) {
+    const base = encuentros.filter(
+      (e) => e.estado === "programado" && e.equipo_a_id && e.equipo_b_id && !e.sala_marcador && (e.cancha ?? 1) === n,
+    );
+    const conFecha = base
+      .filter((e) => e.programado_at)
+      .sort((a, b) => a.programado_at!.localeCompare(b.programado_at!) || a.orden - b.orden);
+    return { conFecha, sinFecha: base.filter((e) => !e.programado_at) };
+  }
   const nombreCancha = (n: number) => nombresCanchas[n - 1]?.trim() || `Cancha ${n}`;
 
   useEffect(() => {
@@ -43,7 +71,7 @@ export function CanalesPanel({
     };
   }, [torneoId]);
 
-  async function recargar() {
+  async function recargar_lista() {
     const r = await getCanalesMarcador(torneoId);
     if (r.success) setCanales(r.data);
   }
@@ -56,7 +84,7 @@ export function CanalesPanel({
       if (!r.success) return void toast.error(r.error);
       if (r.data.cargado) toast.success(`Listo. Cargado: ${r.data.cargado}`);
       else toast.warning(r.data.aviso ?? "Enlaces creados, sin partido cargado todavía.");
-      await recargar();
+      await recargar_lista();
     });
   }
 
@@ -72,7 +100,20 @@ export function CanalesPanel({
       if (!r.success) return void toast.error(r.error);
       toast.success(`Cargado: ${r.data.partido}`);
       setElegido((prev) => ({ ...prev, [canal.id]: "" }));
-      await recargar();
+      await recargar_lista();
+    });
+  }
+
+  function recargar(canal: CanalVista) {
+    const ok = confirm(
+      "¿Volver a cargar este partido en la sala?\n\nPone otra vez los equipos y las reglas. Lo que ya se había marcado en la sala se perdió con el reinicio y vuelve a 0-0.",
+    );
+    if (!ok) return;
+    startTransition(async () => {
+      const r = await recargarPartidoCanal(canal.id);
+      if (!r.success) return void toast.error(r.error);
+      toast.success(`Sala lista otra vez: ${r.data.partido}`);
+      await recargar_lista();
     });
   }
 
@@ -85,7 +126,7 @@ export function CanalesPanel({
       const r = await regenerarCanalMarcador(canal.id);
       if (!r.success) return void toast.error(r.error);
       toast.success("Enlaces nuevos listos");
-      await recargar();
+      await recargar_lista();
     });
   }
 
@@ -108,7 +149,7 @@ export function CanalesPanel({
             return (
               <div key={n} className="bg-muted/40 flex flex-wrap items-center justify-between gap-2 rounded-xl p-3">
                 <p className="text-sm font-medium">{nombreCancha(n)}</p>
-                <Button size="sm" disabled={pending} onClick={() => preparar(n)}>
+                <Button size="sm" disabled={pending} onClick={() => setRevisando(n)}>
                   Preparar enlaces
                 </Button>
               </div>
@@ -122,6 +163,18 @@ export function CanalesPanel({
                   <RefreshCw className="size-3.5" /> Regenerar enlaces
                 </Button>
               </div>
+
+              {c.salaOk === false && (
+                <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 p-2.5 text-xs">
+                  <p className="min-w-0 flex-1">
+                    <b>La pantalla muestra equipos en blanco.</b> El marcador se reinició y la sala volvió a
+                    nacer vacía. Vuelve a cargar el partido para que la TV y el juez lo vean.
+                  </p>
+                  <Button size="sm" disabled={pending} onClick={() => recargar(c)}>
+                    Volver a cargar el partido
+                  </Button>
+                </div>
+              )}
 
               <div className="text-xs">
                 <span className="text-muted-foreground">Ahora: </span>
@@ -188,6 +241,84 @@ export function CanalesPanel({
           );
         })
       )}
+
+      <Dialog open={revisando !== null} onOpenChange={(o) => !o && setRevisando(null)}>
+        <DialogContent className="sm:max-w-lg">
+          {revisando !== null &&
+            (() => {
+              const { conFecha, sinFecha } = ordenDeCancha(revisando);
+              const horas = conFecha.map((e) => e.programado_at);
+              const repetidas = horas.filter((h, i) => horas.indexOf(h) !== i).length;
+              return (
+                <>
+                  <DialogHeader>
+                    <DialogTitle>Orden de los partidos · {nombreCancha(revisando)}</DialogTitle>
+                    <DialogDescription>
+                      Así se irán cargando en la pantalla y en el juez, uno tras otro, según lo programado. El primero se
+                      carga ahora. ¿El orden es el correcto?
+                    </DialogDescription>
+                  </DialogHeader>
+
+                  {conFecha.length === 0 ? (
+                    <p className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
+                      Esta cancha no tiene partidos programados con hora. Programa los partidos con «Armar el día» y vuelve
+                      a intentarlo. Si sigues, los enlaces se crean sin partido cargado.
+                    </p>
+                  ) : (
+                    <ol className="border-border divide-border max-h-64 divide-y overflow-y-auto rounded-xl border text-sm">
+                      {conFecha.slice(0, 12).map((e, i) => (
+                        <li key={e.id} className={`flex flex-wrap items-baseline gap-x-3 px-3 py-2 ${i === 0 ? "bg-primary/10" : ""}`}>
+                          <span className="text-muted-foreground w-5 shrink-0 text-xs tabular-nums">{i + 1}</span>
+                          <span className="text-muted-foreground w-36 shrink-0 text-xs">{formatFechaHoraCO(e.programado_at!)}</span>
+                          <span className="min-w-0 flex-1">
+                            {nombreEquipo(e.equipo_a_id)} <span className="text-muted-foreground">vs</span> {nombreEquipo(e.equipo_b_id)}
+                            {e.grupo ? <span className="text-muted-foreground text-xs"> · Grupo {e.grupo}</span> : null}
+                          </span>
+                          {i === 0 && <span className="text-primary text-xs font-semibold">se carga primero</span>}
+                        </li>
+                      ))}
+                      {conFecha.length > 12 && (
+                        <li className="text-muted-foreground px-3 py-2 text-xs">y {conFecha.length - 12} partido(s) más…</li>
+                      )}
+                    </ol>
+                  )}
+
+                  {repetidas > 0 && (
+                    <p className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-2.5 text-xs">
+                      Hay {repetidas} partido(s) a la misma hora en esta cancha: se cargan en el orden de la lista.
+                    </p>
+                  )}
+                  {sinFecha.length > 0 && (
+                    <p className="text-muted-foreground text-xs">
+                      {sinFecha.length} partido(s) de esta cancha aún no tienen hora y <b>no se cargan solos</b>: los eliges a
+                      mano con «Elegir otro partido…».
+                    </p>
+                  )}
+
+                  <DialogFooter>
+                    <Button variant="ghost" onClick={() => setRevisando(null)}>
+                      Reajustar el orden
+                    </Button>
+                    <Button
+                      disabled={pending}
+                      onClick={() => {
+                        const n = revisando;
+                        setRevisando(null);
+                        preparar(n);
+                      }}
+                    >
+                      Confirmar y preparar
+                    </Button>
+                  </DialogFooter>
+                  <p className="text-muted-foreground -mt-1 text-xs">
+                    «Reajustar el orden» cierra este aviso: cambia los horarios con «Armar el día» (abajo) y vuelve a
+                    preparar los enlaces.
+                  </p>
+                </>
+              );
+            })()}
+        </DialogContent>
+      </Dialog>
     </section>
   );
 }

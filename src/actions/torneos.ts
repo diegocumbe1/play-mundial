@@ -10,6 +10,7 @@ import {
   borrarSalaMarcador,
   crearSalaMarcador,
   enlacesMarcador,
+  leerEstadoSala,
   leerMarcador,
   marcadorDisponible,
   probarVozMarcador,
@@ -35,6 +36,7 @@ import {
 } from "@/lib/torneo-avisos";
 import {
   cargarPartidoEnCanal,
+  recargarPartidoActual,
   regenerarSalaCanal,
   salaDeCanal,
   siguienteDeCancha,
@@ -4404,6 +4406,11 @@ export interface CanalVista {
   siguiente: string | null;
   /** Partidos que se pueden cargar a mano (programados, con equipos). */
   pendientes: { id: string; texto: string }[];
+  /**
+   * ¿La sala del marcador tiene cargado el partido actual? `false` = el marcador se reinició y la
+   * sala volvió a nacer en blanco (hay que volver a cargarla). `null` = no se pudo saber.
+   */
+  salaOk: boolean | null;
 }
 
 async function canalDelUsuario(canalId: string, membership: Membership) {
@@ -4432,9 +4439,22 @@ export async function getCanalesMarcador(torneoId: string): Promise<ActionResult
   const texto = (e: Encuentro) =>
     `${e.programado_at ? `${formatFechaHoraCO(e.programado_at)} · ` : ""}${nombre(e.equipo_a_id)} vs ${nombre(e.equipo_b_id)}`;
 
-  const canales = ((canalesData as CanalMarcador[]) ?? []).map((c): CanalVista => {
+  const lista = (canalesData as CanalMarcador[]) ?? [];
+  // Estado real de cada sala en el marcador (en paralelo): detecta salas que volvieron a nacer en blanco.
+  const estados = await Promise.all(lista.map((c) => leerEstadoSala(c.sala)));
+  const canales = lista.map((c, i): CanalVista => {
     const enl = enlacesMarcador(c.sala);
     const actual = encuentros.find((e) => e.id === c.encuentro_id) ?? null;
+    const st = estados[i];
+    const salaOk =
+      !actual || actual.estado !== "en_vivo" || !st
+        ? st === null && actual?.estado === "en_vivo"
+          ? null
+          : true
+        : st.canal &&
+          [actual.equipo_a_id, actual.equipo_b_id].every((id) =>
+            st.equipos.some((n) => n.trim().toUpperCase() === nombre(id).trim().toUpperCase()),
+          );
     const sig = siguienteDeCancha(encuentros, c.cancha, c.encuentro_id);
     return {
       id: c.id,
@@ -4446,6 +4466,7 @@ export async function getCanalesMarcador(torneoId: string): Promise<ActionResult
         .filter((e) => e.estado === "programado" && e.equipo_a_id && e.equipo_b_id && !e.sala_marcador && (e.cancha ?? 1) === c.cancha)
         .sort((x, y) => (x.programado_at ?? "9").localeCompare(y.programado_at ?? "9"))
         .map((e) => ({ id: e.id, texto: texto(e) })),
+      salaOk,
     };
   });
   return { success: true, data: canales };
@@ -4510,4 +4531,14 @@ export async function regenerarCanalMarcador(canalId: string): Promise<ActionRes
   if (!r.ok) return { success: false, error: r.error };
   revalidarTorneo(dueno.torneo);
   return { success: true, data: undefined };
+}
+
+/** Vuelve a cargar el partido actual en la sala (cuando el marcador se reinició y la sala quedó en blanco). */
+export async function recargarPartidoCanal(canalId: string): Promise<ActionResult<{ partido: string }>> {
+  const acceso = await accesoTorneos();
+  if (!acceso.ok) return { success: false, error: acceso.error };
+  const dueno = await canalDelUsuario(canalId, acceso.membership);
+  if (!dueno) return { success: false, error: "Cancha no encontrada" };
+  const r = await recargarPartidoActual(dueno.canal);
+  return r.ok ? { success: true, data: { partido: r.partido } } : { success: false, error: r.error };
 }

@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Guía del juez y de la TV · Play Mundial</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600;700&display=swap">
+<style>
+  :root { --bg:#070a14; --panel:#0f1524; --line:#1e2740; --text:#f5f8ff; --muted:rgba(245,248,255,.62); --cian:#3dd9ec; --oro:#f5c518; --rojo:#f87171; --verde:#34d399; }
+  * { box-sizing:border-box; }
+  html { background:var(--bg); }
+  body { margin:0 auto; max-width:720px; padding:20px 16px 48px; color:var(--text); font:16px/1.55 "Inter",system-ui,-apple-system,sans-serif; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+  header { padding:18px 0 8px; }
+  .marca { font:400 15px "Bebas Neue",Impact,sans-serif; letter-spacing:.22em; color:var(--cian); }
+  h1 { font:400 44px/1 "Bebas Neue",Impact,sans-serif; letter-spacing:.04em; margin:6px 0 4px; }
+  h1 span { color:var(--oro); }
+  .sub { color:var(--muted); margin:0; }
+  h2 { font:400 30px/1 "Bebas Neue",Impact,sans-serif; letter-spacing:.05em; margin:34px 0 4px; display:flex; align-items:center; gap:10px; }
+  h2 i { font-style:normal; background:var(--cian); color:#04060c; border-radius:10px; padding:2px 10px; font-size:22px; }
+  .lead { color:var(--muted); margin:0 0 14px; font-size:15px; }
+  ol { list-style:none; counter-reset:paso; padding:0; margin:0; display:grid; gap:10px; }
+  ol li { counter-increment:paso; position:relative; background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:12px 14px 12px 56px; }
+  ol li::before { content:counter(paso); position:absolute; left:12px; top:12px; width:32px; height:32px; border-radius:50%; background:var(--oro); color:#0a0a0f; font:700 16px/32px "Inter",sans-serif; text-align:center; }
+  li b { color:#fff; }
+  .btn { display:inline-block; background:#1b243b; border:1px solid #2c3a5c; border-radius:8px; padding:1px 9px; font-weight:600; font-size:14px; white-space:nowrap; }
+  .btn.ok { background:#12372c; border-color:#1f6b53; color:#9af0d0; }
+  .aviso { border-radius:14px; padding:12px 14px; margin-top:12px; font-size:15px; }
+  .aviso.no { background:rgba(248,113,113,.1); border:1px solid rgba(248,113,113,.4); }
+  .aviso.si { background:rgba(52,211,153,.08); border:1px solid rgba(52,211,153,.35); }
+  .aviso > b:first-child { display:block; margin-bottom:2px; }
+  table { width:100%; border-collapse:collapse; font-size:15px; }
+  td { padding:9px 4px; border-top:1px solid var(--line); vertical-align:top; }
+  td:first-child { color:var(--oro); font-weight:600; width:42%; }
+  footer { margin-top:36px; padding-top:14px; border-top:1px solid var(--line); text-align:center; font-size:12px; letter-spacing:.14em; text-transform:uppercase; color:var(--muted); }
+  footer b { color:var(--cian); }
+  @media print { html,body { background:#070a14; } h2 { break-after:avoid; } ol li { break-inside:avoid; } }
+</style>
+</head>
+<body>
+<header>
+  <div class="marca">LYNKO · PLAY MUNDIAL</div>
+  <h1>Marcador <span>del torneo</span></h1>
+  <p class="sub">Guía rápida para el organizador, el juez y quien maneja la TV. Cada cancha tiene <b>dos enlaces fijos</b> (TV y juez) que <b>no cambian</b> en todo el torneo.</p>
+</header>
+
+<h2><i>ORGANIZADOR</i> Antes de empezar</h2>
+<p class="lead">Se hace una sola vez, antes del primer partido.</p>
+<ol>
+  <li>Entra al torneo → pestaña <b>Fixture</b> → «Marcador por cancha» y toca <span class="btn ok">Preparar enlaces</span>.</li>
+  <li>Entrega <b>los dos enlaces de esa cancha</b>: el de la <b>TV</b> y el del <b>juez</b> (con su QR). Los dos tienen <b>«sala=c-…»</b> en la dirección.</li>
+  <li>Durante el día, cuando llegue «Resultado por aprobar», revísalo y acepta o corrige. <b>Aceptar no cierra los enlaces.</b></li>
+</ol>
+<div class="aviso no"><b>No uses «Enviar al juez» de cada partido</b>Esos enlaces (con «sala=t-…») son de <b>un solo partido</b>: al aceptar el resultado se cierran y hay que mandar otro enlace. Para todo el torneo usa solo los enlaces fijos de la cancha.</div>
+
+<h2><i>TV</i> La pantalla</h2>
+<p class="lead">Se prepara una sola vez y queda abierta todo el día. Cambia de partido sola.</p>
+<ol>
+  <li>Abre el <b>enlace de la TV</b> en el navegador del computador o de la TV (mejor Chrome).</li>
+  <li>Toca <span class="btn">Pantalla completa</span>.</li>
+  <li>Toca <span class="btn ok">Activar voz</span> y, si hay música, <span class="btn">🎵 Música</span>. Se hace <b>una sola vez</b>: el navegador lo exige.</li>
+  <li>Déjala abierta. Cuando el juez pase al siguiente partido, la TV cambia sola de equipos. <b>No hay que tocar nada más.</b></li>
+</ol>
+<div class="aviso si"><b>Abajo y arriba</b>Los logos de patrocinadores corren en la parte de abajo, y la firma de Lynko queda tenue arriba. No tapan el marcador.</div>
+<div class="aviso no"><b>Si sale «Conexión perdida» o se queda en blanco</b>Recarga la página (F5). El partido sigue guardado y vuelve a aparecer.</div>
+
+<h2><i>JUEZ</i> Marcar el partido</h2>
+<p class="lead">Desde tu celular, de preferencia en horizontal. Es el mismo enlace para todos los partidos.</p>
+<ol>
+  <li>Abre el <b>enlace del juez</b> (o escanea su QR). Gira el celular a horizontal.</li>
+  <li>Toca <span class="btn ok">Activar voz</span> y conecta el parlante, si lo usas.</li>
+  <li>Antes del primer punto toca <span class="btn">Marcar orden de saque</span>: escribe los <b>números de camiseta en el orden en que sacan</b>, elige quién saca primero y guarda. Si no te lo dan, toca «Ahora no».</li>
+  <li>Toca el <b>lado del equipo que gana cada punto</b>. Si te equivocas, <span class="btn">↶ Deshacer</span>.</li>
+  <li>Cuando termina un set, toca <span class="btn ok">Comenzar set</span> para seguir.</li>
+  <li>Cambio de jugador o de orden en pleno partido: <span class="btn">Saque: cambiar jugador u orden</span>.</li>
+  <li>Al terminar el partido toca <span class="btn">Finalizar partido</span> y luego <span class="btn ok">Siguiente partido →</span>. Confirma.</li>
+  <li>El marcador queda en <b>0-0 con los equipos que siguen</b>. <b>La pantalla no se cierra y el enlace es el mismo.</b> Marca de nuevo el orden de saque.</li>
+</ol>
+<div class="aviso no"><b>Después de terminar, no toques «Reiniciar partido»</b>Borraría el resultado. Si te equivocaste con un punto, usa Deshacer.</div>
+<div class="aviso no"><b>No uses «Listo, salir»</b>Ese botón solo sale en los enlaces de un solo partido. Con el enlace fijo de la cancha, el botón es <b>Siguiente partido →</b>.</div>
+
+<h2>Si algo no sale</h2>
+<table>
+  <tr><td>No aparece «Siguiente partido →»</td><td>O el partido todavía no terminó (toca «Finalizar partido»), o estás en un enlace de un solo partido («sala=t-…»). Pide al organizador el enlace fijo de la cancha («sala=c-…»).</td></tr>
+  <tr><td>Sale «Resultado confirmado… ya puedes cerrar esta ventana»</td><td>Estás en un enlace de <b>un solo partido</b>: se cierra cuando el organizador acepta. Pide el enlace fijo de la cancha.</td></tr>
+  <tr><td>«El partido sigue en juego»</td><td>Termina el partido y vuelve a tocar el botón.</td></tr>
+  <tr><td>«No hay más partidos programados»</td><td>Avísale al organizador: debe programar los que faltan.</td></tr>
+  <tr><td>«No se pudo cargar»</td><td>Revisa tu conexión y toca de nuevo. No se pierde nada: lo que marcaste queda guardado.</td></tr>
+  <tr><td>La TV no cambia</td><td>Confirma que tocaste «Siguiente partido →». Si sí, recarga la TV (F5).</td></tr>
+  <tr><td>El enlace no abre</td><td>Pídele al organizador el enlace nuevo: pudo haberse regenerado («Regenerar enlaces»).</td></tr>
+</table>
+
+<footer>Desarrollado por <b>Lynko</b> · Play Mundial</footer>
+</body>
+</html>

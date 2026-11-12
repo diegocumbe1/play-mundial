@@ -162,6 +162,8 @@ export function FixturePanel({
           torneoId={torneo.id}
           canchas={Math.max(1, torneo.cantidad_canchas)}
           nombresCanchas={reglas.juego.nombres_canchas}
+          encuentros={encuentros}
+          nombreEquipo={nombre}
         />
       )}
 

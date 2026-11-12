@@ -173,6 +173,22 @@ export async function sincronizarNombresMarcador(sala: string, nombreA: string, 
 }
 
 /**
+ * Lo que tiene hoy una sala en el marcador: si es de cancha y qué equipos muestra. Sirve para
+ * detectar que el marcador se reinició y la sala volvió a nacer en blanco. `null` = no responde.
+ */
+export async function leerEstadoSala(sala: string): Promise<{ canal: boolean; equipos: string[] } | null> {
+  if (!URL_INTERNA) return null;
+  try {
+    const res = await fetch(`${URL_INTERNA}/api/rooms/${sala}`, { signal: AbortSignal.timeout(2500), cache: "no-store" });
+    if (!res.ok) return null;
+    const e = (await res.json()) as { canal?: boolean; allTeams?: { name: string }[] };
+    return { canal: e.canal === true, equipos: (e.allTeams ?? []).map((t) => t.name) };
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Cambia (o quita, con lista vacía) los patrocinadores de una sala ya abierta, sin
  * tocar el marcador. Sin PIN no se intenta. Si falla, la pantalla conserva los que tenía.
  */
