@@ -403,7 +403,7 @@ export function ConfigTorneoPanel({
           <Campo
             label={torneo.cantidad_canchas === 1 ? "Nombre de la cancha" : "Nombres de las canchas"}
             className="sm:col-span-2"
-            ayuda="Así sale en el fixture y en las notificaciones. Vacío = «Cancha 1», «Cancha 2»…"
+            ayuda="Así sale en los partidos y en las notificaciones. Vacío = «Cancha 1», «Cancha 2»…"
             info="La cantidad de canchas se cambia en Editar torneo. Aquí solo les pones nombre."
           >
             <div className="grid gap-2 sm:grid-cols-2">
@@ -451,7 +451,7 @@ export function ConfigTorneoPanel({
 
         <p className="mt-5 mb-1 text-sm font-semibold">Calendario</p>
         <p className="text-muted-foreground mb-3 text-xs">
-          Cuándo se juega. Con esto, «Programar partidos» en el Fixture reparte solo los partidos
+          Cuándo se juega. Con esto, «Programar partidos» en la pestaña «Partidos y resultados» reparte solo los partidos
           sin fecha. Siempre puedes cambiar a mano la fecha de cualquier partido.
         </p>
         <div className="grid gap-4 sm:grid-cols-2">
@@ -503,7 +503,7 @@ export function ConfigTorneoPanel({
             <p className="mt-5 mb-1 text-sm font-semibold">Página pública</p>
             <Campo
               label="Categoría que se muestra primero"
-              ayuda="En el fixture, la tabla y los resultados. Los visitantes pueden cambiar de categoría."
+              ayuda="En los partidos, la tabla y los resultados. Los visitantes pueden cambiar de categoría."
             >
               <select
                 value={reglas.publico.categoria_inicial ?? ""}

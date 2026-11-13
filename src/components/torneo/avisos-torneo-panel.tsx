@@ -47,10 +47,10 @@ function hastaPausa(id: string): string {
 
 const OPCIONES: { id: OpcionBooleana; label: string; ayuda: string }[] = [
   { id: "fin_set", label: "Fin de cada set", ayuda: "Cuando termina un set, con el marcador y cómo van en sets. Puede llegar hasta un minuto después." },
-  { id: "finalizado", label: "Resultado por aprobar y partido finalizado", ayuda: "Te lleva directo a aceptar o corregir lo que reportó el juez." },
-  { id: "en_vivo", label: "Partido en vivo", ayuda: "Cuando empieza a marcarse." },
+  { id: "finalizado", label: "Resultado por aprobar (cuando el juez termina)", ayuda: "Te avisa apenas el juez cierra el partido y te lleva directo a aceptar o corregir lo que reportó. No avisa de nuevo cuando tú lo aceptas." },
+  { id: "en_vivo", label: "Partido en vivo", ayuda: "Cuando el partido se carga en la cancha y pasa a «en vivo»." },
   { id: "siguiente", label: "Siguiente partido", ayuda: "Al terminar uno, cuál sigue, a qué hora y en qué cancha." },
-  { id: "partido_nuevo", label: "Partidos nuevos", ayuda: "Cuando se genera el fixture o las eliminatorias." },
+  { id: "partido_nuevo", label: "Partidos nuevos", ayuda: "Cuando se generan los partidos o las eliminatorias." },
 ];
 
 function aClave(base64: string): Uint8Array<ArrayBuffer> {

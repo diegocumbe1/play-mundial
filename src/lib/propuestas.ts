@@ -119,7 +119,7 @@ export const PROPUESTAS: Propuesta[] = [
         estado: "incluido",
       },
       {
-        titulo: "Fixture y tabla automáticos",
+        titulo: "Partidos y tabla automáticos",
         detalle:
           "Se generan con un botón y la tabla se recalcula sola con cada resultado, con criterios de desempate fijos.",
         estado: "incluido",
@@ -127,7 +127,7 @@ export const PROPUESTAS: Propuesta[] = [
       {
         titulo: "Marcador en vivo",
         detalle:
-          "Pantalla o TV en la cancha y control desde el celular del árbitro, con voz. El resultado pasa al fixture con un toque.",
+          "Pantalla o TV en la cancha y control desde el celular del árbitro, con voz. El resultado pasa a la tabla y a los partidos con un toque.",
         estado: "incluido",
       },
       {
@@ -169,7 +169,7 @@ export const PROPUESTAS: Propuesta[] = [
       {
         fuente: "USA Volleyball · Volleyball Life",
         practica: "Exoneraciones digitales y resultados públicos sin iniciar sesión.",
-        aqui: "Términos aceptados en línea y un enlace público con fixture y tabla para todos.",
+        aqui: "Términos aceptados en línea y un enlace público con partidos y tabla para todos.",
         estado: "incluido",
       },
       {
@@ -203,7 +203,7 @@ export const PROPUESTAS: Propuesta[] = [
         tiempo: "1 min por equipo",
       },
       {
-        titulo: "Cerrar inscripciones y generar el fixture",
+        titulo: "Cerrar inscripciones y generar los partidos",
         detalle: "Un botón arma los partidos por categoría y cancha.",
         tiempo: "2 min",
       },

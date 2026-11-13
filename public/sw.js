@@ -25,6 +25,9 @@ self.addEventListener("push", function (event) {
     badge: "/icons/icon-192.png",
     vibrate: [100, 50, 100],
     tag: data.tag,
+    // Los avisos de un partido (en vivo, fin de set, por aprobar) comparten etiqueta para no
+    // apilarse. Sin `renotify`, el nuevo reemplaza al anterior EN SILENCIO y el aviso pasa inadvertido.
+    renotify: !!data.tag,
     data: { url: data.url || "/admin" },
   };
 

@@ -931,7 +931,7 @@ function EditarEquipoModal({
             <p className="text-sm font-semibold">Horario disponible</p>
             <p className="text-muted-foreground text-xs">
               Cuándo puede jugar este equipo. «Programar partidos» lo respeta; si ya hay partidos
-              programados que no le sirven, el Fixture te avisa y los puedes reprogramar.
+              programados que no le sirven, la pestaña «Partidos y resultados» te avisa y los puedes reprogramar.
             </p>
             <RestriccionesEditor value={restricciones} onChange={setRestricciones} />
           </div>

@@ -20,7 +20,7 @@ export const PRODUCTOS_UI: {
     id: "torneos",
     nombre: "Torneos deportivos",
     descripcion:
-      "Campeonatos, equipos, inscripciones, fixture, resultados y rentabilidad.",
+      "Campeonatos, equipos, inscripciones, partidos, resultados y rentabilidad.",
   },
 ];
 

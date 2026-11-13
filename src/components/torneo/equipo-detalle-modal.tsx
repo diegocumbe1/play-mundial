@@ -217,7 +217,7 @@ export function EquipoDetalleModal({
 
         {suyos.length === 0 && (
           <p className="border-border text-muted-foreground rounded-xl border border-dashed p-6 text-center text-sm">
-            Este equipo aún no tiene partidos. Cuando se arme el fixture o se asigne a un grupo, aparecen aquí.
+            Este equipo aún no tiene partidos. Cuando se creen los partidos o se asigne a un grupo, aparecen aquí.
           </p>
         )}
       </DialogContent>

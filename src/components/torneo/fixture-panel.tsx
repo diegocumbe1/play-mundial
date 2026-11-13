@@ -48,6 +48,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { cn } from "@/lib/utils";
 import { InputMoneda } from "@/components/rifa/input-moneda";
 import { formatFechaHoraCO } from "@/lib/fecha-co";
 import { formatCOP } from "@/lib/torneos";
@@ -117,6 +118,17 @@ export function FixturePanel({
     // Sin esto, recargar la página volvería a abrir el partido de la notificación.
     if (partidoInicial) window.history.replaceState(null, "", window.location.pathname);
   }
+  // Categoría elegida arriba: de ella dependen la tarjeta de control y las posiciones.
+  // Por defecto, la que tiene más equipos inscritos (empate: la primera).
+  const [categoriaId, setCategoriaId] = useState<string | null>(() =>
+    categorias.length > 0
+      ? categoriaInicial(
+          categorias,
+          equipos.filter((e) => e.estado === "pendiente" || e.estado === "confirmado"),
+          null,
+        )
+      : null,
+  );
   // Sin categorías, el torneo entero es una sola "categoría".
   const grupos: { id: string | null; nombre: string }[] =
     categorias.length > 0 ? categorias : [{ id: null, nombre: "Torneo" }];
@@ -154,9 +166,47 @@ export function FixturePanel({
     return todosSinFecha ? [{ equipo: e, partidos: suyos }] : [];
   });
 
+  const categoriasConAviso = new Set([
+    ...sinAsignar.map((e) => e.categoria_id),
+    ...porProgramar.map((x) => x.equipo.categoria_id),
+  ]);
+  const enCategoria = (id: string | null) => categorias.length === 0 || id === categoriaId;
+
   return (
     <div className="flex flex-col gap-5">
-      {sinAsignar.map((e) => (
+      {categorias.length > 1 && (
+        <div className="flex flex-wrap gap-1.5" role="tablist" aria-label="Categoría">
+          {categorias.map((c) => {
+            const n = equipos.filter(
+              (e) => e.categoria_id === c.id && (e.estado === "pendiente" || e.estado === "confirmado"),
+            ).length;
+            return (
+              <button
+                key={c.id}
+                type="button"
+                role="tab"
+                aria-selected={categoriaId === c.id}
+                onClick={() => setCategoriaId(c.id)}
+                className={cn(
+                  "relative rounded-full px-3 py-1.5 text-sm font-semibold transition-colors",
+                  categoriaId === c.id
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-muted text-muted-foreground hover:text-foreground",
+                )}
+              >
+                {c.nombre} <span className="font-normal opacity-80">({n})</span>
+                {categoriasConAviso.has(c.id) && (
+                  <span
+                    title="Tiene equipos por asignar o programar"
+                    className="absolute -top-0.5 -right-0.5 size-2.5 rounded-full bg-amber-500"
+                  />
+                )}
+              </button>
+            );
+          })}
+        </div>
+      )}
+      {sinAsignar.filter((e) => enCategoria(e.categoria_id)).map((e) => (
         <EquipoSinAsignar
           key={e.id}
           equipo={e}
@@ -168,7 +218,7 @@ export function FixturePanel({
           )}
         />
       ))}
-      {porProgramar.map(({ equipo: e, partidos }) => (
+      {porProgramar.filter((x) => enCategoria(x.equipo.categoria_id)).map(({ equipo: e, partidos }) => (
         <EquipoPorProgramar
           key={e.id}
           torneoId={torneo.id}
@@ -179,8 +229,8 @@ export function FixturePanel({
           onAbrirPartido={setEditando}
         />
       ))}
-      <div className="grid gap-3 sm:grid-cols-2">
-        {grupos.map((c) => (
+      <div className="grid gap-3">
+        {grupos.filter((c) => c.id === categoriaId || categorias.length === 0).map((c) => (
           <ControlCategoria
             key={c.id ?? "torneo"}
             torneo={torneo}
@@ -220,6 +270,7 @@ export function FixturePanel({
       />
 
       <FixtureVista
+        categoriaActiva={categorias.length > 0 ? categoriaId : undefined}
         categorias={categorias}
         equipos={equipos}
         retirados={equipos.filter((e) => e.estado === "retirado")}
@@ -465,7 +516,7 @@ function ControlCategoria({
         dias_entre_jornadas: Number(dias) || 0,
       });
       if (!r.success) return void toast.error(r.error);
-      toast.success(`Fixture de ${nombre}: ${r.data.partidos} partidos`);
+      toast.success(`Partidos de ${nombre} creados: ${r.data.partidos}`);
       setRehacer(false);
       router.refresh();
     });
@@ -538,13 +589,13 @@ function ControlCategoria({
             </Campo>
           </div>
           <p className="text-muted-foreground text-xs">
-            {confirmados < 2 ? "Confirma al menos 2 equipos para generar el fixture." : previa}{" "}
+            {confirmados < 2 ? "Confirma al menos 2 equipos para generar los partidos." : previa}{" "}
             Se reparten en {torneo.cantidad_canchas} cancha(s), partidos de{" "}
             {torneo.duracion_partido_minutos ?? 45} min.
           </p>
           <div className="flex gap-2">
             <Button size="sm" onClick={generar} disabled={pending || confirmados < 2}>
-              <CalendarPlus className="size-3.5" /> Generar fixture
+              <CalendarPlus className="size-3.5" /> Generar partidos
             </Button>
             {rehacer && (
               <Button size="sm" variant="ghost" onClick={() => setRehacer(false)}>
@@ -624,7 +675,7 @@ function ControlCategoria({
           />
           {!conResultados && (
             <Button size="sm" variant="ghost" className="self-start" onClick={() => setRehacer(true)}>
-              Rehacer fixture
+              Rehacer partidos
             </Button>
           )}
         </div>

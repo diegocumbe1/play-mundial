@@ -124,8 +124,8 @@ export function TorneoTabs({
     },
     {
       id: "fixture",
-      label: "Fixture y resultados",
-      corto: "Fixture",
+      label: "Partidos y resultados",
+      corto: "Partidos",
       icon: CalendarRange,
     },
     { id: "finanzas", label: "Finanzas", corto: "Finanzas", icon: Wallet },

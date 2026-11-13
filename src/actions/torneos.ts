@@ -30,7 +30,6 @@ import {
 } from "@/lib/torneo-restricciones";
 import {
   avisarEnVivo,
-  avisarFinalizado,
   avisarPartidosNuevos,
   guardarConstanciaJuez,
 } from "@/lib/torneo-avisos";
@@ -1374,7 +1373,7 @@ export async function reintegrarEquipoAlFixture(
   if (!base) {
     return {
       success: false,
-      error: "No quedó ningún partido suyo para saber su grupo. Vuelve a generar el fixture.",
+      error: "No quedó ningún partido suyo para saber su grupo. Vuelve a generar los partidos.",
     };
   }
   const categoriaId = base.categoria_id;
@@ -1466,7 +1465,7 @@ export async function agregarEquipoAGrupo(
   }
 
   const delGrupo = deCategoria.filter((m) => m.fase === "grupos" && (m.grupo ?? null) === grupo);
-  if (delGrupo.length === 0) return { success: false, error: "Ese grupo no existe en el fixture." };
+  if (delGrupo.length === 0) return { success: false, error: "Ese grupo no tiene partidos creados." };
 
   const fuera = await idsFueraDeJuego(torneo.id);
   const rivales = [
@@ -3085,7 +3084,7 @@ export async function generarFixture(
 
   const existentes = await encuentrosDeCategoria(torneoId, categoriaId);
   if (existentes.some((e) => e.estado === "en_vivo" || (e.estado === "finalizado" && e.sets.length > 0))) {
-    return { success: false, error: "Ya hay partidos jugados: el fixture no se puede rehacer." };
+    return { success: false, error: "Ya hay partidos jugados: los partidos no se pueden rehacer." };
   }
 
   const svc = createServiceRoleClient();
@@ -3094,7 +3093,7 @@ export async function generarFixture(
   const { data: equiposData } = await q.order("confirmado_at");
   const ids = ((equiposData as { id: string }[]) ?? []).map((e) => e.id);
   if (ids.length < 2) {
-    return { success: false, error: "Se necesitan al menos 2 equipos confirmados para armar el fixture." };
+    return { success: false, error: "Se necesitan al menos 2 equipos confirmados para armar los partidos." };
   }
 
   const horario = {
@@ -3155,7 +3154,7 @@ export async function generarFixture(
     await svc.from("torneos").update({ estado: "programado" }).eq("id", torneoId);
   }
 
-  await avisarPartidosNuevos(torneo, `Fixture listo: ${filas.length} partidos`);
+  await avisarPartidosNuevos(torneo, `Partidos listos: ${filas.length} creados`);
 
   revalidarTorneo(torneo);
   return { success: true, data: { partidos: filas.length } };
@@ -3955,12 +3954,10 @@ export async function guardarResultado(
     await svc.from("torneos").update({ estado: "en_curso" }).eq("id", torneo.id);
   }
 
-  // Corregir un resultado ya oficial no vuelve a notificar: solo el cambio de estado.
-  const yaTerminado = e.estado === "finalizado" || e.estado === "wo";
+  // Las notificaciones son para el organizador: al terminar el partido avisa el JUEZ («Resultado
+  // por aprobar», en torneo-avisos.ts). Aceptar o cargar el resultado aquí no vuelve a notificar.
   if (actualizado.estado === "en_vivo" && e.estado !== "en_vivo") {
     await avisarEnVivo(torneo, actualizado);
-  } else if ((actualizado.estado === "finalizado" || actualizado.estado === "wo") && !yaTerminado) {
-    await avisarFinalizado(torneo, actualizado);
   }
 
   revalidarTorneo(torneo);

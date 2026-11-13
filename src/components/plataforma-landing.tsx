@@ -105,7 +105,7 @@ export async function PlataformaLanding() {
             resumen="De las inscripciones al podio, con las cuentas claras."
             puntos={[
               "Inscripción de equipos por enlace, sin crear cuenta",
-              "Fixture, grupos, llaves y tabla de posiciones",
+              "Partidos, grupos, llaves y tabla de posiciones",
               "Marcadores en vivo en la página pública del torneo",
               "Abonos, gastos y punto de equilibrio para saber cuánto te queda",
             ]}

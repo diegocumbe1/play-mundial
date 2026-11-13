@@ -37,8 +37,14 @@ export function FixtureVista({
   autoRefrescar = false,
   onEditar,
   categoriaInicial = null,
+  categoriaActiva,
   retirados = [],
 }: {
+  /**
+   * Categoría controlada desde fuera (el panel del organizador la elige arriba): si viene,
+   * se usa esa y no se muestran las pestañas propias.
+   */
+  categoriaActiva?: string | null;
   /** Categoría que se muestra primero (la elegida por el organizador o la de más inscritos). */
   categoriaInicial?: string | null;
   categorias: { id: string; nombre: string }[];
@@ -59,9 +65,11 @@ export function FixtureVista({
   const router = useRouter();
   // Torneos guardados antes de existir la regla no la traen: 2, como antes.
   const clasifican = tablaReglas.clasifican ?? 2;
-  const [categoriaId, setCategoriaId] = useState(
+  const [categoriaLocal, setCategoriaId] = useState(
     categorias.some((c) => c.id === categoriaInicial) ? categoriaInicial : (categorias[0]?.id ?? null),
   );
+  const controlada = categoriaActiva !== undefined;
+  const categoriaId = controlada ? categoriaActiva : categoriaLocal;
   const nombre = useMemo(() => {
     const mapa = new Map([...equipos, ...retirados].map((e) => [e.id, e.nombre]));
     return (id: string | null) => (id ? (mapa.get(id) ?? "Equipo") : "Por definir");
@@ -102,7 +110,7 @@ export function FixtureVista({
 
   return (
     <div className="flex flex-col gap-6">
-      {categorias.length > 1 && (
+      {categorias.length > 1 && !controlada && (
         <div className="flex flex-wrap gap-1.5">
           {categorias.map((c) => (
             <button

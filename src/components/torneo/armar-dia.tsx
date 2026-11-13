@@ -232,7 +232,7 @@ export function ArmarDia({
         </Button>
       </div>
       <p className="text-muted-foreground text-xs">
-        Elige el día y, para cada hora, los dos equipos que juegan (cualquiera contra cualquiera, o «Del fixture» para traer un cruce ya creado).
+        Elige el día y, para cada hora, los dos equipos que juegan (cualquiera contra cualquiera, o «Ya creado» para traer un cruce que ya existe).
         Lo que ya estaba programado ese día aparece listo para cambiarlo; si quitas un partido, queda
         «Por programar». Los partidos jugados o en vivo no se tocan.
       </p>
@@ -304,9 +304,9 @@ export function ArmarDia({
                     if (m) cambiar(t.key, { a: m.equipo_a_id!, b: m.equipo_b_id! });
                   }}
                   className={`${selectCls} w-36`}
-                  aria-label="Cargar cruce del fixture"
+                  aria-label="Cargar un cruce ya creado"
                 >
-                  <option value="">Del fixture…</option>
+                  <option value="">Ya creado…</option>
                   {asignables.map((e) => (
                     <option key={e.id} value={e.id}>
                       {etiqueta(e)}
@@ -325,8 +325,8 @@ export function ArmarDia({
               {t.a && t.b && t.a !== t.b && (
                 <p className="text-muted-foreground text-xs">
                   {cruce(t)
-                    ? `Cruce del fixture${cruce(t)!.grupo ? ` · Grupo ${cruce(t)!.grupo}` : ""}`
-                    : "Cruce nuevo: se crea como partido adicional (no está en el fixture)."}
+                    ? `Cruce ya creado${cruce(t)!.grupo ? ` · Grupo ${cruce(t)!.grupo}` : ""}`
+                    : "Cruce nuevo: se crea como partido adicional (no estaba entre los partidos creados)."}
                 </p>
               )}
               {aviso && <p className="text-xs text-amber-600 dark:text-amber-400">⚠ {aviso} Puedes guardarlo igual.</p>}

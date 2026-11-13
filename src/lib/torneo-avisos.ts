@@ -167,47 +167,34 @@ export function avisarEnVivo(torneo: TorneoAviso, e: Encuentro): Promise<void> {
   });
 }
 
-/** Quedó el resultado oficial: lo avisa y anuncia el siguiente partido del torneo. */
-export function avisarFinalizado(torneo: TorneoAviso, e: Encuentro): Promise<void> {
-  return seguro(async () => {
-    const todas = await suscripciones(torneo.tenant_id);
-    const subs = await sinAvisoPrevio(queSiguen(todas.filter((s) => s.finalizado), e), e.id, "finalizado");
-    const { data } = await svc()
-      .from("encuentros")
-      .select("*")
-      .eq("torneo_id", torneo.id)
-      .eq("estado", "programado")
-      .not("equipo_a_id", "is", null)
-      .not("equipo_b_id", "is", null)
-      .gt("programado_at", new Date().toISOString())
-      .order("programado_at")
-      .limit(1);
-    const sig = ((data as Encuentro[]) ?? [])[0] ?? null;
-    const nombre = await nombresDe(sig ? [e, sig] : [e]);
-    const partido = `${nombre(e.equipo_a_id)} vs ${nombre(e.equipo_b_id)}`;
-
-    if (subs.length > 0) {
-      await enviar(subs, {
-        torneo: torneo.nombre,
-        title: `Partido finalizado: ${partido}`,
-        body:
-          e.estado === "wo"
-            ? `Gana ${nombre(e.ganador_id)} por W.O.`
-            : `${setsEnTexto(e.sets)}. Gana ${nombre(e.ganador_id)}.`,
-        url: enlacePartido(torneo.id, e.id),
-        tag: `partido-${e.id}`,
-      });
-    }
-    if (!sig) return;
-    const paraSiguiente = await sinAvisoPrevio(queSiguen(todas.filter((s) => s.siguiente), sig), sig.id, "siguiente");
-    if (paraSiguiente.length === 0) return;
-    await enviar(paraSiguiente, {
-      torneo: torneo.nombre,
-      title: `Sigue: ${nombre(sig.equipo_a_id)} vs ${nombre(sig.equipo_b_id)}`,
-      body: cuandoYDonde(sig.programado_at, sig.cancha, canchasDe(torneo)),
-      url: enlacePartido(torneo.id, sig.id),
-      tag: `siguiente-${sig.id}`,
-    });
+/**
+ * Anuncia el siguiente partido del torneo (una sola vez por partido y dispositivo). Se avisa cuando
+ * el JUEZ termina el partido: quien lo acepta después en el panel ya sabe lo que pasó, no se le notifica.
+ */
+async function avisarSiguiente(torneo: TorneoAviso, e: Encuentro): Promise<void> {
+  const todas = await suscripciones(torneo.tenant_id);
+  const { data } = await svc()
+    .from("encuentros")
+    .select("*")
+    .eq("torneo_id", torneo.id)
+    .eq("estado", "programado")
+    .not("equipo_a_id", "is", null)
+    .not("equipo_b_id", "is", null)
+    .gt("programado_at", new Date().toISOString())
+    .neq("id", e.id)
+    .order("programado_at")
+    .limit(1);
+  const sig = ((data as Encuentro[]) ?? [])[0] ?? null;
+  if (!sig) return;
+  const nombre = await nombresDe([sig]);
+  const paraSiguiente = await sinAvisoPrevio(queSiguen(todas.filter((s) => s.siguiente), sig), sig.id, "siguiente");
+  if (paraSiguiente.length === 0) return;
+  await enviar(paraSiguiente, {
+    torneo: torneo.nombre,
+    title: `Sigue: ${nombre(sig.equipo_a_id)} vs ${nombre(sig.equipo_b_id)}`,
+    body: cuandoYDonde(sig.programado_at, sig.cancha, canchasDe(torneo)),
+    url: enlacePartido(torneo.id, sig.id),
+    tag: `siguiente-${sig.id}`,
   });
 }
 
@@ -250,7 +237,8 @@ async function enviarRecordatorios(ahora: Date, torneos: Map<string, TorneoAviso
 
 /**
  * El juez terminó: deja constancia de lo que reportó y avisa «Resultado por aprobar» (una sola
- * vez por partido y dispositivo). Lo usa la revisión de cada minuto y también el cambio de partido
+ * vez por partido y dispositivo), más el partido que sigue. Es el único aviso de fin de partido: no se
+ * vuelve a avisar cuando el organizador lo acepta. Lo usa la revisión de cada minuto y también el cambio de partido
  * de una cancha con sala fija, que libera la sala antes de que la revisión alcance a verla.
  */
 export async function avisarPorAprobar(torneo: TorneoAviso, e: Encuentro, leido: MarcadorLeido): Promise<number> {
@@ -261,15 +249,21 @@ export async function avisarPorAprobar(torneo: TorneoAviso, e: Encuentro, leido:
     e.id,
     "por_aprobar",
   );
+  const A = nombre(e.equipo_a_id);
+  const B = nombre(e.equipo_b_id);
+  const [ga, gb] = setsGanados(leido.sets);
+  const ganador = ga > gb ? A : gb > ga ? B : null;
   await enviar(subs, {
     torneo: torneo.nombre,
-    title: `Resultado por aprobar: ${nombre(e.equipo_a_id)} vs ${nombre(e.equipo_b_id)}`,
+    title: `Partido finalizado: ${A} ${ga}-${gb} ${B}`,
     body: leido.setSinTerminar
-      ? "El juez cerró el partido antes de terminar. Toca para corregirlo."
-      : `El juez reportó ${setsEnTexto(leido.sets)}. Toca para aceptar o corregir.`,
+      ? `El juez cerró el partido antes de terminar (set a medias ${leido.setSinTerminar[0]}-${leido.setSinTerminar[1]}). Van ${ga}-${gb} en sets. Toca para corregirlo.`
+      : `${ganador ? `Ganó ${ganador}` : "Empate"} ${ga}-${gb} en sets (${setsEnTexto(leido.sets)}). Por aprobar: toca para aceptar o corregir.`,
     url: enlacePartido(torneo.id, e.id),
     tag: `partido-${e.id}`,
   });
+  // El juez terminó: también se anuncia qué partido sigue.
+  await seguro(() => avisarSiguiente(torneo, e));
   return subs.length;
 }
 
