@@ -63,6 +63,22 @@ export const reglasSchema = z.object({
       wo: entero().default(0),
       /** Equipos de cada grupo que pasan a eliminatorias (los de verde en la tabla). */
       clasifican: entero(1).default(2),
+      /**
+       * Zona de consolación (opcional): los equipos en estas posiciones de cada grupo se pintan de
+       * naranja. No pasan a eliminatorias; sirve para armar APARTE un mini torneo entre ellos que
+       * no afecta las posiciones ni las eliminatorias. Cada torneo decide si la usa y cuáles.
+       */
+      consolacion: z
+        .object({
+          activo: z.boolean().default(false),
+          /** Primera posición de la zona (1 = primero del grupo). */
+          desde: entero(1).default(5),
+          /** Última posición de la zona. */
+          hasta: entero(1).default(6),
+          /** Explicación que se ve debajo de la tabla: por qué están en naranja y qué harán. */
+          nota: z.string().trim().max(400).default(""),
+        })
+        .prefault({}),
     })
     .prefault({}),
   /**
@@ -312,6 +328,15 @@ export function generarReglamento(
     "Desempate, en este orden: más partidos ganados, mejor cociente de sets, " +
       "mejor cociente de puntos y resultado del partido entre los equipos empatados.",
     `Si hay fase de grupos, clasifican a eliminatorias los ${plural(tabla.clasifican, "primero", "primeros")} de cada grupo.`,
+    tabla.consolacion.activo
+      ? `Los equipos que terminan ${
+          tabla.consolacion.desde === tabla.consolacion.hasta
+            ? `en la posición ${tabla.consolacion.desde}`
+            : `entre las posiciones ${tabla.consolacion.desde} y ${tabla.consolacion.hasta}`
+        } de cada grupo quedan en la zona de consolación (naranja): no pasan a eliminatorias${
+          tabla.consolacion.nota ? `. ${tabla.consolacion.nota}` : "."
+        }`
+      : null,
   ]);
 
   seccion("Quién puede jugar", [

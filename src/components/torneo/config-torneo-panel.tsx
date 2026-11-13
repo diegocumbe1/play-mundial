@@ -577,6 +577,79 @@ export function ConfigTorneoPanel({
             info="Cuántos equipos de cada grupo pasan a eliminatorias. Se marcan en verde en la tabla y es el número que se usa al generar las eliminatorias."
           />
         </div>
+
+        {/* Zona de consolación: opcional, cada torneo decide si la usa y cuáles posiciones. */}
+        <div className="border-border mt-4 flex flex-col gap-3 rounded-xl border p-3">
+          <Interruptor
+            label="Zona de consolación (equipos en naranja)"
+            checked={tabla.consolacion.activo}
+            onChange={(v) =>
+              set("tabla", {
+                consolacion: {
+                  ...tabla.consolacion,
+                  activo: v,
+                  // Al encenderla por primera vez: empieza justo después de los que clasifican y trae una nota sugerida.
+                  desde: v && tabla.consolacion.desde <= tabla.clasifican ? tabla.clasifican + 1 : tabla.consolacion.desde,
+                  hasta:
+                    v && tabla.consolacion.hasta < Math.max(tabla.consolacion.desde, tabla.clasifican + 1)
+                      ? Math.max(tabla.consolacion.desde, tabla.clasifican + 1)
+                      : tabla.consolacion.hasta,
+                  nota:
+                    v && !tabla.consolacion.nota
+                      ? "Los equipos en naranja no pasan a eliminatorias. Con ellos se arma un mini torneo aparte, solo entre ellos, que no afecta las posiciones ni las eliminatorias."
+                      : tabla.consolacion.nota,
+                },
+              })
+            }
+            info="Pinta de naranja a los equipos que quedan en ciertas posiciones de cada grupo. No cambia quién clasifica: sirve para dejar claro que esos equipos juegan aparte (por ejemplo, un mini torneo entre ellos). Es opcional."
+          />
+          {tabla.consolacion.activo && (
+            <>
+              <div className="grid grid-cols-2 gap-3">
+                <CampoNumero
+                  label="Desde la posición"
+                  value={tabla.consolacion.desde}
+                  onChange={(v) =>
+                    set("tabla", {
+                      consolacion: {
+                        ...tabla.consolacion,
+                        desde: Math.max(1, v ?? 1),
+                        hasta: Math.max(tabla.consolacion.hasta, Math.max(1, v ?? 1)),
+                      },
+                    })
+                  }
+                />
+                <CampoNumero
+                  label="Hasta la posición"
+                  value={tabla.consolacion.hasta}
+                  onChange={(v) =>
+                    set("tabla", {
+                      consolacion: { ...tabla.consolacion, hasta: Math.max(tabla.consolacion.desde, v ?? 1) },
+                    })
+                  }
+                />
+              </div>
+              {tabla.consolacion.desde <= tabla.clasifican && (
+                <p className="text-xs text-amber-600 dark:text-amber-400">
+                  Ojo: clasifican {tabla.clasifican} por grupo, y la zona empieza en la posición {tabla.consolacion.desde}.
+                  Esas posiciones se verían con los dos colores. Lo normal es empezar después de los que clasifican.
+                </p>
+              )}
+              <Campo
+                label="Nota para el público"
+                ayuda="Se ve debajo de la tabla: explica por qué están en naranja y qué harán esos equipos."
+              >
+                <textarea
+                  value={tabla.consolacion.nota}
+                  onChange={(e) => set("tabla", { consolacion: { ...tabla.consolacion, nota: e.target.value } })}
+                  rows={3}
+                  maxLength={400}
+                  className="border-input bg-background w-full rounded-lg border px-2.5 py-2 text-sm"
+                />
+              </Campo>
+            </>
+          )}
+        </div>
       </section>
 
       <section className="border-border rounded-2xl border p-4">

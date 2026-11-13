@@ -173,7 +173,9 @@ export function EquipoDetalleModal({
             <p className="text-muted-foreground text-xs">
               {pos < clasifican
                 ? `Va clasificando a eliminatorias (pasan ${clasifican} por grupo).`
-                : `Fuera de los ${clasifican} que pasan por grupo, por ahora.`}
+                : tablaReglas.consolacion?.activo && pos + 1 >= tablaReglas.consolacion.desde && pos + 1 <= tablaReglas.consolacion.hasta
+                  ? `Zona de consolación (naranja): no pasa a eliminatorias, por ahora. ${tablaReglas.consolacion.nota}`
+                  : `Fuera de los ${clasifican} que pasan por grupo, por ahora.`}
             </p>
 
             <div className="border-border overflow-hidden rounded-xl border">

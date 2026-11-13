@@ -65,6 +65,9 @@ export function FixtureVista({
   const router = useRouter();
   // Torneos guardados antes de existir la regla no la traen: 2, como antes.
   const clasifican = tablaReglas.clasifican ?? 2;
+  // Zona de consolación (opcional): posiciones que se pintan de naranja. Torneos viejos no la traen.
+  const consolacion = tablaReglas.consolacion?.activo ? tablaReglas.consolacion : null;
+  const enConsolacion = (pos: number) => !!consolacion && pos >= consolacion.desde && pos <= consolacion.hasta;
   const [categoriaLocal, setCategoriaId] = useState(
     categorias.some((c) => c.id === categoriaInicial) ? categoriaInicial : (categorias[0]?.id ?? null),
   );
@@ -183,10 +186,21 @@ export function FixtureVista({
                       {filas.map((f, i) => (
                         <tr
                           key={f.equipoId}
-                          className={cn("border-border border-t", i < clasifican && "bg-emerald-500/5")}
+                          className={cn(
+                            "border-border border-t",
+                            i < clasifican && "bg-emerald-500/5",
+                            i >= clasifican && enConsolacion(i + 1) && "bg-orange-500/10",
+                          )}
                         >
                           <td className="px-2 py-1.5">
-                            <span className={cn(i < clasifican && "font-bold text-emerald-500")}>{i + 1}</span>
+                            <span
+                              className={cn(
+                                i < clasifican && "font-bold text-emerald-500",
+                                i >= clasifican && enConsolacion(i + 1) && "font-bold text-orange-500",
+                              )}
+                            >
+                              {i + 1}
+                            </span>
                           </td>
                           <td className="px-1 py-1.5 font-medium leading-tight break-words">
                             <button
@@ -220,6 +234,18 @@ export function FixtureVista({
             En verde, los que van clasificando a eliminatorias ({clasifican} por grupo). Desempate:
             partidos ganados, cociente de sets y cociente de puntos.
           </p>
+          {consolacion && (
+            <p className="mt-2 flex items-start gap-2 rounded-xl border border-orange-500/40 bg-orange-500/10 p-3 text-xs leading-relaxed">
+              <span className="mt-0.5 size-2.5 shrink-0 rounded-full bg-orange-500" aria-hidden />
+              <span>
+                <b>
+                  En naranja, {consolacion.desde === consolacion.hasta ? `la posición ${consolacion.desde}` : `las posiciones ${consolacion.desde} y ${consolacion.hasta}`}{" "}
+                  de cada grupo.
+                </b>{" "}
+                {consolacion.nota}
+              </span>
+            </p>
+          )}
         </section>
       )}
 
