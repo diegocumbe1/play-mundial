@@ -230,6 +230,48 @@ export interface GastosTorneo {
   pendientes: number;
 }
 
+const sinTildes = (t: string) =>
+  t
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+
+/**
+ * Categoría del torneo a la que pertenece un gasto de premiación, según el
+ * nombre en su descripción («Premiación 5 vs 5» → categoría «5 vs 5»).
+ * Los demás gastos son generales (`null`).
+ */
+export function categoriaDeGasto(gasto: GastoTorneo, categorias: CategoriaTorneo[]): CategoriaTorneo | null {
+  if (!CATEGORIAS_PREMIACION.includes(gasto.categoria) || !gasto.descripcion) return null;
+  const texto = sinTildes(gasto.descripcion);
+  // Si un nombre contiene a otro, gana el más largo.
+  return (
+    [...categorias]
+      .sort((a, b) => b.nombre.length - a.nombre.length)
+      .find((c) => c.nombre.trim() && texto.includes(sinTildes(c.nombre.trim()))) ?? null
+  );
+}
+
+/**
+ * Separa los gastos que ya cuentan de los de premiación de categorías que aún no
+ * tienen equipos inscritos (esos no se muestran ni suman hasta que haya inscritos).
+ */
+export function gastosSegunInscritos(
+  gastos: GastoTorneo[],
+  categorias: CategoriaTorneo[],
+  equipos: EquipoTorneo[],
+): { visibles: GastoTorneo[]; ocultos: GastoTorneo[] } {
+  const vigentes = equiposVigentes(equipos);
+  const visibles: GastoTorneo[] = [];
+  const ocultos: GastoTorneo[] = [];
+  for (const g of gastos) {
+    const c = categoriaDeGasto(g, categorias);
+    if (c && !vigentes.some((e) => e.categoria_id === c.id)) ocultos.push(g);
+    else visibles.push(g);
+  }
+  return { visibles, ocultos };
+}
+
 export function calcularGastosTorneo(gastos: GastoTorneo[]): GastosTorneo {
   const proyectados = gastos.reduce((suma, g) => suma + g.valor_total, 0);
   const pagados = gastos
@@ -308,6 +350,176 @@ export function calcularDashboardTorneo(
     })(),
     utilidadPorEquipoConfirmado:
       equiposConfirmados > 0 ? Math.round(utilidadActual / equiposConfirmados) : 0,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Cifras reales y previstas del torneo (Finanzas y Resumen usan estas mismas)
+// ---------------------------------------------------------------------------
+export interface FilaDesglose {
+  titulo: string;
+  total: number;
+  /** Los gastos que la forman, p. ej. «Arbitraje $ 600.000, Hidratación $ 250.000». */
+  detalle: string;
+}
+
+/** «Premiación 5 vs 5 $ 2.500.000» o «Generales $ 850.000 (Arbitraje $ 600.000, …)». */
+export function textoDesglose(f: FilaDesglose): string {
+  return `${f.titulo} ${formatCOP(f.total)}${f.detalle ? ` (${f.detalle})` : ""}`;
+}
+
+export interface FilaEquilibrio {
+  categoriaId: string | null;
+  nombre: string;
+  inscritos: number;
+  valorInscripcion: number;
+  /** Lo que cuesta su premiación (gasto registrado o premio en dinero, el mayor). */
+  costo: number;
+  /** Equipos que hacen falta para cubrir ese costo (`null` si la inscripción es gratis). */
+  equipos: number | null;
+  /** Cuántos faltan sobre los inscritos hoy (0 = ya cubre). */
+  faltan: number | null;
+}
+
+export interface CifrasTorneo {
+  inscritos: number;
+  /** Equipos inscritos que han abonado algo. */
+  equiposQuePagaron: number;
+  /** Lo recibido: abonos de inscripción + otros ingresos ya recibidos. */
+  ingresado: number;
+  abonos: number;
+  otrosRecibidos: number;
+  gastado: number;
+  gastosPagadosN: number;
+  gastosPorPagarN: number;
+  utilidadReal: number;
+  /** Lo que deben en total los equipos inscritos (no el cupo). */
+  inscripcionesPrevistas: number;
+  otrosIngresos: number;
+  ingresosPrevistos: number;
+  gastosPrevistos: number;
+  utilidadPrevista: number;
+  porCobrar: number;
+  /** cupo × valor: la meta con el cupo lleno (referencia). */
+  metaCupoLleno: number;
+  gastosIncluidos: FilaDesglose[];
+  /** Premiación de categorías sin inscritos: aún no se cuenta. */
+  gastosExcluidos: FilaDesglose[];
+  equilibrio: {
+    filas: FilaEquilibrio[];
+    /** Gastos que no son de una categoría (arbitraje, cancha…): los cubren todas. */
+    generales: { costo: number; equipos: number | null };
+    /** Categorías sin inscritos, que no se consideran todavía. */
+    sinInscritos: string[];
+    valorPromedio: number;
+    /** Equipos inscritos en total que cubren todo (menos otros ingresos). `null` si no se puede calcular. */
+    equiposTotal: number | null;
+    costoTotal: number;
+  };
+}
+
+export function calcularCifrasTorneo(
+  torneo: Torneo,
+  categorias: CategoriaTorneo[],
+  equipos: EquipoTorneo[],
+  gastos: GastoTorneo[],
+  premios: PremioTorneo[],
+  otros: IngresoTorneo[],
+): CifrasTorneo {
+  const vigentes = equiposVigentes(equipos);
+  const { visibles, ocultos } = gastosSegunInscritos(gastos, categorias, equipos);
+  const sum = (l: { valor_total: number }[]) => l.reduce((t, x) => t + x.valor_total, 0);
+  const enDinero = (p: PremioTorneo) => (p.tipo === "valor" ? (p.valor ?? 0) : 0);
+
+  const abonos = vigentes.reduce((t, e) => t + e.monto_pagado, 0);
+  const otrosRecibidos = otros.filter((i) => i.recibido).reduce((t, i) => t + i.valor, 0);
+  const otrosIngresos = otros.reduce((t, i) => t + i.valor, 0);
+  const gastado = sum(visibles.filter((g) => g.pagado));
+  const gastosPrevistos = sum(visibles);
+  const inscripcionesPrevistas = vigentes.reduce((t, e) => t + montoEsperadoEquipo(torneo, e), 0);
+  const ingresosPrevistos = inscripcionesPrevistas + otrosIngresos;
+
+  const nombreGasto = (g: GastoTorneo) =>
+    `${labelCategoriaGasto(g.categoria)}${g.descripcion ? ` ${g.descripcion}` : ""} ${formatCOP(g.valor_total)}`;
+  const agrupar = (lista: GastoTorneo[]): FilaDesglose[] => {
+    const filas: FilaDesglose[] = [];
+    for (const c of [...categorias].sort((a, b) => a.orden - b.orden)) {
+      const deCat = lista.filter((x) => categoriaDeGasto(x, categorias)?.id === c.id);
+      if (deCat.length > 0) filas.push({ titulo: `Premiación ${c.nombre}`, total: sum(deCat), detalle: "" });
+    }
+    const generales = lista.filter((x) => !categoriaDeGasto(x, categorias));
+    if (generales.length > 0)
+      filas.push({ titulo: "Generales", total: sum(generales), detalle: generales.map(nombreGasto).join(", ") });
+    return filas;
+  };
+
+  // Punto de equilibrio: por categoría con inscritos, más los gastos generales.
+  const grupos =
+    categorias.length > 0
+      ? [...categorias]
+          .sort((a, b) => a.orden - b.orden)
+          .map((c) => ({ id: c.id as string | null, nombre: c.nombre, valor: c.valor_inscripcion ?? torneo.valor_inscripcion }))
+      : [{ id: null as string | null, nombre: torneo.nombre, valor: torneo.valor_inscripcion }];
+  const conInscritos = grupos.filter((g) => vigentes.some((e) => (g.id ? e.categoria_id === g.id : true)));
+  const filas: FilaEquilibrio[] = conInscritos.map((g) => {
+    const inscritos = vigentes.filter((e) => (g.id ? e.categoria_id === g.id : true)).length;
+    const gastoPrem = sum(visibles.filter((x) => (g.id ? categoriaDeGasto(x, categorias)?.id === g.id : false)));
+    const premio = premios.filter((p) => (g.id ? p.categoria_id === g.id : true)).reduce((t, p) => t + enDinero(p), 0);
+    const costo = g.id ? Math.max(gastoPrem, premio) : premio;
+    const equiposNec = g.valor > 0 ? Math.ceil(costo / g.valor) : costo === 0 ? 0 : null;
+    return {
+      categoriaId: g.id,
+      nombre: g.nombre,
+      inscritos,
+      valorInscripcion: g.valor,
+      costo,
+      equipos: equiposNec,
+      faltan: equiposNec === null ? null : Math.max(0, equiposNec - inscritos),
+    };
+  });
+  const valores = filas.filter((f) => f.valorInscripcion > 0).map((f) => f.valorInscripcion);
+  const valorPromedio = valores.length > 0 ? valores.reduce((a, b) => a + b, 0) / valores.length : 0;
+
+  const generalesGastos = visibles.filter((x) => categorias.length === 0 || !categoriaDeGasto(x, categorias));
+  const premiosGenerales =
+    categorias.length > 0
+      ? premios.filter((p) => !p.categoria_id || !categorias.some((c) => c.id === p.categoria_id)).reduce((t, p) => t + enDinero(p), 0)
+      : 0;
+  const premiacionGeneralRegistrada = sum(generalesGastos.filter((x) => CATEGORIAS_PREMIACION.includes(x.categoria)));
+  const costoGenerales = sum(generalesGastos) + Math.max(0, premiosGenerales - premiacionGeneralRegistrada);
+  const costoTotal = filas.reduce((t, f) => t + f.costo, 0) + costoGenerales;
+  const aCubrir = Math.max(0, costoTotal - otrosIngresos);
+
+  return {
+    inscritos: vigentes.length,
+    equiposQuePagaron: vigentes.filter((e) => e.monto_pagado > 0).length,
+    ingresado: abonos + otrosRecibidos,
+    abonos,
+    otrosRecibidos,
+    gastado,
+    gastosPagadosN: visibles.filter((g) => g.pagado).length,
+    gastosPorPagarN: visibles.filter((g) => !g.pagado).length,
+    utilidadReal: abonos + otrosRecibidos - gastado,
+    inscripcionesPrevistas,
+    otrosIngresos,
+    ingresosPrevistos,
+    gastosPrevistos,
+    utilidadPrevista: ingresosPrevistos - gastosPrevistos,
+    porCobrar: vigentes.reduce((t, e) => t + saldoEquipo(torneo, e), 0),
+    metaCupoLleno: torneo.cupo_equipos * torneo.valor_inscripcion,
+    gastosIncluidos: agrupar(visibles),
+    gastosExcluidos: agrupar(ocultos),
+    equilibrio: {
+      filas,
+      generales: {
+        costo: costoGenerales,
+        equipos: valorPromedio > 0 ? Math.ceil(costoGenerales / valorPromedio) : costoGenerales === 0 ? 0 : null,
+      },
+      sinInscritos: grupos.filter((g) => !conInscritos.includes(g)).map((g) => g.nombre),
+      valorPromedio,
+      equiposTotal: valorPromedio > 0 ? Math.ceil(aCubrir / valorPromedio) : aCubrir === 0 ? 0 : null,
+      costoTotal,
+    },
   };
 }
 

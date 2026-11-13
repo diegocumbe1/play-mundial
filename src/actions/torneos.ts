@@ -1432,6 +1432,73 @@ export async function reintegrarEquipoAlFixture(
   return { success: true, data: { creados: faltan.length } };
 }
 
+/**
+ * Mete a un equipo confirmado que llegó tarde (sin partidos) a un grupo que ya
+ * tiene fixture: le crea, sin fecha, un partido contra cada rival del grupo.
+ * No toca nada de lo ya creado, jugado o programado. Solo mientras la llave de
+ * eliminatorias de su categoría no tenga equipos reales.
+ */
+export async function agregarEquipoAGrupo(
+  id: string,
+  grupo: string | null,
+): Promise<ActionResult<{ creados: number }>> {
+  const acceso = await accesoTorneos();
+  if (!acceso.ok) return { success: false, error: acceso.error };
+
+  const svc = createServiceRoleClient();
+  const { data: equipoData } = await svc.from("equipos_torneo").select("*").eq("id", id).maybeSingle();
+  const equipo = (equipoData as EquipoTorneo | null) ?? null;
+  if (!equipo) return { success: false, error: "Equipo no encontrado" };
+  if (equipo.estado !== "confirmado") return { success: false, error: "Primero confirma el equipo." };
+  const torneo = await torneoDelUsuario(equipo.torneo_id, acceso.membership);
+  if (!torneo) return { success: false, error: "No autorizado" };
+
+  const { data } = await svc.from("encuentros").select("*").eq("torneo_id", torneo.id);
+  const todos = (data as Encuentro[]) ?? [];
+  if (todos.some((m) => m.equipo_a_id === id || m.equipo_b_id === id)) {
+    return { success: false, error: "Este equipo ya tiene partidos." };
+  }
+
+  const categoriaId = equipo.categoria_id;
+  const deCategoria = todos.filter((m) => m.categoria_id === categoriaId);
+  if (deCategoria.some((m) => m.fase !== "grupos" && !!m.equipo_a_id && !!m.equipo_b_id)) {
+    return { success: false, error: "La llave de eliminatorias ya tiene equipos: no se puede agregar." };
+  }
+
+  const delGrupo = deCategoria.filter((m) => m.fase === "grupos" && (m.grupo ?? null) === grupo);
+  if (delGrupo.length === 0) return { success: false, error: "Ese grupo no existe en el fixture." };
+
+  const fuera = await idsFueraDeJuego(torneo.id);
+  const rivales = [
+    ...new Set(delGrupo.flatMap((m) => [m.equipo_a_id, m.equipo_b_id]).filter((x): x is string => !!x)),
+  ].filter((r) => r !== id && !fuera.has(r));
+  if (rivales.length === 0) return { success: false, error: "El grupo no tiene rivales para este equipo." };
+
+  const ronda = Math.max(1, ...delGrupo.map((m) => m.ronda)) + 1;
+  const { error } = await svc.from("encuentros").insert(
+    rivales.map((rival, i) => ({
+      tenant_id: torneo.tenant_id,
+      torneo_id: torneo.id,
+      categoria_id: categoriaId,
+      fase: "grupos" as const,
+      grupo,
+      ronda,
+      orden: i,
+      equipo_a_id: id,
+      equipo_b_id: rival,
+      cancha: null,
+      programado_at: null,
+      estado: "programado" as const,
+      sets: [],
+      ganador_id: null,
+      sala_marcador: null,
+    })),
+  );
+  if (error) return { success: false, error: error.message };
+  revalidarTorneo(torneo);
+  return { success: true, data: { creados: rivales.length } };
+}
+
 /** Recalcula el total pagado del equipo a partir de sus abonos. */
 async function sincronizarPagado(equipoId: string): Promise<void> {
   const svc = createServiceRoleClient();
@@ -3280,6 +3347,8 @@ const programarSchema = z.object({
    * - `todo`: rehace la programación de todos los partidos no jugados desde `desde`.
    */
   modo: z.enum(["sin_fecha", "conflictos", "todo"]).default("sin_fecha"),
+  /** Si viene, solo se programan los partidos sin fecha de ese equipo (p. ej. uno que llegó tarde). */
+  equipo_id: z.string().uuid().optional(),
 });
 
 /**
@@ -3328,7 +3397,13 @@ export async function programarPartidos(
   const todos = (todosData as Encuentro[]) ?? [];
   const deCategoria = todos.filter((m) => m.categoria_id === categoriaId);
   const conEquipos = (m: Encuentro) => m.estado === "programado" && !!m.equipo_a_id && !!m.equipo_b_id;
-  const sinFecha = deCategoria.filter((m) => conEquipos(m) && !m.programado_at);
+  const soloEquipo = parsed.data.equipo_id;
+  const sinFecha = deCategoria.filter(
+    (m) =>
+      conEquipos(m) &&
+      !m.programado_at &&
+      (!soloEquipo || m.equipo_a_id === soloEquipo || m.equipo_b_id === soloEquipo),
+  );
   // Partidos con fecha que se vuelven a programar (no jugados y a partir de `desde`).
   const desdeISO = new Date(`${parsed.data.desde}T00:00:00-05:00`).getTime();
   const { modo } = parsed.data;

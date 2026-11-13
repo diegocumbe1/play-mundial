@@ -16,6 +16,7 @@ import { formatDiaCO, formatFechaHoraCO } from "@/lib/fecha-co";
 import { nombreCancha } from "@/lib/torneo-avisos-reglas";
 import type { ReglasTorneo } from "@/lib/torneo-reglas";
 import { Desplegable } from "@/components/torneo/desplegable";
+import { EquipoDetalleModal } from "@/components/torneo/equipo-detalle-modal";
 import { cn } from "@/lib/utils";
 import type { EncuentroPublico, FaseEncuentro } from "@/types";
 
@@ -66,6 +67,8 @@ export function FixtureVista({
     return (id: string | null) => (id ? (mapa.get(id) ?? "Equipo") : "Por definir");
   }, [equipos, retirados]);
   const retiradoIds = useMemo(() => new Set(retirados.map((r) => r.id)), [retirados]);
+  // Equipo cuya ficha está abierta (se abre tocando su nombre en las posiciones).
+  const [detalleId, setDetalleId] = useState<string | null>(null);
 
   const hayEnVivo = encuentros.some((e) => e.estado === "en_vivo");
   useEffect(() => {
@@ -177,7 +180,16 @@ export function FixtureVista({
                           <td className="px-2 py-1.5">
                             <span className={cn(i < clasifican && "font-bold text-emerald-500")}>{i + 1}</span>
                           </td>
-                          <td className="px-1 py-1.5 font-medium leading-tight break-words">{nombre(f.equipoId)}</td>
+                          <td className="px-1 py-1.5 font-medium leading-tight break-words">
+                            <button
+                              type="button"
+                              onClick={() => setDetalleId(f.equipoId)}
+                              title="Ver detalle del equipo"
+                              className="hover:text-primary text-left underline-offset-2 hover:underline"
+                            >
+                              {nombre(f.equipoId)}
+                            </button>
+                          </td>
                           <td className="px-1.5 py-1.5 text-center tabular-nums">{f.pj}</td>
                           <td className="px-1.5 py-1.5 text-center tabular-nums">{f.pg}</td>
                           <td className="hidden px-1.5 py-1.5 text-center tabular-nums sm:table-cell">{f.pp}</td>
@@ -274,6 +286,17 @@ export function FixtureVista({
         </section>
       )}
 
+      <EquipoDetalleModal
+        equipoId={detalleId}
+        onCerrar={() => setDetalleId(null)}
+        nombre={nombre}
+        categorias={categorias}
+        encuentros={encuentros}
+        retiradoIds={retiradoIds}
+        tablaReglas={tablaReglas}
+        nombresCanchas={nombresCanchas}
+        onAbrirPartido={onEditar}
+      />
     </div>
   );
 }

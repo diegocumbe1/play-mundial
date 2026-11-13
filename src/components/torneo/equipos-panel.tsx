@@ -11,6 +11,7 @@ import {
   MessageCircle,
   Pencil,
   Plus,
+  Search,
   Trash2,
   Users,
   Wallet,
@@ -30,6 +31,7 @@ import {
   retirarEquipoDelFixture,
 } from "@/actions/torneos";
 import { Campo, Segmentado, Selector } from "@/components/torneo/campos";
+import { EquipoDetalleModal } from "@/components/torneo/equipo-detalle-modal";
 import { jugadorVacio, PlantillaEditor } from "@/components/torneo/plantilla-editor";
 import { RestriccionesEditor } from "@/components/torneo/restricciones-editor";
 import {
@@ -57,6 +59,7 @@ import { cn } from "@/lib/utils";
 import type {
   CategoriaTorneo,
   EquipoTorneo,
+  EncuentroPublico,
   EstadoEquipoTorneo,
   JugadorTorneo,
   PagoEquipoTorneo,
@@ -105,7 +108,14 @@ export function EquiposPanel({
   pagos = [],
   jugadores = [],
   participacion,
+  encuentros = [],
+  tablaReglas = { clasifican: 2 } as ReglasTorneo["tabla"],
+  nombresCanchas = [],
 }: {
+  /** Partidos del torneo: alimentan la ficha del equipo (posición, resultados, fechas). */
+  encuentros?: EncuentroPublico[];
+  tablaReglas?: ReglasTorneo["tabla"];
+  nombresCanchas?: string[];
   torneo: Torneo;
   equipos: EquipoTorneo[];
   categorias?: CategoriaTorneo[];
@@ -146,12 +156,46 @@ export function EquiposPanel({
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [filtro, setFiltro] = useState<Filtro>("todos");
+  const [busqueda, setBusqueda] = useState("");
+  // Equipo cuya ficha (posición, resultados, fechas) está abierta.
+  const [fichaId, setFichaId] = useState<string | null>(null);
+  const nombreEquipo = (id: string | null) => equipos.find((x) => x.id === id)?.nombre ?? "Equipo";
+  const fueraDeJuego = new Set(
+    equipos.filter((x) => x.estado === "retirado" || x.estado === "rechazado").map((x) => x.id),
+  );
+  // "todas" o el id de una categoría creada en el torneo (nada fijo: salen de `categorias`).
+  const [categoriaFiltro, setCategoriaFiltro] = useState<string>("todas");
   const [nuevoAbierto, setNuevoAbierto] = useState(false);
   const [pagoDe, setPagoDe] = useState<EquipoTorneo | null>(null);
   // La vista elegida se recuerda en este navegador; en el servidor, tarjetas.
   const vista = useSyncExternalStore(suscribirVista, leerVista, () => "tarjetas" as Vista);
 
-  const visibles = equipos.filter((e) => {
+  // Sin tildes ni mayúsculas; busca en nombre, responsable, teléfono y correo. Aplica a tarjetas y lista.
+  const normalizar = (t: string) =>
+    t
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .trim();
+  const terminos = normalizar(busqueda).split(/\s+/).filter(Boolean);
+  const coincide = (e: EquipoTorneo) => {
+    if (terminos.length === 0) return true;
+    const texto = normalizar(
+      [e.nombre, e.responsable_nombre, e.responsable_telefono, e.responsable_correo, nombreCategoria(e.categoria_id)]
+        .filter(Boolean)
+        .join(" "),
+    );
+    return terminos.every((t) => texto.includes(t));
+  };
+
+  // Si la categoría elegida ya no existe, vale «todas».
+  const categoriaActiva = categorias.some((c) => c.id === categoriaFiltro) ? categoriaFiltro : "todas";
+  const deCategoria = equipos.filter(
+    (e) => categoriaActiva === "todas" || e.categoria_id === categoriaActiva,
+  );
+
+  const visibles = deCategoria.filter((e) => {
+    if (!coincide(e)) return false;
     if (filtro === "todos") return true;
     if (filtro === "deben") {
       return e.estado !== "rechazado" && e.estado !== "retirado" && saldoEquipo(torneo, e) > 0;
@@ -352,25 +396,51 @@ export function EquiposPanel({
 
   return (
     <section className="flex flex-col gap-4">
+      <div className="relative">
+        <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2" />
+        <Input
+          type="search"
+          value={busqueda}
+          onChange={(ev) => setBusqueda(ev.target.value)}
+          placeholder="Buscar equipo, responsable o teléfono…"
+          aria-label="Buscar equipos"
+          className="pl-8"
+        />
+      </div>
+      {categorias.length > 1 && (
+        <Segmentado
+          value={categoriaActiva}
+          onChange={setCategoriaFiltro}
+          options={[
+            { value: "todas", label: `Todas (${equipos.length})` },
+            ...[...categorias]
+              .sort((a, b) => a.orden - b.orden)
+              .map((c) => ({
+                value: c.id,
+                label: `${c.nombre} (${equipos.filter((e) => e.categoria_id === c.id).length})`,
+              })),
+          ]}
+        />
+      )}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <Segmentado
           value={filtro}
           onChange={(v) => setFiltro(v as Filtro)}
           options={[
-            { value: "todos", label: `Todos (${equipos.length})` },
+            { value: "todos", label: `Todos (${deCategoria.length})` },
             {
               value: "pendiente",
-              label: `Pendientes (${equipos.filter((e) => e.estado === "pendiente").length})`,
+              label: `Pendientes (${deCategoria.filter((e) => e.estado === "pendiente").length})`,
             },
             {
               value: "confirmado",
-              label: `Confirmados (${equipos.filter((e) => e.estado === "confirmado").length})`,
+              label: `Confirmados (${deCategoria.filter((e) => e.estado === "confirmado").length})`,
             },
-            ...(equipos.some((e) => e.estado === "retirado")
+            ...(deCategoria.some((e) => e.estado === "retirado")
               ? [
                   {
                     value: "retirado",
-                    label: `Retirados (${equipos.filter((e) => e.estado === "retirado").length})`,
+                    label: `Retirados (${deCategoria.filter((e) => e.estado === "retirado").length})`,
                   },
                 ]
               : []),
@@ -412,7 +482,9 @@ export function EquiposPanel({
         <p className="border-border text-muted-foreground rounded-xl border border-dashed p-8 text-center text-sm">
           {equipos.length === 0
             ? "Todavía no hay equipos. Regístralos tú o comparte el enlace público para que se inscriban solos."
-            : "Ningún equipo coincide con este filtro."}
+            : busqueda.trim()
+              ? `Ningún equipo coincide con «${busqueda.trim()}».`
+              : "Ningún equipo coincide con este filtro."}
         </p>
       ) : (
         <>
@@ -427,7 +499,14 @@ export function EquiposPanel({
                   className="border-border flex min-w-0 flex-col gap-2 rounded-xl border p-3"
                 >
                   <div className="flex flex-wrap items-center gap-1.5">
-                    <p className="mr-0.5 truncate font-semibold">{e.nombre}</p>
+                    <button
+                      type="button"
+                      onClick={() => setFichaId(e.id)}
+                      title="Ver detalle del equipo"
+                      className="hover:text-primary mr-0.5 truncate text-left font-semibold underline-offset-2 hover:underline"
+                    >
+                      {e.nombre}
+                    </button>
                     {insignias(e)}
                   </div>
                   {e.nota_revision && (
@@ -481,7 +560,14 @@ export function EquiposPanel({
                       <tr key={e.id} className="hover:bg-muted/30 align-top">
                         <td className="max-w-[22rem] px-3 py-2">
                           <div className="flex flex-wrap items-center gap-1.5">
-                            <span className="font-semibold">{e.nombre}</span>
+                            <button
+                              type="button"
+                              onClick={() => setFichaId(e.id)}
+                              title="Ver detalle del equipo"
+                              className="hover:text-primary text-left font-semibold underline-offset-2 hover:underline"
+                            >
+                              {e.nombre}
+                            </button>
                             {insignias(e)}
                           </div>
                           {e.nota_revision && (
@@ -572,6 +658,16 @@ export function EquiposPanel({
         equipo={pagoDe}
         pagos={pagos}
         onCerrar={() => setPagoDe(null)}
+      />
+      <EquipoDetalleModal
+        equipoId={fichaId}
+        onCerrar={() => setFichaId(null)}
+        nombre={nombreEquipo}
+        categorias={categorias}
+        encuentros={encuentros}
+        retiradoIds={fueraDeJuego}
+        tablaReglas={tablaReglas}
+        nombresCanchas={nombresCanchas}
       />
     </section>
   );

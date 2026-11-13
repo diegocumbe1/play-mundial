@@ -5,11 +5,7 @@ import { useRouter } from "next/navigation";
 import { Check, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
-import {
-  actualizarGastoTorneo,
-  crearGastoTorneo,
-  eliminarGastoTorneo,
-} from "@/actions/torneos";
+import { actualizarGastoTorneo, crearGastoTorneo, eliminarGastoTorneo } from "@/actions/torneos";
 import { AreaTexto, Campo, Segmentado, Selector } from "@/components/torneo/campos";
 import { Button } from "@/components/ui/button";
 import {
@@ -22,9 +18,15 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { InputMoneda } from "@/components/rifa/input-moneda";
-import { CATEGORIAS_GASTO, formatCOP, labelCategoriaGasto } from "@/lib/torneos";
+import {
+  CATEGORIAS_GASTO,
+  categoriaDeGasto,
+  formatCOP,
+  gastosSegunInscritos,
+  labelCategoriaGasto,
+} from "@/lib/torneos";
 import { cn } from "@/lib/utils";
-import type { GastoTorneo } from "@/types";
+import type { CategoriaTorneo, EquipoTorneo, GastoTorneo } from "@/types";
 
 /**
  * Gastos del torneo: lo que define si el evento deja utilidad. Se registran
@@ -32,11 +34,29 @@ import type { GastoTorneo } from "@/types";
  */
 export function GastosPanel({
   torneoId,
-  gastos,
+  gastos: todos,
+  categorias = [],
+  equipos = [],
 }: {
   torneoId: string;
   gastos: GastoTorneo[];
+  categorias?: CategoriaTorneo[];
+  equipos?: EquipoTorneo[];
 }) {
+  // La premiación de una categoría sin inscritos no se muestra todavía.
+  const { visibles: gastos } = gastosSegunInscritos(todos, categorias, equipos);
+  // Una sección por categoría con premiación (en el orden de las categorías) y otra con los generales.
+  const secciones: { titulo: string | null; gastos: GastoTorneo[] }[] = [];
+  const generales = gastos.filter((g) => !categoriaDeGasto(g, categorias));
+  for (const c of [...categorias].sort((a, b) => a.orden - b.orden)) {
+    const deCat = gastos.filter((g) => categoriaDeGasto(g, categorias)?.id === c.id);
+    if (deCat.length > 0) secciones.push({ titulo: `Premiación ${c.nombre}`, gastos: deCat });
+  }
+  if (generales.length > 0)
+    secciones.push({
+      titulo: secciones.length > 0 ? "Generales del torneo" : null,
+      gastos: generales,
+    });
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [editando, setEditando] = useState<GastoTorneo | null>(null);
@@ -86,64 +106,81 @@ export function GastosPanel({
 
       {gastos.length === 0 ? (
         <p className="border-border text-muted-foreground rounded-xl border border-dashed p-8 text-center text-sm">
-          Sin gastos registrados. Agrega la cancha, el arbitraje y la premiación para saber
-          si el torneo es rentable.
+          Sin gastos registrados. Agrega la cancha, el arbitraje y la premiación para saber si el
+          torneo es rentable.
         </p>
       ) : (
-        <ul className="flex flex-col gap-2">
-          {gastos.map((g) => (
-            <li
-              key={g.id}
-              className="border-border flex items-center justify-between gap-3 rounded-xl border p-3"
-            >
-              <button
-                type="button"
-                onClick={() => setEditando(g)}
-                className="min-w-0 flex-1 text-left"
-              >
-                <p className="truncate text-sm font-medium">
-                  {labelCategoriaGasto(g.categoria)}
-                  {g.descripcion ? (
-                    <span className="text-muted-foreground font-normal"> · {g.descripcion}</span>
-                  ) : null}
-                </p>
-                <p className="text-muted-foreground text-xs">
-                  {formatCOP(g.valor_total)}
-                  {g.cantidad && g.valor_unitario
-                    ? ` · ${g.cantidad} × ${formatCOP(g.valor_unitario)}`
-                    : ""}
-                  {g.proveedor ? ` · ${g.proveedor}` : ""}
-                </p>
-              </button>
+        <div className="flex flex-col gap-4">
+          {secciones.map((sec) => (
+            <div key={sec.titulo ?? "gastos"} className="flex flex-col gap-2">
+              {sec.titulo && (
+                <div className="flex items-baseline justify-between gap-2">
+                  <p className="text-sm font-semibold">{sec.titulo}</p>
+                  <span className="text-muted-foreground text-xs">
+                    {formatCOP(sec.gastos.reduce((t, x) => t + x.valor_total, 0))}
+                  </span>
+                </div>
+              )}
+              <ul className="flex flex-col gap-2">
+                {sec.gastos.map((g) => (
+                  <li
+                    key={g.id}
+                    className="border-border flex items-center justify-between gap-3 rounded-xl border p-3"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => setEditando(g)}
+                      className="min-w-0 flex-1 text-left"
+                    >
+                      <p className="truncate text-sm font-medium">
+                        {labelCategoriaGasto(g.categoria)}
+                        {g.descripcion ? (
+                          <span className="text-muted-foreground font-normal">
+                            {" "}
+                            · {g.descripcion}
+                          </span>
+                        ) : null}
+                      </p>
+                      <p className="text-muted-foreground text-xs">
+                        {formatCOP(g.valor_total)}
+                        {g.cantidad && g.valor_unitario
+                          ? ` · ${g.cantidad} × ${formatCOP(g.valor_unitario)}`
+                          : ""}
+                        {g.proveedor ? ` · ${g.proveedor}` : ""}
+                      </p>
+                    </button>
 
-              <div className="flex shrink-0 items-center gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => alternarPagado(g)}
-                  disabled={pending}
-                  className={cn(
-                    "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold transition-colors",
-                    g.pagado
-                      ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
-                      : "bg-muted text-muted-foreground hover:bg-muted/70",
-                  )}
-                >
-                  {g.pagado ? <Check className="size-3" /> : null}
-                  {g.pagado ? "Pagado" : "Por pagar"}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => borrar(g.id)}
-                  disabled={pending}
-                  aria-label={`Eliminar ${labelCategoriaGasto(g.categoria)}`}
-                  className="text-muted-foreground hover:text-destructive inline-flex size-7 items-center justify-center rounded-md"
-                >
-                  <Trash2 className="size-3.5" />
-                </button>
-              </div>
-            </li>
+                    <div className="flex shrink-0 items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => alternarPagado(g)}
+                        disabled={pending}
+                        className={cn(
+                          "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold transition-colors",
+                          g.pagado
+                            ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
+                            : "bg-muted text-muted-foreground hover:bg-muted/70",
+                        )}
+                      >
+                        {g.pagado ? <Check className="size-3" /> : null}
+                        {g.pagado ? "Pagado" : "Por pagar"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => borrar(g.id)}
+                        disabled={pending}
+                        aria-label={`Eliminar ${labelCategoriaGasto(g.categoria)}`}
+                        className="text-muted-foreground hover:text-destructive inline-flex size-7 items-center justify-center rounded-md"
+                      >
+                        <Trash2 className="size-3.5" />
+                      </button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
           ))}
-        </ul>
+        </div>
       )}
 
       <GastoModal
@@ -237,8 +274,8 @@ function GastoModal({
         <DialogHeader>
           <DialogTitle>{gasto ? "Editar gasto" : "Agregar gasto"}</DialogTitle>
           <DialogDescription>
-            Registra el presupuesto aunque todavía no lo hayas pagado: así la utilidad
-            proyectada es real.
+            Registra el presupuesto aunque todavía no lo hayas pagado: así la utilidad proyectada es
+            real.
           </DialogDescription>
         </DialogHeader>
 

@@ -20,6 +20,7 @@ import { toast } from "sonner";
 
 import {
   abrirMarcador,
+  agregarEquipoAGrupo,
   armarLlaveAnticipada,
   editarHorarioEncuentro,
   generarEliminatorias,
@@ -133,8 +134,51 @@ export function FixturePanel({
     return motivo ? [{ encuentro: e, motivo }] : [];
   });
 
+  // Confirmados que llegaron después de armar el fixture: sin un solo partido.
+  const conPartido = new Set(encuentros.flatMap((e) => [e.equipo_a_id, e.equipo_b_id]));
+  const sinAsignar = equipos.filter(
+    (e) =>
+      e.estado === "confirmado" &&
+      !conPartido.has(e.id) &&
+      encuentros.some((m) => m.categoria_id === e.categoria_id && m.fase === "grupos"),
+  );
+
+  // Equipos cuyos partidos de grupos están todos sin fecha (recién asignados o reintegrados).
+  const porProgramar = equipos.flatMap((e) => {
+    if (e.estado === "retirado" || e.estado === "rechazado") return [];
+    const suyos = encuentros.filter(
+      (m) => m.fase === "grupos" && (m.equipo_a_id === e.id || m.equipo_b_id === e.id),
+    );
+    const todosSinFecha =
+      suyos.length > 0 && suyos.every((m) => m.estado === "programado" && !m.programado_at);
+    return todosSinFecha ? [{ equipo: e, partidos: suyos }] : [];
+  });
+
   return (
     <div className="flex flex-col gap-5">
+      {sinAsignar.map((e) => (
+        <EquipoSinAsignar
+          key={e.id}
+          equipo={e}
+          categoria={categorias.find((c) => c.id === e.categoria_id)?.nombre ?? null}
+          encuentros={encuentros.filter((m) => m.categoria_id === e.categoria_id && m.fase === "grupos")}
+          fuera={new Set(equipos.filter((x) => x.estado === "retirado" || x.estado === "rechazado").map((x) => x.id))}
+          hayLlave={encuentros.some(
+            (m) => m.categoria_id === e.categoria_id && m.fase !== "grupos" && !!m.equipo_a_id && !!m.equipo_b_id,
+          )}
+        />
+      ))}
+      {porProgramar.map(({ equipo: e, partidos }) => (
+        <EquipoPorProgramar
+          key={e.id}
+          torneoId={torneo.id}
+          equipo={e}
+          partidos={partidos}
+          calendario={reglas.calendario}
+          nombre={nombre}
+          onAbrirPartido={setEditando}
+        />
+      ))}
       <div className="grid gap-3 sm:grid-cols-2">
         {grupos.map((c) => (
           <ControlCategoria
@@ -206,6 +250,150 @@ export function FixturePanel({
         }
         onCerrar={cerrarPartido}
       />
+    </div>
+  );
+}
+
+/** Aviso de un equipo confirmado que no está en ningún grupo ni tiene partidos, con el botón para asignarlo. */
+function EquipoSinAsignar({
+  equipo,
+  categoria,
+  encuentros,
+  fuera,
+  hayLlave,
+}: {
+  equipo: EquipoTorneo;
+  categoria: string | null;
+  /** Partidos de grupos de su categoría. */
+  encuentros: Encuentro[];
+  /** Retirados y rechazados: siguen en los partidos viejos pero ya no cuentan en el grupo. */
+  fuera: Set<string>;
+  hayLlave: boolean;
+}) {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+  // Equipos por grupo (el grupo null es la liga única).
+  const tamanos = new Map<string, { grupo: string | null; equipos: Set<string> }>();
+  for (const m of encuentros) {
+    const clave = m.grupo ?? "";
+    const g = tamanos.get(clave) ?? { grupo: m.grupo ?? null, equipos: new Set<string>() };
+    if (m.equipo_a_id && !fuera.has(m.equipo_a_id)) g.equipos.add(m.equipo_a_id);
+    if (m.equipo_b_id && !fuera.has(m.equipo_b_id)) g.equipos.add(m.equipo_b_id);
+    tamanos.set(clave, g);
+  }
+  const opciones = [...tamanos.entries()]
+    .map(([clave, g]) => ({ clave, grupo: g.grupo, n: g.equipos.size }))
+    .sort((a, b) => a.n - b.n || a.clave.localeCompare(b.clave));
+  // Por defecto, el grupo más chico: deja todo lo más parejo posible.
+  const [clave, setClave] = useState(opciones[0]?.clave ?? "");
+  const elegida = opciones.find((o) => o.clave === clave) ?? opciones[0];
+  const etiqueta = (g: string | null) => (g ? `Grupo ${g}` : "la liga");
+
+  function asignar() {
+    if (!elegida) return;
+    startTransition(async () => {
+      const r = await agregarEquipoAGrupo(equipo.id, elegida.grupo);
+      if (!r.success) return void toast.error(r.error);
+      toast.success(`${equipo.nombre} entró a ${etiqueta(elegida.grupo)}: ${r.data.creados} partidos por programar`);
+      router.refresh();
+    });
+  }
+
+  return (
+    <div className="flex flex-col gap-2 rounded-xl border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
+      <p className="font-medium text-amber-700 dark:text-amber-300">
+        {equipo.nombre}
+        {categoria ? ` (${categoria})` : ""} está confirmado pero sin grupo y sin partidos.
+      </p>
+      <p className="text-muted-foreground text-xs">
+        No cuenta en la tabla ni tiene cruces hasta que lo asignes. Al asignarlo se le crea un partido, sin fecha, contra
+        cada rival del grupo; lo ya creado, programado o jugado no se toca.
+      </p>
+      {hayLlave ? (
+        <p className="text-xs text-amber-700 dark:text-amber-300">
+          La llave de eliminatorias ya tiene equipos: ya no se puede agregar a un grupo.
+        </p>
+      ) : (
+        <div className="flex flex-wrap items-end gap-2">
+          <div className="w-52">
+            <Selector value={elegida?.clave ?? ""} onChange={setClave}>
+              {opciones.map((o) => (
+                <option key={o.clave} value={o.clave}>
+                  {o.grupo ? `Grupo ${o.grupo}` : "Liga"} ({o.n} equipos)
+                </option>
+              ))}
+            </Selector>
+          </div>
+          <Button size="sm" disabled={pending || !elegida} onClick={asignar}>
+            {pending ? "Asignando…" : "Asignar al grupo"}
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Aviso de un equipo con todos sus partidos sin fecha: propone un horario
+ * automático solo para sus partidos (con vista previa) o deja elegir la hora de
+ * cada uno a mano. Nada de lo ya programado o jugado se mueve.
+ */
+function EquipoPorProgramar({
+  torneoId,
+  equipo,
+  partidos,
+  calendario,
+  nombre,
+  onAbrirPartido,
+}: {
+  torneoId: string;
+  equipo: EquipoTorneo;
+  partidos: Encuentro[];
+  calendario: ReglasTorneo["calendario"];
+  nombre: (id: string | null) => string;
+  onAbrirPartido: (e: Encuentro) => void;
+}) {
+  const [auto, setAuto] = useState(false);
+  const rival = (m: Encuentro) => nombre(m.equipo_a_id === equipo.id ? m.equipo_b_id : m.equipo_a_id);
+  return (
+    <div className="flex flex-col gap-2 rounded-xl border border-sky-500/40 bg-sky-500/10 p-3 text-sm">
+      <p className="font-medium text-sky-700 dark:text-sky-300">
+        {equipo.nombre} tiene {partidos.length} partido{partidos.length === 1 ? "" : "s"} sin fecha.
+      </p>
+      <p className="text-muted-foreground text-xs">
+        Prográmalos solos (respeta canchas ocupadas, restricciones y que nadie juegue dos veces el mismo día) o elige
+        la hora de cada uno. Lo ya programado o jugado no se mueve.
+      </p>
+      <ul className="flex flex-wrap gap-1.5">
+        {partidos.map((m) => (
+          <li key={m.id}>
+            <button
+              type="button"
+              onClick={() => onAbrirPartido(m)}
+              title="Elegir fecha, hora y cancha de este partido"
+              className="border-border bg-background hover:bg-muted rounded-full border px-2.5 py-1 text-xs"
+            >
+              vs {rival(m)} · elegir hora
+            </button>
+          </li>
+        ))}
+      </ul>
+      {auto ? (
+        <ProgramarPartidos
+          torneoId={torneoId}
+          categoriaId={equipo.categoria_id}
+          calendario={calendario}
+          equipoId={equipo.id}
+          abiertoInicial
+          sinFecha={partidos.length}
+          conflictos={0}
+          conFecha={0}
+        />
+      ) : (
+        <Button size="sm" className="self-start" onClick={() => setAuto(true)}>
+          <CalendarClock className="size-3.5" /> Programar automático
+        </Button>
+      )}
     </div>
   );
 }
@@ -1151,10 +1339,15 @@ function ProgramarPartidos({
   sinFecha,
   conflictos,
   conFecha,
+  equipoId,
+  abiertoInicial = false,
 }: {
   torneoId: string;
   categoriaId: string | null;
   calendario: ReglasTorneo["calendario"];
+  /** Si viene, solo programa los partidos sin fecha de ese equipo y no ofrece mover nada más. */
+  equipoId?: string;
+  abiertoInicial?: boolean;
   sinFecha: number;
   /** Programados que chocan con restricciones de horario. */
   conflictos: number;
@@ -1163,7 +1356,7 @@ function ProgramarPartidos({
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
-  const [abierto, setAbierto] = useState(false);
+  const [abierto, setAbierto] = useState(abiertoInicial);
   const [desde, setDesde] = useState(() => partesColombia(new Date().toISOString()).fecha);
   const [dias, setDias] = useState(String(Math.max(1, calendario.dias_juego.length || 1)));
   const [propuesta, setPropuesta] = useState<Propuesta | null>(null);
@@ -1178,7 +1371,7 @@ function ProgramarPartidos({
 
   function correr(aplicar: boolean) {
     startTransition(async () => {
-      const r = await programarPartidos(torneoId, categoriaId, { desde, dias: Number(dias) || 1, modo }, aplicar);
+      const r = await programarPartidos(torneoId, categoriaId, { desde, dias: Number(dias) || 1, modo, equipo_id: equipoId }, aplicar);
       if (!r.success) return void toast.error(r.error);
       if (!aplicar) return void setPropuesta(r.data);
       toast.success(
@@ -1221,7 +1414,7 @@ function ProgramarPartidos({
   const opcionesModo: { value: ModoProgramar; label: string }[] = [
     ...(sinFecha > 0 ? [{ value: "sin_fecha" as const, label: `Solo sin fecha (${sinFecha})` }] : []),
     ...(conflictos > 0 ? [{ value: "conflictos" as const, label: `Sin fecha + los que chocan (${conflictos})` }] : []),
-    { value: "todo", label: "Rehacer todo lo no jugado" },
+    ...(equipoId ? [] : [{ value: "todo" as const, label: "Rehacer todo lo no jugado" }]),
   ];
 
   return (
@@ -1230,7 +1423,7 @@ function ProgramarPartidos({
         Calendario: {textoCalendario}. Se cambia en Configuración. Alterna grupos, nadie juega dos
         veces el mismo día y van primero los equipos con menos partidos.
       </p>
-      <Campo
+      {!equipoId && <Campo
         label="Qué programar"
         info={
           <>
@@ -1246,7 +1439,7 @@ function ProgramarPartidos({
           onChange={(v) => { setModo(v as ModoProgramar); setPropuesta(null); }}
           options={opcionesModo}
         />
-      </Campo>
+      </Campo>}
       <div className="grid grid-cols-2 gap-3">
         <Campo label="Desde">
           <Input type="date" value={desde} onChange={(e) => { setDesde(e.target.value); setPropuesta(null); }} />

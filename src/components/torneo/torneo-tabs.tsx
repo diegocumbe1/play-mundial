@@ -20,8 +20,15 @@ import { GastosPanel } from "@/components/torneo/gastos-panel";
 import { AlertasTorneo, CoberturaPremios, ResumenTorneo } from "@/components/torneo/resumen-torneo";
 import { IngresosPanel } from "@/components/torneo/ingresos-panel";
 import { PatrocinadoresPanel } from "@/components/torneo/patrocinadores-panel";
-import { calcularCoberturaTorneo } from "@/lib/torneos";
-import { formatCOP, recaudoPorMetodo } from "@/lib/torneos";
+import { DatoInfo } from "@/components/torneo/dato-info";
+import {
+  calcularCifrasTorneo,
+  calcularCoberturaTorneo,
+  formatCOP,
+  recaudoPorMetodo,
+  textoDesglose,
+  type CifrasTorneo,
+} from "@/lib/torneos";
 import type { PasoConfiguracion, ReglasTorneo } from "@/lib/torneo-reglas";
 import { cn } from "@/lib/utils";
 import type {
@@ -97,15 +104,37 @@ export function TorneoTabs({
   partidoInicial?: string;
 }) {
   const [pestana, setPestana] = useState<Pestana>(partidoInicial ? "fixture" : "resumen");
+  // Mismas cifras en Resumen y Finanzas.
+  const cifras = calcularCifrasTorneo(torneo, categorias, equipos, gastos, premios, ingresos);
 
   // `corto`: lo que se lee en celular (las pestañas se desplazan de lado).
-  const tabs: { id: Pestana; label: string; corto: string; icon: typeof BarChart3 }[] = [
+  const tabs: {
+    id: Pestana;
+    label: string;
+    corto: string;
+    icon: typeof BarChart3;
+  }[] = [
     { id: "resumen", label: "Resumen", corto: "Resumen", icon: BarChart3 },
     { id: "equipos", label: "Equipos", corto: "Equipos", icon: Users },
-    { id: "reglas", label: "Categorías y reglas", corto: "Reglas", icon: ListChecks },
-    { id: "fixture", label: "Fixture y resultados", corto: "Fixture", icon: CalendarRange },
+    {
+      id: "reglas",
+      label: "Categorías y reglas",
+      corto: "Reglas",
+      icon: ListChecks,
+    },
+    {
+      id: "fixture",
+      label: "Fixture y resultados",
+      corto: "Fixture",
+      icon: CalendarRange,
+    },
     { id: "finanzas", label: "Finanzas", corto: "Finanzas", icon: Wallet },
-    { id: "configuracion", label: "Configuración", corto: "Ajustes", icon: Settings },
+    {
+      id: "configuracion",
+      label: "Configuración",
+      corto: "Ajustes",
+      icon: Settings,
+    },
   ];
 
   return (
@@ -149,10 +178,17 @@ export function TorneoTabs({
               onIr={(destino) => setPestana(destino)}
             />
           )}
-          <ResumenTorneo dash={dashboard} />
+          <ResumenTorneo dash={dashboard} cifras={cifras} />
           <AlertasTorneo alertas={alertas} />
           <CoberturaPremios
-            cobertura={calcularCoberturaTorneo(torneo, categorias, equipos, gastos, premios, ingresos)}
+            cobertura={calcularCoberturaTorneo(
+              torneo,
+              categorias,
+              equipos,
+              gastos,
+              premios,
+              ingresos,
+            )}
           />
         </div>
       )}
@@ -165,6 +201,9 @@ export function TorneoTabs({
           pagos={pagos}
           jugadores={jugadores}
           participacion={reglas.participacion}
+          encuentros={encuentros}
+          tablaReglas={reglas.tabla}
+          nombresCanchas={reglas.juego.nombres_canchas}
         />
       )}
 
@@ -193,19 +232,20 @@ export function TorneoTabs({
 
       {pestana === "finanzas" && (
         <div className="flex flex-col gap-5">
-          <section className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <Dato label="Ingresos proyectados" valor={formatCOP(dashboard.ingresosProyectados)} />
-            <Dato label="Recaudado" valor={formatCOP(dashboard.ingresosRecaudados)} />
-            <Dato label="Gastos presupuestados" valor={formatCOP(dashboard.gastosProyectados)} />
-            <Dato
-              label="Utilidad proyectada"
-              valor={formatCOP(dashboard.utilidadProyectada)}
-              tono={dashboard.utilidadProyectada >= 0 ? "bueno" : "malo"}
-            />
-          </section>
+          <ResumenFinanzas cifras={cifras} />
           <CajaTorneo pagos={pagos} equipos={equipos} porCobrar={dashboard.porCobrar} />
-          <IngresosPanel torneo={torneo} ingresos={ingresos} equipos={equipos} patrocinadores={patrocinadores} />
-          <GastosPanel torneoId={torneo.id} gastos={gastos} />
+          <IngresosPanel
+            torneo={torneo}
+            ingresos={ingresos}
+            equipos={equipos}
+            patrocinadores={patrocinadores}
+          />
+          <GastosPanel
+            torneoId={torneo.id}
+            gastos={gastos}
+            categorias={categorias}
+            equipos={equipos}
+          />
           {patrociniosHabilitados && (
             <PatrocinadoresPanel
               torneoId={torneo.id}
@@ -222,29 +262,136 @@ export function TorneoTabs({
   );
 }
 
+/**
+ * Lo real primero (ingresado, gastado y utilidad de eso) y debajo lo previsto con
+ * los equipos inscritos. Cada tarjeta explica de dónde sale su cifra (ⓘ).
+ */
+function ResumenFinanzas({
+  cifras: c,
+}: {
+  cifras: CifrasTorneo;
+}) {
+  const plural = (n: number, uno: string, varios: string) => `${n} ${n === 1 ? uno : varios}`;
+  return (
+    <section className="flex flex-col gap-3">
+      <div>
+        <p className="mb-1.5 text-sm font-semibold">Hasta hoy (dinero real)</p>
+        <div className="grid grid-cols-3 gap-3">
+          <Dato
+            label="Ingresado"
+            valor={formatCOP(c.ingresado)}
+            info={
+              <>
+                {plural(c.equiposQuePagaron, "equipo ha pagado", "equipos han pagado")} algo (
+                {formatCOP(c.abonos)})
+                {c.otrosRecibidos > 0 ? ` + ${formatCOP(c.otrosRecibidos)} de otros ingresos ya recibidos` : ""}.
+                Solo cuenta lo que ya entró.
+              </>
+            }
+          />
+          <Dato
+            label="Gastado"
+            valor={formatCOP(c.gastado)}
+            info={
+              <>
+                {plural(c.gastosPagadosN, "gasto marcado como pagado", "gastos marcados como pagados")}.
+                {c.gastosPorPagarN > 0 ? ` Faltan ${plural(c.gastosPorPagarN, "gasto", "gastos")} por pagar.` : ""}
+              </>
+            }
+          />
+          <Dato
+            label="Utilidad"
+            valor={formatCOP(c.utilidadReal)}
+            tono={c.utilidadReal >= 0 ? "bueno" : "malo"}
+            info={
+              <>
+                Ingresado {formatCOP(c.ingresado)} − Gastado {formatCOP(c.gastado)} ={" "}
+                <b>{formatCOP(c.utilidadReal)}</b>. Es lo que llevas hoy, sin contar lo pendiente.
+              </>
+            }
+          />
+        </div>
+      </div>
+      <div>
+        <p className="text-muted-foreground mb-1.5 text-xs font-semibold">
+          Si se cobra y se paga todo lo de hoy ({plural(c.inscritos, "equipo inscrito", "equipos inscritos")}, no
+          el cupo)
+        </p>
+        <div className="grid grid-cols-3 gap-3">
+          <Dato
+            label="Ingresos previstos"
+            valor={formatCOP(c.ingresosPrevistos)}
+            info={
+              <>
+                {plural(c.inscritos, "equipo inscrito paga", "equipos inscritos pagan")}{" "}
+                {formatCOP(c.inscripcionesPrevistas)}
+                {c.otrosIngresos > 0 ? ` + ${formatCOP(c.otrosIngresos)} de otros ingresos` : ""}. Ya pagaron{" "}
+                {formatCOP(c.abonos)} y faltan {formatCOP(c.porCobrar)} por cobrar. Los cupos libres no se cuentan.
+              </>
+            }
+          />
+          <Dato
+            label="Gastos previstos"
+            valor={formatCOP(c.gastosPrevistos)}
+            info={
+              <>
+                Todos los gastos registrados (pagados y por pagar):{" "}
+                {c.gastosIncluidos.length === 0
+                  ? "ninguno todavía"
+                  : c.gastosIncluidos.map(textoDesglose).join(" · ")}
+                .
+                {c.gastosExcluidos.length > 0 &&
+                  ` No incluye ${c.gastosExcluidos.map(textoDesglose).join(" · ")} porque esa categoría aún no tiene equipos inscritos.`}
+              </>
+            }
+          />
+          <Dato
+            label="Utilidad prevista"
+            valor={formatCOP(c.utilidadPrevista)}
+            tono={c.utilidadPrevista >= 0 ? "bueno" : "malo"}
+            info={
+              <>
+                Ingresos previstos {formatCOP(c.ingresosPrevistos)} − Gastos previstos {formatCOP(c.gastosPrevistos)} ={" "}
+                <b>{formatCOP(c.utilidadPrevista)}</b>.{" "}
+                {c.utilidadPrevista >= 0
+                  ? "Si todos pagan y se pagan todos los gastos, el torneo deja utilidad."
+                  : "Con los equipos de hoy no alcanza: faltan inscripciones o hay que bajar gastos."}
+              </>
+            }
+          />
+        </div>
+      </div>
+      <div className="text-muted-foreground flex flex-col gap-1 text-xs">
+        <p>
+          <b>Gastos previstos incluyen:</b>{" "}
+          {c.gastosIncluidos.length === 0
+            ? "nada todavía."
+            : c.gastosIncluidos.map(textoDesglose).join(" · ")}
+        </p>
+        {c.gastosExcluidos.length > 0 && (
+          <p>
+            <b>No incluyen (aún sin equipos inscritos):</b>{" "}
+            {c.gastosExcluidos.map(textoDesglose).join(" · ")}. Se suman cuando se
+            inscriba el primer equipo de esa categoría.
+          </p>
+        )}
+      </div>
+    </section>
+  );
+}
+
 function Dato({
   label,
   valor,
   tono,
+  info,
 }: {
   label: string;
   valor: string;
   tono?: "bueno" | "malo";
+  info?: React.ReactNode;
 }) {
-  return (
-    <div className="border-border rounded-2xl border p-3">
-      <p className="text-muted-foreground text-xs">{label}</p>
-      <p
-        className={cn(
-          "mt-0.5 truncate text-base font-bold",
-          tono === "bueno" && "text-emerald-600 dark:text-emerald-400",
-          tono === "malo" && "text-destructive",
-        )}
-      >
-        {valor}
-      </p>
-    </div>
-  );
+  return <DatoInfo label={label} valor={valor} tono={tono} info={info} />;
 }
 
 /** Lista de pasos de los primeros 10 minutos: qué falta y a dónde ir. */
@@ -277,7 +424,12 @@ function GuiaConfiguracion({
                 <Circle className="text-muted-foreground mt-0.5 size-4 shrink-0" />
               )}
               <span className="min-w-0 text-left">
-                <span className={cn("block text-sm", paso.hecho && "text-muted-foreground line-through")}>
+                <span
+                  className={cn(
+                    "block text-sm",
+                    paso.hecho && "text-muted-foreground line-through",
+                  )}
+                >
                   {paso.titulo}
                 </span>
                 {!paso.hecho && (
@@ -342,10 +494,11 @@ function CajaTorneo({
   return (
     <section className="flex flex-col gap-3">
       <div className="grid grid-cols-3 gap-3">
-        <Dato label="En efectivo" valor={formatCOP(caja.efectivo)} />
-        <Dato label="Por transferencia" valor={formatCOP(caja.transferencia)} />
+        <Dato label="En efectivo" valor={formatCOP(caja.efectivo)} info="Abonos recibidos en efectivo: lo que debe haber en el cajón." />
+        <Dato label="Por transferencia" valor={formatCOP(caja.transferencia)} info="Abonos recibidos por transferencia: compáralo con el extracto del banco." />
         <Dato
           label="Por cobrar"
+          info="Lo que aún deben los equipos inscritos: lo que les corresponde pagar menos lo que ya abonaron."
           valor={formatCOP(porCobrar)}
           tono={porCobrar > 0 ? "malo" : "bueno"}
         />
@@ -364,7 +517,9 @@ function CajaTorneo({
                 onClick={() => setFiltro(f)}
                 className={cn(
                   "rounded-full px-2.5 py-1 text-xs font-medium capitalize",
-                  filtro === f ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground",
+                  filtro === f
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-muted text-muted-foreground",
                 )}
               >
                 {f}

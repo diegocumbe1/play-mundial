@@ -1,16 +1,18 @@
 import { AlertTriangle, Info, TriangleAlert } from "lucide-react";
 
-import { formatCOP, type CoberturaTorneo } from "@/lib/torneos";
+import { DatoInfo } from "@/components/torneo/dato-info";
+import { formatCOP, textoDesglose, type CifrasTorneo, type CoberturaTorneo } from "@/lib/torneos";
 import { cn } from "@/lib/utils";
 import type { AlertaTorneo, DashboardTorneo } from "@/types";
 
 /**
  * Indicadores del torneo. El orden responde a lo que el organizador pregunta:
  * ¿cuántos equipos tengo?, ¿cuánto entró?, ¿cuánto me cuesta?, ¿gano o pierdo?
+ * Las cifras de dinero son las mismas de Finanzas (equipos inscritos, no el cupo).
  */
-export function ResumenTorneo({ dash }: { dash: DashboardTorneo }) {
-  const utilidadOk = dash.utilidadProyectada >= 0;
-
+export function ResumenTorneo({ dash, cifras: c }: { dash: DashboardTorneo; cifras: CifrasTorneo }) {
+  const eq = c.equilibrio;
+  const sinDefinir = eq.equiposTotal === null;
   return (
     <div className="flex flex-col gap-4">
       <section className="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -18,55 +20,137 @@ export function ResumenTorneo({ dash }: { dash: DashboardTorneo }) {
           label="Equipos"
           value={`${dash.equiposRegistrados}/${dash.cupoTotal}`}
           sub={`${dash.equiposConfirmados} confirmados · ${dash.equiposPendientes} pendientes`}
+          info="Equipos inscritos (pendientes + confirmados) sobre el cupo del torneo. No cuenta retirados ni rechazados."
         />
         <Stat
           label="Cupos disponibles"
           value={String(dash.cuposDisponibles)}
           sub={`${dash.pctOcupacion}% de ocupación`}
+          info={`Cupo ${dash.cupoTotal} − ${dash.equiposRegistrados} inscritos = ${dash.cuposDisponibles} cupos libres.`}
         />
         <Stat
           label="Recaudado"
-          value={formatCOP(dash.ingresosRecaudados)}
-          sub={`de ${formatCOP(dash.ingresosProyectados)} proyectados`}
+          value={formatCOP(c.ingresado)}
+          sub={`de ${formatCOP(c.ingresosPrevistos)} previstos`}
+          info={`${c.equiposQuePagaron} equipo${c.equiposQuePagaron === 1 ? "" : "s"} con algún abono (${formatCOP(c.abonos)})${c.otrosRecibidos > 0 ? ` + ${formatCOP(c.otrosRecibidos)} de otros ingresos` : ""}. Lo previsto es lo que deben los ${c.inscritos} inscritos, no el cupo.`}
         />
         <Stat
           label="Por cobrar"
-          value={formatCOP(dash.porCobrar)}
+          value={formatCOP(c.porCobrar)}
           sub={`${dash.pctRecaudado}% recaudado`}
+          info="Lo que aún deben los equipos inscritos: su inscripción menos lo abonado."
         />
       </section>
 
       <section className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Stat
           label="Gastos"
-          value={formatCOP(dash.gastosProyectados)}
-          sub={`${formatCOP(dash.gastosPagados)} pagados`}
+          value={formatCOP(c.gastosPrevistos)}
+          sub={`${formatCOP(c.gastado)} pagados`}
+          info={
+            <>
+              Gastos registrados (pagados y por pagar):{" "}
+              {c.gastosIncluidos.length === 0
+                ? "ninguno"
+                : c.gastosIncluidos.map(textoDesglose).join(" · ")}
+              .
+              {c.gastosExcluidos.length > 0 &&
+                ` No incluye ${c.gastosExcluidos.map(textoDesglose).join(" · ")}: esa categoría aún no tiene equipos inscritos.`}
+            </>
+          }
         />
         <Stat
-          label="Utilidad proyectada"
-          value={formatCOP(dash.utilidadProyectada)}
-          sub="con el cupo lleno"
-          tono={utilidadOk ? "bueno" : "malo"}
+          label="Utilidad prevista"
+          value={formatCOP(c.utilidadPrevista)}
+          sub={`con los ${c.inscritos} equipos inscritos`}
+          tono={c.utilidadPrevista >= 0 ? "bueno" : "malo"}
+          info={
+            <>
+              Ingresos previstos {formatCOP(c.ingresosPrevistos)} − Gastos {formatCOP(c.gastosPrevistos)} ={" "}
+              <b>{formatCOP(c.utilidadPrevista)}</b>. Con el cupo lleno ({dash.cupoTotal} equipos) los ingresos
+              serían {formatCOP(c.metaCupoLleno + c.otrosIngresos)}.
+            </>
+          }
         />
         <Stat
           label="Utilidad actual"
-          value={formatCOP(dash.utilidadActual)}
-          sub="recaudado − pagado"
-          tono={dash.utilidadActual >= 0 ? "bueno" : "malo"}
+          value={formatCOP(c.utilidadReal)}
+          sub="ingresado − gastado"
+          tono={c.utilidadReal >= 0 ? "bueno" : "malo"}
+          info={
+            <>
+              Ingresado {formatCOP(c.ingresado)} − Gastado {formatCOP(c.gastado)} ={" "}
+              <b>{formatCOP(c.utilidadReal)}</b>. Solo dinero que ya entró y salió.
+            </>
+          }
         />
         <Stat
           label="Punto de equilibrio"
-          value={
-            dash.puntoEquilibrioEquipos === null
-              ? "—"
-              : `${dash.puntoEquilibrioEquipos} equipos`
-          }
-          sub={
-            dash.puntoEquilibrioEquipos === null
-              ? "Define un valor de inscripción"
-              : `inscritos para cubrir premios y gastos (hoy ${dash.equiposRegistrados})`
+          value={sinDefinir ? "—" : `${eq.equiposTotal} equipos`}
+          sub={sinDefinir ? "Define un valor de inscripción" : `para cubrir premios y gastos (hoy ${c.inscritos})`}
+          info={
+            <>
+              Costos de las categorías con inscritos {formatCOP(eq.costoTotal)}
+              {c.otrosIngresos > 0 ? ` − otros ingresos ${formatCOP(c.otrosIngresos)}` : ""}, dividido en el valor
+              promedio de inscripción ({formatCOP(Math.round(eq.valorPromedio))}). El detalle por categoría está
+              abajo.
+            </>
           }
         />
+      </section>
+
+      <section className="flex flex-col gap-2">
+        <p className="text-sm font-semibold">Punto de equilibrio por categoría</p>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {eq.filas.map((f) => (
+            <div
+              key={f.categoriaId ?? "torneo"}
+              className={cn(
+                "rounded-2xl border p-3",
+                f.faltan === 0 ? "border-emerald-500/40 bg-emerald-500/5" : "border-border",
+              )}
+            >
+              <div className="flex items-baseline justify-between gap-2">
+                <p className="truncate font-semibold">{f.nombre}</p>
+                <span className="text-muted-foreground shrink-0 text-xs">{formatCOP(f.valorInscripcion)} c/u</span>
+              </div>
+              <p className="mt-1 text-sm">
+                <b>{f.inscritos}</b> inscritos · premiación {formatCOP(f.costo)}
+              </p>
+              <p
+                className={cn(
+                  "mt-1 text-xs",
+                  f.faltan === 0 ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground",
+                )}
+              >
+                {f.equipos === null
+                  ? "Define un valor de inscripción"
+                  : f.costo === 0
+                    ? "Sin premiación registrada"
+                    : f.faltan === 0
+                      ? `Ya cubre su premiación (necesita ${f.equipos} equipo${f.equipos === 1 ? "" : "s"})`
+                      : `Necesita ${f.equipos} equipos para cubrir su premiación: faltan ${f.faltan}`}
+              </p>
+            </div>
+          ))}
+          {eq.generales.costo > 0 && (
+            <div className="border-border rounded-2xl border p-3">
+              <p className="font-semibold">Gastos generales</p>
+              <p className="mt-1 text-sm">{formatCOP(eq.generales.costo)} (arbitraje, cancha…)</p>
+              <p className="text-muted-foreground mt-1 text-xs">
+                {eq.generales.equipos === null
+                  ? "Define un valor de inscripción"
+                  : `Los cubren entre todas las categorías: ≈ ${eq.generales.equipos} equipos en total`}
+              </p>
+            </div>
+          )}
+        </div>
+        {eq.sinInscritos.length > 0 && (
+          <p className="text-muted-foreground text-xs">
+            Aún sin equipos inscritos, no se consideran: {eq.sinInscritos.join(", ")}. Se suman cuando se inscriba el
+            primero.
+          </p>
+        )}
       </section>
     </div>
   );
@@ -237,25 +321,13 @@ function Stat({
   value,
   sub,
   tono,
+  info,
 }: {
   label: string;
   value: string;
   sub?: string;
   tono?: "bueno" | "malo";
+  info?: React.ReactNode;
 }) {
-  return (
-    <div className="border-border rounded-2xl border p-3">
-      <p className="text-muted-foreground text-xs">{label}</p>
-      <p
-        className={cn(
-          "mt-0.5 truncate text-lg font-bold",
-          tono === "bueno" && "text-emerald-600 dark:text-emerald-400",
-          tono === "malo" && "text-destructive",
-        )}
-      >
-        {value}
-      </p>
-      {sub && <p className="text-muted-foreground mt-0.5 text-[11px]">{sub}</p>}
-    </div>
-  );
+  return <DatoInfo label={label} valor={value} sub={sub} tono={tono} info={info} grande />;
 }
