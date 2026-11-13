@@ -238,10 +238,13 @@ export function FixtureVista({
             <p className="mt-2 flex items-start gap-2 rounded-xl border border-orange-500/40 bg-orange-500/10 p-3 text-xs leading-relaxed">
               <span className="mt-0.5 size-2.5 shrink-0 rounded-full bg-orange-500" aria-hidden />
               <span>
-                <b>
-                  En naranja, {consolacion.desde === consolacion.hasta ? `la posición ${consolacion.desde}` : `las posiciones ${consolacion.desde} y ${consolacion.hasta}`}{" "}
-                  de cada grupo.
-                </b>{" "}
+                <b>{consolacion.nombre?.trim() || "Torneo consolación"}</b>
+                <span className="text-muted-foreground">
+                  {" "}
+                  · {consolacion.desde === consolacion.hasta ? `posición ${consolacion.desde}` : `posiciones ${consolacion.desde} y ${consolacion.hasta}`} de
+                  cada grupo (en naranja).
+                </span>
+                <br />
                 {consolacion.nota}
               </span>
             </p>

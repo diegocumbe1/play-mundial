@@ -174,7 +174,7 @@ export function EquipoDetalleModal({
               {pos < clasifican
                 ? `Va clasificando a eliminatorias (pasan ${clasifican} por grupo).`
                 : tablaReglas.consolacion?.activo && pos + 1 >= tablaReglas.consolacion.desde && pos + 1 <= tablaReglas.consolacion.hasta
-                  ? `Zona de consolación (naranja): no pasa a eliminatorias, por ahora. ${tablaReglas.consolacion.nota}`
+                  ? `${tablaReglas.consolacion.nombre?.trim() || "Torneo consolación"} (naranja): no pasa a eliminatorias, por ahora. ${tablaReglas.consolacion.nota}`
                   : `Fuera de los ${clasifican} que pasan por grupo, por ahora.`}
             </p>
 

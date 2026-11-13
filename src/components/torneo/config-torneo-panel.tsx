@@ -581,7 +581,7 @@ export function ConfigTorneoPanel({
         {/* Zona de consolación: opcional, cada torneo decide si la usa y cuáles posiciones. */}
         <div className="border-border mt-4 flex flex-col gap-3 rounded-xl border p-3">
           <Interruptor
-            label="Zona de consolación (equipos en naranja)"
+            label="Torneo consolación (equipos en naranja)"
             checked={tabla.consolacion.activo}
             onChange={(v) =>
               set("tabla", {
@@ -605,6 +605,14 @@ export function ConfigTorneoPanel({
           />
           {tabla.consolacion.activo && (
             <>
+              <Campo label="Nombre" ayuda="Así se llama en la página y en la tabla. Por defecto, «Torneo consolación».">
+                <Input
+                  value={tabla.consolacion.nombre}
+                  maxLength={40}
+                  onChange={(e) => set("tabla", { consolacion: { ...tabla.consolacion, nombre: e.target.value } })}
+                  placeholder="Torneo consolación"
+                />
+              </Campo>
               <div className="grid grid-cols-2 gap-3">
                 <CampoNumero
                   label="Desde la posición"
@@ -637,7 +645,7 @@ export function ConfigTorneoPanel({
               )}
               <Campo
                 label="Nota para el público"
-                ayuda="Se ve debajo de la tabla: explica por qué están en naranja y qué harán esos equipos."
+                ayuda="Se ve debajo de la tabla, junto al nombre: explica por qué están en naranja y qué harán esos equipos."
               >
                 <textarea
                   value={tabla.consolacion.nota}

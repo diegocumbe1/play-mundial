@@ -71,6 +71,8 @@ export const reglasSchema = z.object({
       consolacion: z
         .object({
           activo: z.boolean().default(false),
+          /** Cómo se llama en la página (por defecto «Torneo consolación»). */
+          nombre: z.string().trim().max(40).default("Torneo consolación"),
           /** Primera posición de la zona (1 = primero del grupo). */
           desde: entero(1).default(5),
           /** Última posición de la zona. */
@@ -333,7 +335,7 @@ export function generarReglamento(
           tabla.consolacion.desde === tabla.consolacion.hasta
             ? `en la posición ${tabla.consolacion.desde}`
             : `entre las posiciones ${tabla.consolacion.desde} y ${tabla.consolacion.hasta}`
-        } de cada grupo quedan en la zona de consolación (naranja): no pasan a eliminatorias${
+        } de cada grupo juegan el ${tabla.consolacion.nombre || "Torneo consolación"} (naranja): no pasan a eliminatorias${
           tabla.consolacion.nota ? `. ${tabla.consolacion.nota}` : "."
         }`
       : null,
