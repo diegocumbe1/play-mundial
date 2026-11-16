@@ -514,8 +514,12 @@ export function proponerProgramacion(p: {
   desde: string;
   /** Cuántos días de juego llenar. */
   diasDeJuego: number;
+  /** Último día posible, "YYYY-MM-DD" (p. ej. fin de semana). Sin valor = solo manda `diasDeJuego`. */
+  hasta?: string;
   calendario: ReglasTorneo["calendario"];
   canchas: number;
+  /** Canchas (1…canchas) en las que se puede programar; por defecto, todas. */
+  canchasUsar?: number[];
   duracionMin: number;
   /**
    * Cuándo puede jugar cada equipo (días, horas, fechas bloqueadas). Un partido
@@ -523,7 +527,9 @@ export function proponerProgramacion(p: {
    */
   restricciones?: Map<string, RestriccionesEquipo>;
 }): { id: string; programado_at: string; cancha: number }[] {
-  const canchas = Math.max(1, p.canchas);
+  const todas = Array.from({ length: Math.max(1, p.canchas) }, (_, i) => i + 1);
+  const lista = p.canchasUsar && p.canchasUsar.length > 0 ? [...new Set(p.canchasUsar)].sort((a, b) => a - b) : todas;
+  const canchas = lista.length;
   const porDia = Math.max(1, p.calendario.partidos_por_dia);
   const dias = new Set(p.calendario.dias_juego);
   const carga = new Map(p.cargas);
@@ -546,6 +552,7 @@ export function proponerProgramacion(p: {
   let llenados = 0;
   // Tope de seguridad: un año de calendario.
   for (let vuelta = 0; vuelta < 366 && llenados < p.diasDeJuego && restantes.length > 0; vuelta++, fecha = sumarDias(fecha, 1)) {
+    if (p.hasta && fecha > p.hasta) break;
     const diaSemana = new Date(`${fecha}T12:00:00Z`).getUTCDay();
     if (dias.size > 0 && !dias.has(diaSemana)) continue;
     llenados++;
@@ -557,7 +564,7 @@ export function proponerProgramacion(p: {
     for (let k = 0; k < porDia && restantes.length > 0; k++) {
       const inicio = new Date(`${fecha}T${p.calendario.hora_inicio}:00-05:00`);
       inicio.setMinutes(inicio.getMinutes() + Math.floor(k / canchas) * p.duracionMin);
-      const cancha = (k % canchas) + 1;
+      const cancha = lista[k % canchas];
       if (turnoOcupado.has(`${inicio.getTime()}|${cancha}`)) continue;
 
       const sinJugarHoy = restantes.filter(

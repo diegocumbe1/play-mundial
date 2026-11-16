@@ -3344,10 +3344,25 @@ const programarSchema = z.object({
    * - `sin_fecha`: solo los partidos sin fecha (lo de siempre).
    * - `conflictos`: además, los ya programados que chocan con las restricciones de sus equipos.
    * - `todo`: rehace la programación de todos los partidos no jugados desde `desde`.
+   * - `seleccion`: solo los partidos elegidos en `ids` (uno, varios o todos); lo demás queda igual.
    */
-  modo: z.enum(["sin_fecha", "conflictos", "todo"]).default("sin_fecha"),
+  modo: z.enum(["sin_fecha", "conflictos", "todo", "seleccion"]).default("sin_fecha"),
+  /** Con modo `seleccion`: los partidos no jugados (con o sin fecha) que se programan de nuevo; el resto no se toca. */
+  ids: z.array(z.string().uuid()).max(500).optional(),
+  /** Último día en que se programa (p. ej. domingo de «esta semana» o de «la siguiente»). */
+  hasta: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  /**
+   * Partidos que se dejan exactamente en este turno (los que el organizador marcó «Conservar» en la
+   * propuesta o ajustó a mano). No se vuelven a sugerir; ocupan su turno y cuentan en la carga.
+   */
+  fijos: z
+    .array(z.object({ id: z.string().uuid(), programado_at: z.string(), cancha: z.number().int().min(1) }))
+    .max(500)
+    .optional(),
   /** Si viene, solo se programan los partidos sin fecha de ese equipo (p. ej. uno que llegó tarde). */
   equipo_id: z.string().uuid().optional(),
+  /** Canchas en las que se programa (por defecto, todas las del torneo). */
+  canchas: z.array(z.number().int().min(1)).optional(),
 });
 
 /**
@@ -3375,6 +3390,10 @@ export async function programarPartidos(
   const parsed = programarSchema.safeParse(input);
   if (!parsed.success) return { success: false, error: parsed.error.issues[0].message };
 
+  if (parsed.data.canchas?.some((c) => c > Math.max(1, torneo.cantidad_canchas))) {
+    return { success: false, error: `El torneo tiene ${torneo.cantidad_canchas} cancha(s).` };
+  }
+
   const svc = createServiceRoleClient();
   const [{ data: todosData }, { data: eqs }] = await Promise.all([
     svc.from("encuentros").select("*").eq("torneo_id", torneoId),
@@ -3397,43 +3416,84 @@ export async function programarPartidos(
   const deCategoria = todos.filter((m) => m.categoria_id === categoriaId);
   const conEquipos = (m: Encuentro) => m.estado === "programado" && !!m.equipo_a_id && !!m.equipo_b_id;
   const soloEquipo = parsed.data.equipo_id;
+  const modo0 = parsed.data.modo;
   const sinFecha = deCategoria.filter(
     (m) =>
       conEquipos(m) &&
       !m.programado_at &&
+      (modo0 !== "seleccion" || (parsed.data.ids ?? []).includes(m.id)) &&
       (!soloEquipo || m.equipo_a_id === soloEquipo || m.equipo_b_id === soloEquipo),
   );
   // Partidos con fecha que se vuelven a programar (no jugados y a partir de `desde`).
   const desdeISO = new Date(`${parsed.data.desde}T00:00:00-05:00`).getTime();
   const { modo } = parsed.data;
+  const idsElegidos = new Set(parsed.data.ids ?? []);
+  if (modo === "seleccion" && idsElegidos.size === 0) {
+    return { success: false, error: "Marca al menos un partido para reprogramar." };
+  }
   const reprogramar = deCategoria.filter(
     (m) =>
       conEquipos(m) &&
       !!m.programado_at &&
       (modo === "todo"
-        ? new Date(m.programado_at).getTime() >= desdeISO
-        : modo === "conflictos" && !!choque(m)),
+        ? new Date(m.programado_at).getTime() >= desdeISO &&
+          (!parsed.data.hasta || fechaColombia(m.programado_at) <= parsed.data.hasta)
+        : modo === "seleccion"
+          ? idsElegidos.has(m.id)
+          : modo === "conflictos" && !!choque(m)),
   );
-  const moverIds = new Set(reprogramar.map((m) => m.id));
-  const pendientes = [...sinFecha, ...reprogramar];
+  const fijos = parsed.data.fijos ?? [];
+  const fijoIds = new Set(fijos.map((f) => f.id));
+  const moverIds = new Set(reprogramar.filter((m) => !fijoIds.has(m.id)).map((m) => m.id));
+  const pendientes = [...sinFecha, ...reprogramar].filter((m) => !fijoIds.has(m.id));
+  const fijosFilas = fijos.map((f) => ({ f, m: todos.find((m) => m.id === f.id && m.estado === "programado") }));
+  const turnosFijos = new Set<string>();
+  for (const { f, m } of fijosFilas) {
+    if (!m || !m.equipo_a_id || !m.equipo_b_id) return { success: false, error: "Un partido conservado ya no se puede mover." };
+    if (f.cancha > Math.max(1, torneo.cantidad_canchas)) {
+      return { success: false, error: `El torneo tiene ${torneo.cantidad_canchas} cancha(s).` };
+    }
+    const llave = `${new Date(f.programado_at).getTime()}|${f.cancha}`;
+    if (Number.isNaN(new Date(f.programado_at).getTime())) return { success: false, error: "Fecha inválida en un partido conservado." };
+    if (turnosFijos.has(llave)) return { success: false, error: "Dos partidos conservados quedaron a la misma hora y cancha." };
+    turnosFijos.add(llave);
+    const choca = todos.find(
+      (o) => o.id !== m.id && o.programado_at && !moverIds.has(o.id) && !fijoIds.has(o.id) &&
+        `${new Date(o.programado_at).getTime()}|${o.cancha ?? 1}` === llave,
+    );
+    if (choca) return { success: false, error: "Un partido conservado choca con otro que ya está en esa hora y cancha." };
+  }
   // Carga de cada equipo: partidos ya jugados o con fecha (sin contar los que se mueven).
   const cargas = new Map<string, number>();
   for (const m of deCategoria) {
-    if (moverIds.has(m.id) || (m.estado === "programado" && !m.programado_at)) continue;
+    if (moverIds.has(m.id) || fijoIds.has(m.id) || (m.estado === "programado" && !m.programado_at)) continue;
     for (const id of [m.equipo_a_id, m.equipo_b_id]) if (id) cargas.set(id, (cargas.get(id) ?? 0) + 1);
+  }
+  for (const { m } of fijosFilas) {
+    for (const id of [m?.equipo_a_id, m?.equipo_b_id]) if (id) cargas.set(id, (cargas.get(id) ?? 0) + 1);
   }
 
   const asignados = proponerProgramacion({
     pendientes,
     // Las canchas son del torneo: cuenta lo programado de todas las categorías
     // (menos lo que se está moviendo, que libera su turno).
-    ocupados: todos.filter((m) => m.programado_at && !moverIds.has(m.id)),
+    ocupados: [
+      ...todos.filter((m) => m.programado_at && !moverIds.has(m.id) && !fijoIds.has(m.id)),
+      ...fijosFilas.map(({ f, m }) => ({
+        equipo_a_id: m!.equipo_a_id,
+        equipo_b_id: m!.equipo_b_id,
+        programado_at: f.programado_at,
+        cancha: f.cancha,
+      })),
+    ],
     restricciones,
     cargas,
     desde: parsed.data.desde,
     diasDeJuego: parsed.data.dias,
+    hasta: parsed.data.hasta,
     calendario: leerReglas(torneo.reglas).calendario,
     canchas: torneo.cantidad_canchas,
+    canchasUsar: parsed.data.canchas,
     duracionMin: torneo.duracion_partido_minutos ?? 45,
   });
 
@@ -3465,7 +3525,15 @@ export async function programarPartidos(
       };
     });
 
-  if (aplicar && (asignados.length > 0 || reprogramar.length > 0)) {
+  if (aplicar && (asignados.length > 0 || reprogramar.length > 0 || fijos.length > 0)) {
+    for (const { f } of fijosFilas) {
+      const { error } = await svc
+        .from("encuentros")
+        .update({ programado_at: f.programado_at, cancha: f.cancha })
+        .eq("id", f.id)
+        .eq("estado", "programado");
+      if (error) return { success: false, error: error.message };
+    }
     for (const x of asignados) {
       const query = svc.from("encuentros").update({ programado_at: x.programado_at, cancha: x.cancha }).eq("id", x.id);
       // Uno sin fecha solo se llena si sigue sin fecha; uno que se mueve, si aún no se jugó.
@@ -3474,7 +3542,7 @@ export async function programarPartidos(
     }
     // Los que se iban a mover y no cupieron quedan «Por programar»: su turno viejo
     // ya pudo quedar ocupado (o choca con las restricciones).
-    const sinTurno = reprogramar.filter((m) => !asignadoIds.has(m.id)).map((m) => m.id);
+    const sinTurno = reprogramar.filter((m) => !asignadoIds.has(m.id) && !fijoIds.has(m.id)).map((m) => m.id);
     if (sinTurno.length > 0) {
       const { error } = await svc
         .from("encuentros")

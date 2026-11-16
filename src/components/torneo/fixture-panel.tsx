@@ -244,6 +244,7 @@ export function FixturePanel({
             encuentros={encuentros.filter((e) => e.categoria_id === c.id)}
             clasificanPorDefecto={reglas.tabla.clasifican}
             calendario={reglas.calendario}
+            nombresCanchas={reglas.juego.nombres_canchas}
             conflictos={conflictos.filter((x) => x.encuentro.categoria_id === c.id)}
             nombreEquipo={nombre}
             onAbrirPartido={setEditando}
@@ -459,9 +460,11 @@ function ControlCategoria({
   calendario,
   conflictos,
   nombreEquipo,
+  nombresCanchas,
   onAbrirPartido,
 }: {
   torneo: Torneo;
+  nombresCanchas: string[];
   categoriaId: string | null;
   nombre: string;
   confirmados: number;
@@ -672,6 +675,12 @@ function ControlCategoria({
             conflictos={conflictos.length}
             conFecha={conFechaSinJugar}
             sinFecha={sinFecha}
+            canchas={Math.max(1, torneo.cantidad_canchas)}
+            nombresCanchas={nombresCanchas}
+            candidatos={encuentros
+              .filter((m) => m.estado === "programado" && m.equipo_a_id && m.equipo_b_id)
+              .sort((x, y) => (x.programado_at ?? "9").localeCompare(y.programado_at ?? "9"))
+              .map((m) => ({ id: m.id, texto: `${nombreEquipo(m.equipo_a_id)} vs ${nombreEquipo(m.equipo_b_id)}`, fecha: m.programado_at }))}
           />
           {!conResultados && (
             <Button size="sm" variant="ghost" className="self-start" onClick={() => setRehacer(true)}>
@@ -1392,7 +1401,15 @@ function ProgramarPartidos({
   conFecha,
   equipoId,
   abiertoInicial = false,
+  canchas = 1,
+  nombresCanchas = [],
+  candidatos = [],
 }: {
+  /** Partidos no jugados que se pueden elegir para reprogramar (con o sin fecha). */
+  candidatos?: { id: string; texto: string; fecha: string | null }[];
+  /** Canchas del torneo y sus nombres: con 2 o más se elige en cuáles programar. */
+  canchas?: number;
+  nombresCanchas?: string[];
   torneoId: string;
   categoriaId: string | null;
   calendario: ReglasTorneo["calendario"];
@@ -1410,8 +1427,30 @@ function ProgramarPartidos({
   const [abierto, setAbierto] = useState(abiertoInicial);
   const [desde, setDesde] = useState(() => partesColombia(new Date().toISOString()).fecha);
   const [dias, setDias] = useState(String(Math.max(1, calendario.dias_juego.length || 1)));
-  const [propuesta, setPropuesta] = useState<Propuesta | null>(null);
-  type ModoProgramar = "sin_fecha" | "conflictos" | "todo";
+  const [propuesta, setPropuestaRaw] = useState<Propuesta | null>(null);
+  /** Partidos que el organizador dejó fijos (marcó «Conservar» en la propuesta o los ajustó a mano). */
+  type Fijo = { id: string; a: string; b: string; fecha: string; hora: string; cancha: number };
+  const [fijos, setFijos] = useState<Record<string, Fijo>>({});
+  /** Cualquier cambio de opciones invalida la propuesta y lo que se había fijado en ella. */
+  function setPropuesta(p: Propuesta | null) {
+    setPropuestaRaw(p);
+    if (!p) setFijos({});
+  }
+  type Alcance = "semana" | "siguiente" | "todo";
+  const [alcance, setAlcance] = useState<Alcance>("todo");
+  const [canchasSel, setCanchasSel] = useState<number[]>(() => Array.from({ length: canchas }, (_, i) => i + 1));
+  const nombreCancha = (n: number) => nombresCanchas[n - 1]?.trim() || `Cancha ${n}`;
+  function alternarCancha(n: number) {
+    setCanchasSel((prev) => {
+      const sig = prev.includes(n) ? prev.filter((x) => x !== n) : [...prev, n];
+      return sig.length === 0 ? prev : sig.sort((a, b) => a - b); // siempre al menos una
+    });
+    setPropuesta(null);
+  }
+  type ModoProgramar = "sin_fecha" | "conflictos" | "todo" | "seleccion";
+  /** Partidos con fecha que se dejan como están; el resto se reprograma (modo «Conservar y reprogramar el resto»). */
+  const [conservar, setConservar] = useState<string[]>(() => candidatos.filter((c) => c.fecha).map((c) => c.id));
+  const ids = candidatos.filter((c) => !conservar.includes(c.id)).map((c) => c.id);
   const [modo, setModo] = useState<ModoProgramar>(conflictos > 0 ? "conflictos" : "sin_fecha");
 
   const textoCalendario =
@@ -1420,13 +1459,47 @@ function ProgramarPartidos({
       : "todos los días") +
     ` desde las ${calendario.hora_inicio}, ${calendario.partidos_por_dia} partido(s) por día`;
 
+  // Rango según el alcance: esta semana (desde hoy hasta el domingo), la siguiente (lunes a domingo) o todo.
+  const hoy = partesColombia(new Date().toISOString()).fecha;
+  const sumar = (f: string, n: number) => {
+    const d = new Date(`${f}T12:00:00Z`);
+    d.setUTCDate(d.getUTCDate() + n);
+    return d.toISOString().slice(0, 10);
+  };
+  const lunes = sumar(hoy, -((new Date(`${hoy}T12:00:00Z`).getUTCDay() + 6) % 7));
+  const rango =
+    alcance === "semana"
+      ? { desde: hoy, hasta: sumar(lunes, 6) }
+      : alcance === "siguiente"
+        ? { desde: sumar(lunes, 7), hasta: sumar(lunes, 13) }
+        : { desde, hasta: undefined as string | undefined };
+  const fmtDia = (f: string) => new Intl.DateTimeFormat("es-CO", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" }).format(new Date(`${f}T12:00:00Z`));
+
   function correr(aplicar: boolean) {
     startTransition(async () => {
-      const r = await programarPartidos(torneoId, categoriaId, { desde, dias: Number(dias) || 1, modo, equipo_id: equipoId }, aplicar);
+      const r = await programarPartidos(
+        torneoId,
+        categoriaId,
+        {
+          desde: rango.desde,
+          hasta: rango.hasta,
+          dias: alcance === "todo" ? Number(dias) || 1 : 14,
+          modo,
+          equipo_id: equipoId,
+          canchas: canchas > 1 ? canchasSel : undefined,
+          ids: modo === "seleccion" ? ids : undefined,
+          fijos: Object.values(fijos).map((x) => ({
+            id: x.id,
+            programado_at: new Date(`${x.fecha}T${x.hora}:00-05:00`).toISOString(),
+            cancha: x.cancha,
+          })),
+        },
+        aplicar,
+      );
       if (!r.success) return void toast.error(r.error);
-      if (!aplicar) return void setPropuesta(r.data);
+      if (!aplicar) return void setPropuestaRaw(r.data);
       toast.success(
-        `${r.data.propuesta.length} partidos programados` +
+        `${r.data.propuesta.length + Object.keys(fijos).length} partidos programados` +
           (r.data.sinCupo.length > 0 ? ` · ${r.data.sinCupo.length} quedaron por programar` : ""),
       );
       setPropuesta(null);
@@ -1459,6 +1532,11 @@ function ProgramarPartidos({
             Reprogramar todo lo no jugado
           </Button>
         )}
+        {candidatos.length > 0 && !equipoId && (
+          <Button size="sm" variant="ghost" onClick={() => abrir("seleccion")}>
+            Elegir cuáles reprogramar
+          </Button>
+        )}
       </div>
     );
   }
@@ -1466,6 +1544,7 @@ function ProgramarPartidos({
     ...(sinFecha > 0 ? [{ value: "sin_fecha" as const, label: `Solo sin fecha (${sinFecha})` }] : []),
     ...(conflictos > 0 ? [{ value: "conflictos" as const, label: `Sin fecha + los que chocan (${conflictos})` }] : []),
     ...(equipoId ? [] : [{ value: "todo" as const, label: "Rehacer todo lo no jugado" }]),
+    ...(equipoId || candidatos.length === 0 ? [] : [{ value: "seleccion" as const, label: "Conservar y reprogramar el resto" }]),
   ];
 
   return (
@@ -1491,7 +1570,7 @@ function ProgramarPartidos({
           options={opcionesModo}
         />
       </Campo>}
-      <div className="grid grid-cols-2 gap-3">
+      {alcance === "todo" && <div className="grid grid-cols-2 gap-3">
         <Campo label="Desde">
           <Input type="date" value={desde} onChange={(e) => { setDesde(e.target.value); setPropuesta(null); }} />
         </Campo>
@@ -1502,7 +1581,93 @@ function ProgramarPartidos({
             onChange={(e) => { setDias(e.target.value.replace(/\D/g, "")); setPropuesta(null); }}
           />
         </Campo>
-      </div>
+      </div>}
+
+      {modo === "seleccion" && (
+        <Campo
+          label={`Partidos · ${conservar.length} conservados, ${ids.length} a reprogramar`}
+          info="Marca «Conservar» en los que están bien: se quedan con su fecha, hora y cancha. Los que dejes sin marcar son los que se vuelven a programar. Los jugados o en vivo no aparecen."
+        >
+          <div className="flex flex-col gap-1.5">
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" size="sm" variant="outline" onClick={() => { setConservar(candidatos.filter((c) => c.fecha).map((c) => c.id)); setPropuesta(null); }}>
+                Conservar todos
+              </Button>
+              <Button type="button" size="sm" variant="ghost" onClick={() => { setConservar([]); setPropuesta(null); }}>
+                Ninguno (reprogramar todos)
+              </Button>
+            </div>
+            <ul className="border-border divide-border max-h-56 divide-y overflow-y-auto rounded-lg border text-sm">
+              {candidatos.map((c) => (
+                <li key={c.id}>
+                  <label className={"flex items-start gap-2 px-3 py-1.5 " + (c.fecha ? "cursor-pointer" : "opacity-70")}>
+                    <input
+                      type="checkbox"
+                      className="mt-0.5 size-4 shrink-0"
+                      disabled={!c.fecha}
+                      checked={conservar.includes(c.id)}
+                      onChange={(e) => {
+                        setConservar((prev) => (e.target.checked ? [...prev, c.id] : prev.filter((x) => x !== c.id)));
+                        setPropuesta(null);
+                      }}
+                    />
+                    <span className="min-w-0">
+                      {c.texto}
+                      <span className="text-muted-foreground block text-xs">
+                        {c.fecha ? `${formatFechaHoraCO(c.fecha)} · Conservar` : "Por programar (se programa)"}
+                      </span>
+                    </span>
+                  </label>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </Campo>
+      )}
+
+      <Campo
+        label="Cuándo programar"
+        info="Esta semana: desde hoy hasta el domingo. Semana siguiente: de lunes a domingo. Todo el calendario: desde la fecha que elijas, tantos días de juego como indiques."
+      >
+        <Segmentado
+          value={alcance}
+          onChange={(v) => { setAlcance(v as Alcance); setPropuesta(null); }}
+          options={[
+            { value: "semana", label: "Esta semana" },
+            { value: "siguiente", label: "Semana siguiente" },
+            { value: "todo", label: "Todo el calendario" },
+          ]}
+        />
+        {alcance !== "todo" && (
+          <p className="text-muted-foreground mt-1 text-xs">
+            Del {fmtDia(rango.desde)} al {fmtDia(rango.hasta!)}
+          </p>
+        )}
+      </Campo>
+
+      {canchas > 1 && (
+        <Campo
+          label="Canchas a usar"
+          info="Elige en qué canchas se reparten los partidos. Los turnos ya ocupados de cada cancha se respetan. Si dejas una sola, todos van a esa cancha, uno tras otro."
+        >
+          <div className="flex flex-wrap gap-2">
+            {Array.from({ length: canchas }, (_, i) => i + 1).map((n) => (
+              <button
+                key={n}
+                type="button"
+                aria-pressed={canchasSel.includes(n)}
+                onClick={() => alternarCancha(n)}
+                className={
+                  "rounded-full border px-3 py-1.5 text-xs font-medium transition-colors " +
+                  (canchasSel.includes(n) ? "bg-primary text-primary-foreground border-transparent" : "text-muted-foreground hover:bg-muted")
+                }
+              >
+                {nombreCancha(n)}
+              </button>
+            ))}
+          </div>
+        </Campo>
+      )}
 
       {propuesta && propuesta.sinCupo.length > 0 && (
         <div className="flex flex-col gap-1 rounded-lg border border-amber-500/40 bg-amber-500/10 p-2 text-xs">
@@ -1515,36 +1680,82 @@ function ProgramarPartidos({
           {propuesta.sinCupo.length > 6 && <p>y {propuesta.sinCupo.length - 6} más…</p>}
         </div>
       )}
-      {propuesta && (
-        propuesta.propuesta.length === 0 ? (
-          <p className="text-xs text-amber-600 dark:text-amber-400">
-            No hay turnos libres en esos días para los partidos pendientes.
-          </p>
-        ) : (
-          <ul className="border-border divide-border divide-y rounded-lg border text-sm">
-            {propuesta.propuesta.map((p) => (
-              <li key={p.id} className="flex flex-wrap items-baseline gap-x-2 px-3 py-1.5">
-                <span className="text-muted-foreground w-36 shrink-0 text-xs">
-                  {formatFechaHoraCO(p.programado_at)}
-                  {p.antes && p.antes !== p.programado_at && (
-                    <span className="block line-through opacity-70">{formatFechaHoraCO(p.antes)}</span>
+      {propuesta && (() => {
+        type Fila = Fijo & { sub: string; fijo: boolean; antes: string | null };
+        const deServidor: Fila[] = propuesta.propuesta
+          .filter((p) => !fijos[p.id])
+          .map((p) => {
+            const { fecha, hora } = partesColombia(p.programado_at);
+            return { id: p.id, a: p.a, b: p.b, fecha, hora, cancha: p.cancha, sub: p.grupo ? `Grupo ${p.grupo}` : labelFase(p.fase as Encuentro["fase"]), fijo: false, antes: p.antes };
+          });
+        const deFijos: Fila[] = Object.values(fijos).map((x) => ({ ...x, sub: "Conservado", fijo: true, antes: null }));
+        const filas = [...deFijos, ...deServidor].sort((x, y) => `${x.fecha}T${x.hora}`.localeCompare(`${y.fecha}T${y.hora}`) || x.cancha - y.cancha);
+        if (filas.length === 0)
+          return (
+            <p className="text-xs text-amber-600 dark:text-amber-400">
+              No hay turnos libres en esos días para los partidos pendientes.
+            </p>
+          );
+        const fijar = (x: Fila, cambios: Partial<Fijo>) =>
+          setFijos((prev) => ({ ...prev, [x.id]: { id: x.id, a: x.a, b: x.b, fecha: x.fecha, hora: x.hora, cancha: x.cancha, ...cambios } }));
+        const campoCls = "border-input bg-background h-8 min-w-0 rounded-md border px-1.5 text-xs";
+        return (
+          <div className="flex flex-col gap-1.5">
+            <p className="text-muted-foreground text-xs">
+              Ajusta la cancha o la hora de cualquier partido, o marca «Conservar» en los que están bien. Luego
+              «Volver a sugerir» reparte solo el resto, respetando los que conservaste.
+            </p>
+            <ul className="border-border divide-border divide-y rounded-lg border text-sm">
+              {filas.map((x) => (
+                <li key={x.id} className={"flex flex-col gap-1.5 px-3 py-2 " + (x.fijo ? "bg-primary/5" : "")}>
+                  <div className="flex flex-wrap items-baseline justify-between gap-x-2">
+                    <span className="min-w-0">
+                      {x.a} <span className="text-muted-foreground">vs</span> {x.b}
+                    </span>
+                    <span className="text-muted-foreground text-xs">{x.sub}</span>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <input type="date" value={x.fecha} aria-label="Fecha" className={campoCls} onChange={(e) => e.target.value && fijar(x, { fecha: e.target.value })} />
+                    <input type="time" value={x.hora} aria-label="Hora" className={campoCls} onChange={(e) => e.target.value && fijar(x, { hora: e.target.value })} />
+                    {canchas > 1 && (
+                      <select value={x.cancha} aria-label="Cancha" className={campoCls} onChange={(e) => fijar(x, { cancha: Number(e.target.value) })}>
+                        {Array.from({ length: canchas }, (_, i) => i + 1).map((n) => (
+                          <option key={n} value={n}>
+                            {nombreCancha(n)}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                    <label className="ml-auto flex cursor-pointer items-center gap-1.5 text-xs">
+                      <input
+                        type="checkbox"
+                        className="size-4"
+                        checked={x.fijo}
+                        onChange={(e) => (e.target.checked ? fijar(x, {}) : setFijos((prev) => { const { [x.id]: _quitado, ...resto } = prev; void _quitado; return resto; }))}
+                      />
+                      Conservar
+                    </label>
+                  </div>
+                  {x.antes && x.antes !== new Date(`${x.fecha}T${x.hora}:00-05:00`).toISOString() && (
+                    <span className="text-muted-foreground text-xs line-through opacity-70">Antes: {formatFechaHoraCO(x.antes)}</span>
                   )}
-                </span>
-                <span className="text-muted-foreground text-xs">{p.grupo ? `Grupo ${p.grupo}` : labelFase(p.fase as Encuentro["fase"])}</span>
-                <span className="min-w-0">
-                  {p.a} <span className="text-muted-foreground">vs</span> {p.b}
-                </span>
-              </li>
-            ))}
-          </ul>
-        )
-      )}
+                </li>
+              ))}
+            </ul>
+          </div>
+        );
+      })()}
 
       <div className="flex flex-wrap justify-end gap-2">
         <Button size="sm" variant="ghost" disabled={pending} onClick={() => { setAbierto(false); setPropuesta(null); }}>
           Cancelar
         </Button>
-        {propuesta && (propuesta.propuesta.length > 0 || (modo !== "sin_fecha" && propuesta.sinCupo.length > 0)) ? (
+        {propuesta && (
+          <Button size="sm" variant="outline" disabled={pending} onClick={() => correr(false)}>
+            Volver a sugerir
+          </Button>
+        )}
+        {propuesta && (propuesta.propuesta.length > 0 || Object.keys(fijos).length > 0 || (modo !== "sin_fecha" && propuesta.sinCupo.length > 0)) ? (
           <Button size="sm" disabled={pending} onClick={() => correr(true)}>
             Guardar programación
           </Button>
