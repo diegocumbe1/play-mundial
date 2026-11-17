@@ -171,6 +171,10 @@ export function ArmarDia({
       ids.map((id) => ({ nombre: nombre(id), restricciones: restricciones.get(id) })),
     );
     if (choque) return choque;
+    const mismaHora = turnos.find(
+      (o) => o.key !== t.key && o.hora === t.hora && o.cancha !== t.cancha && [o.a, o.b].some((id) => id && ids.includes(id)),
+    );
+    if (mismaHora) return "Un equipo no puede jugar a la misma hora en dos canchas (no se podrá guardar).";
     const repetidos = ids.filter((id) => (equiposDelDia.get(id) ?? 0) > 1).map(nombre);
     return repetidos.length > 0 ? `${repetidos.join(" y ")} juega(n) más de una vez este día.` : null;
   }

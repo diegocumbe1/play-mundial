@@ -499,8 +499,9 @@ type PartidoOcupado = Pick<Encuentro, "equipo_a_id" | "equipo_b_id" | "programad
  *   según la duración, llenando primero todas las canchas de cada turno.
  * - Respeta las restricciones de horario de cada equipo (días, horas, fechas
  *   bloqueadas): si un partido no cabe en ningún turno, queda sin fecha.
- * - Respeta lo ya programado: no usa un turno ocupado y un equipo nunca juega
- *   dos veces el mismo día.
+ * - Respeta lo ya programado: no usa un turno ocupado. Un equipo juega 1 partido por
+ *   día (2 si solo puede un día de los de juego, en horas distintas) y nunca a la misma
+ *   hora en dos canchas.
  * - Alterna grupos (A, B, A, B…) y da prioridad a los equipos que llevan menos
  *   partidos (jugados + programados), para que todos avancen parejo.
  *
@@ -514,6 +515,8 @@ export function proponerProgramacion(p: {
   desde: string;
   /** Cuántos días de juego llenar. */
   diasDeJuego: number;
+  /** Partidos por día (todas las canchas juntas). Sin valor = el del calendario del torneo. */
+  porDia?: number;
   /** Último día posible, "YYYY-MM-DD" (p. ej. fin de semana). Sin valor = solo manda `diasDeJuego`. */
   hasta?: string;
   calendario: ReglasTorneo["calendario"];
@@ -530,7 +533,16 @@ export function proponerProgramacion(p: {
   const todas = Array.from({ length: Math.max(1, p.canchas) }, (_, i) => i + 1);
   const lista = p.canchasUsar && p.canchasUsar.length > 0 ? [...new Set(p.canchasUsar)].sort((a, b) => a - b) : todas;
   const canchas = lista.length;
-  const porDia = Math.max(1, p.calendario.partidos_por_dia);
+  const porDia = Math.max(1, p.porDia ?? p.calendario.partidos_por_dia);
+  // Equipos que solo pueden UN día de los que se juegan: ese día se les programan 2 partidos
+  // (en horas distintas) para que su semana valga la pena; los demás juegan 1 por día.
+  const soloUnDia = new Set<string>();
+  for (const [id, r] of p.restricciones ?? []) {
+    if (r.dias.length === 0 || r.dias.length >= 7) continue;
+    const base = p.calendario.dias_juego.length > 0 ? p.calendario.dias_juego : [0, 1, 2, 3, 4, 5, 6];
+    if (base.filter((d) => r.dias.includes(d)).length === 1) soloUnDia.add(id);
+  }
+  const cupo = (id: string) => (soloUnDia.has(id) ? 2 : 1);
   const dias = new Set(p.calendario.dias_juego);
   const carga = new Map(p.cargas);
   const restantes = [...p.pendientes].sort((x, y) => x.ronda - y.ronda || x.orden - y.orden);
@@ -538,13 +550,21 @@ export function proponerProgramacion(p: {
   const turnoOcupado = new Set(
     p.ocupados.filter((o) => o.programado_at).map((o) => `${new Date(o.programado_at!).getTime()}|${o.cancha ?? 1}`),
   );
-  const equiposDelDia = new Map<string, Set<string>>();
+  const equiposDelDia = new Map<string, Map<string, number>>();
+  /** Horas (ms) en que cada equipo ya juega: nunca dos partidos a la misma hora, ni en canchas distintas. */
+  const horasEquipo = new Map<string, Set<number>>();
   for (const o of p.ocupados) {
     if (!o.programado_at) continue;
     const f = fechaColombia(o.programado_at);
-    const set = equiposDelDia.get(f) ?? new Set<string>();
-    for (const id of [o.equipo_a_id, o.equipo_b_id]) if (id) set.add(id);
-    equiposDelDia.set(f, set);
+    const cuenta = equiposDelDia.get(f) ?? new Map<string, number>();
+    for (const id of [o.equipo_a_id, o.equipo_b_id]) {
+      if (!id) continue;
+      cuenta.set(id, (cuenta.get(id) ?? 0) + 1);
+      const h = horasEquipo.get(id) ?? new Set<number>();
+      h.add(new Date(o.programado_at).getTime());
+      horasEquipo.set(id, h);
+    }
+    equiposDelDia.set(f, cuenta);
   }
 
   const asignados: { id: string; programado_at: string; cancha: number }[] = [];
@@ -557,7 +577,7 @@ export function proponerProgramacion(p: {
     if (dias.size > 0 && !dias.has(diaSemana)) continue;
     llenados++;
 
-    const ocupadosHoy = equiposDelDia.get(fecha) ?? new Set<string>();
+    const ocupadosHoy = equiposDelDia.get(fecha) ?? new Map<string, number>();
     equiposDelDia.set(fecha, ocupadosHoy);
     let ultimoGrupo: string | null = null;
 
@@ -568,13 +588,17 @@ export function proponerProgramacion(p: {
       if (turnoOcupado.has(`${inicio.getTime()}|${cancha}`)) continue;
 
       const sinJugarHoy = restantes.filter(
-        (m) => !ocupadosHoy.has(m.equipo_a_id!) && !ocupadosHoy.has(m.equipo_b_id!),
+        (m) =>
+          (ocupadosHoy.get(m.equipo_a_id!) ?? 0) < cupo(m.equipo_a_id!) &&
+          (ocupadosHoy.get(m.equipo_b_id!) ?? 0) < cupo(m.equipo_b_id!),
       );
       if (sinJugarHoy.length === 0) break;
       // Solo los partidos cuyos dos equipos pueden jugar en este turno; si ninguno
       // puede, se prueba el turno siguiente (más tarde puede servirle a alguien).
       const libres = sinJugarHoy.filter(
         (m) =>
+          !horasEquipo.get(m.equipo_a_id!)?.has(inicio.getTime()) &&
+          !horasEquipo.get(m.equipo_b_id!)?.has(inicio.getTime()) &&
           !motivoRestriccion(p.restricciones?.get(m.equipo_a_id!), inicio) &&
           !motivoRestriccion(p.restricciones?.get(m.equipo_b_id!), inicio),
       );
@@ -586,8 +610,15 @@ export function proponerProgramacion(p: {
       const rigidez = (m: PartidoProgramable) =>
         Number(tieneRestricciones(p.restricciones?.get(m.equipo_a_id!))) +
         Number(tieneRestricciones(p.restricciones?.get(m.equipo_b_id!)));
+      // Equipo de un solo día que ya jugó hoy y necesita su segundo partido: va primero.
+      const urgente = (m: PartidoProgramable) =>
+        Number([m.equipo_a_id!, m.equipo_b_id!].some((id) => soloUnDia.has(id) && (ocupadosHoy.get(id) ?? 0) === 1));
+      const diaUnico = (m: PartidoProgramable) =>
+        Number([m.equipo_a_id!, m.equipo_b_id!].some((id) => soloUnDia.has(id)));
       libres.sort(
         (x, y) =>
+          urgente(y) - urgente(x) ||
+          diaUnico(y) - diaUnico(x) ||
           rigidez(y) - rigidez(x) ||
           Number(x.grupo === ultimoGrupo && ultimoGrupo !== null) -
             Number(y.grupo === ultimoGrupo && ultimoGrupo !== null) ||
@@ -598,7 +629,10 @@ export function proponerProgramacion(p: {
       const elegido = libres[0];
       restantes.splice(restantes.indexOf(elegido), 1);
       for (const id of [elegido.equipo_a_id!, elegido.equipo_b_id!]) {
-        ocupadosHoy.add(id);
+        ocupadosHoy.set(id, (ocupadosHoy.get(id) ?? 0) + 1);
+        const h = horasEquipo.get(id) ?? new Set<number>();
+        h.add(inicio.getTime());
+        horasEquipo.set(id, h);
         carga.set(id, (carga.get(id) ?? 0) + 1);
       }
       turnoOcupado.add(`${inicio.getTime()}|${cancha}`);

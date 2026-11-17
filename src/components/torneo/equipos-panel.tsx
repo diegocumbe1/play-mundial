@@ -66,6 +66,7 @@ import type {
   Torneo,
 } from "@/types";
 
+type Orden = "nombre" | "menos" | "mas";
 type Filtro = "todos" | "pendiente" | "confirmado" | "retirado" | "deben";
 type Vista = "tarjetas" | "lista";
 const CLAVE_VISTA = "torneo:equipos:vista";
@@ -157,6 +158,7 @@ export function EquiposPanel({
   const [pending, startTransition] = useTransition();
   const [filtro, setFiltro] = useState<Filtro>("todos");
   const [busqueda, setBusqueda] = useState("");
+  const [orden, setOrden] = useState<Orden>("nombre");
   // Equipo cuya ficha (posición, resultados, fechas) está abierta.
   const [fichaId, setFichaId] = useState<string | null>(null);
   const nombreEquipo = (id: string | null) => equipos.find((x) => x.id === id)?.nombre ?? "Equipo";
@@ -194,7 +196,28 @@ export function EquiposPanel({
     (e) => categoriaActiva === "todas" || e.categoria_id === categoriaActiva,
   );
 
-  const visibles = deCategoria.filter((e) => {
+  // Carga de cada equipo: jugados + con fecha (lo mismo que mira el programador) y los que faltan por programar.
+  const carga = new Map<string, { programados: number; sinFecha: number; jugados: number }>();
+  for (const m of encuentros) {
+    for (const id of [m.equipo_a_id, m.equipo_b_id]) {
+      if (!id) continue;
+      const c = carga.get(id) ?? { programados: 0, sinFecha: 0, jugados: 0 };
+      if (m.estado !== "programado") c.jugados++;
+      else if (m.programado_at) c.programados++;
+      else c.sinFecha++;
+      carga.set(id, c);
+    }
+  }
+  const asignados = (id: string) => {
+    const c = carga.get(id);
+    return c ? c.programados + c.jugados : 0;
+  };
+  const textoCarga = (id: string) => {
+    const c = carga.get(id) ?? { programados: 0, sinFecha: 0, jugados: 0 };
+    return `${c.programados} programados · ${c.sinFecha} por programar · ${c.jugados} jugados`;
+  };
+
+  const filtrados = deCategoria.filter((e) => {
     if (!coincide(e)) return false;
     if (filtro === "todos") return true;
     if (filtro === "deben") {
@@ -202,6 +225,13 @@ export function EquiposPanel({
     }
     return e.estado === filtro;
   });
+  const visibles =
+    orden === "nombre"
+      ? filtrados
+      : [...filtrados].sort(
+          (x, y) =>
+            (orden === "menos" ? 1 : -1) * (asignados(x.id) - asignados(y.id)) || x.nombre.localeCompare(y.nombre),
+        );
 
   function accion(fn: () => Promise<{ success: boolean; error?: string }>, ok: string) {
     startTransition(async () => {
@@ -422,6 +452,21 @@ export function EquiposPanel({
           ]}
         />
       )}
+      {encuentros.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-muted-foreground text-xs">Ordenar:</span>
+          <Segmentado
+            value={orden}
+            onChange={(v) => setOrden(v as Orden)}
+            options={[
+              { value: "nombre", label: "Nombre" },
+              { value: "menos", label: "Menos programados" },
+              { value: "mas", label: "Más programados" },
+            ]}
+          />
+          <span className="text-muted-foreground text-xs">Cuenta partidos jugados + con fecha: con eso el programador da prioridad a quien lleva menos.</span>
+        </div>
+      )}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <Segmentado
           value={filtro}
@@ -530,6 +575,9 @@ export function EquiposPanel({
                       </span>
                     )}
                   </p>
+                  {encuentros.length > 0 && !fueraDeJuego.has(e.id) && (
+                    <p className="text-xs font-medium">Partidos: <span className="text-muted-foreground font-normal">{textoCarga(e.id)}</span></p>
+                  )}
                   <div className="border-border mt-auto flex flex-wrap items-center gap-1.5 border-t pt-2">
                     {acciones(e, false)}
                   </div>
@@ -547,6 +595,7 @@ export function EquiposPanel({
                     <th className="px-3 py-2 font-medium">Equipo</th>
                     <th className="px-3 py-2 font-medium">Responsable</th>
                     <th className="px-3 py-2 text-center font-medium">Jugadores</th>
+                    {encuentros.length > 0 && <th className="px-3 py-2 font-medium">Partidos</th>}
                     <th className="px-3 py-2 font-medium">Pago</th>
                     <th className="px-3 py-2 text-right font-medium">Acciones</th>
                   </tr>
@@ -597,6 +646,11 @@ export function EquiposPanel({
                             <Users className="size-3.5" /> {cantidad}
                           </button>
                         </td>
+                        {encuentros.length > 0 && (
+                          <td className="text-muted-foreground px-3 py-2 text-xs">
+                            {fueraDeJuego.has(e.id) ? "—" : textoCarga(e.id)}
+                          </td>
+                        )}
                         <td className="px-3 py-2">
                           <button
                             type="button"

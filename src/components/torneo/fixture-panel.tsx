@@ -1436,6 +1436,7 @@ function ProgramarPartidos({
     setPropuestaRaw(p);
     if (!p) setFijos({});
   }
+  const [porDia, setPorDia] = useState(String(Math.max(1, calendario.partidos_por_dia)));
   type Alcance = "semana" | "siguiente" | "todo";
   const [alcance, setAlcance] = useState<Alcance>("todo");
   const [canchasSel, setCanchasSel] = useState<number[]>(() => Array.from({ length: canchas }, (_, i) => i + 1));
@@ -1486,6 +1487,7 @@ function ProgramarPartidos({
           dias: alcance === "todo" ? Number(dias) || 1 : 14,
           modo,
           equipo_id: equipoId,
+          por_dia: Number(porDia) || undefined,
           canchas: canchas > 1 ? canchasSel : undefined,
           ids: modo === "seleccion" ? ids : undefined,
           fijos: Object.values(fijos).map((x) => ({
@@ -1597,30 +1599,78 @@ function ProgramarPartidos({
                 Ninguno (reprogramar todos)
               </Button>
             </div>
-            <ul className="border-border divide-border max-h-56 divide-y overflow-y-auto rounded-lg border text-sm">
-              {candidatos.map((c) => (
-                <li key={c.id}>
-                  <label className={"flex items-start gap-2 px-3 py-1.5 " + (c.fecha ? "cursor-pointer" : "opacity-70")}>
-                    <input
-                      type="checkbox"
-                      className="mt-0.5 size-4 shrink-0"
-                      disabled={!c.fecha}
-                      checked={conservar.includes(c.id)}
-                      onChange={(e) => {
-                        setConservar((prev) => (e.target.checked ? [...prev, c.id] : prev.filter((x) => x !== c.id)));
-                        setPropuesta(null);
-                      }}
-                    />
-                    <span className="min-w-0">
-                      {c.texto}
-                      <span className="text-muted-foreground block text-xs">
-                        {c.fecha ? `${formatFechaHoraCO(c.fecha)} · Conservar` : "Por programar (se programa)"}
-                      </span>
-                    </span>
-                  </label>
-                </li>
-              ))}
-            </ul>
+            {(() => {
+              const grupos = new Map<string, typeof candidatos>();
+              for (const c of candidatos) {
+                const k = c.fecha ? partesColombia(c.fecha).fecha : "";
+                grupos.set(k, [...(grupos.get(k) ?? []), c]);
+              }
+              const dias = [...grupos.entries()].sort(([x], [y]) => (x || "9").localeCompare(y || "9"));
+              const conFechaIds = candidatos.filter((c) => c.fecha).map((c) => c.id);
+              return (
+                <div className="border-border divide-border max-h-72 divide-y overflow-y-auto rounded-lg border text-sm">
+                  {dias.map(([dia, lista]) => {
+                    const idsDia = lista.filter((c) => c.fecha).map((c) => c.id);
+                    return (
+                      <div key={dia || "sin"}>
+                        <div className="bg-muted/60 flex flex-wrap items-center justify-between gap-1 px-3 py-1.5">
+                          <span className="text-xs font-semibold capitalize">{dia ? fmtDia(dia) : "Por programar"}</span>
+                          {dia && (
+                            <span className="flex flex-wrap gap-1">
+                              <Button type="button" size="sm" variant="ghost" className="h-7 px-2 text-xs"
+                                onClick={() => { setConservar((p) => [...new Set([...p, ...idsDia])]); setPropuesta(null); }}>
+                                Conservar día
+                              </Button>
+                              <Button type="button" size="sm" variant="ghost" className="h-7 px-2 text-xs"
+                                onClick={() => { setConservar((p) => p.filter((x) => !idsDia.includes(x))); setPropuesta(null); }}>
+                                Reprogramar día
+                              </Button>
+                              <Button type="button" size="sm" variant="outline" className="h-7 px-2 text-xs"
+                                onClick={() => {
+                                  setConservar(conFechaIds.filter((x) => !idsDia.includes(x)));
+                                  setAlcance("todo");
+                                  setDesde(dia);
+                                  setDias("1");
+                                  setPropuesta(null);
+                                }}>
+                                Solo este día
+                              </Button>
+                            </span>
+                          )}
+                        </div>
+                        <ul className="divide-border divide-y">
+                          {lista.map((c) => (
+                            <li key={c.id}>
+                              <label className={"flex items-start gap-2 px-3 py-1.5 " + (c.fecha ? "cursor-pointer" : "opacity-70")}>
+                                <input
+                                  type="checkbox"
+                                  className="mt-0.5 size-4 shrink-0"
+                                  disabled={!c.fecha}
+                                  checked={conservar.includes(c.id)}
+                                  onChange={(e) => {
+                                    setConservar((prev) => (e.target.checked ? [...prev, c.id] : prev.filter((x) => x !== c.id)));
+                                    setPropuesta(null);
+                                  }}
+                                />
+                                <span className="min-w-0">
+                                  {c.texto}
+                                  <span className="text-muted-foreground block text-xs">
+                                    {c.fecha ? `${partesColombia(c.fecha).hora} · ${conservar.includes(c.id) ? "Se conserva" : "Se reprograma"}` : "Por programar (se programa)"}
+                                  </span>
+                                </span>
+                              </label>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
+            <p className="text-muted-foreground text-xs">
+              Los que no conserves se vuelven a repartir desde «Cuándo programar». «Solo este día» deja intactos los demás días y reorganiza ese día.
+            </p>
           </div>
         </Campo>
       )}
@@ -1641,6 +1691,41 @@ function ProgramarPartidos({
         {alcance !== "todo" && (
           <p className="text-muted-foreground mt-1 text-xs">
             Del {fmtDia(rango.desde)} al {fmtDia(rango.hasta!)}
+          </p>
+        )}
+      </Campo>
+
+      <Campo
+        label="Partidos por día"
+        info="Cuántos partidos se juegan cada día de juego, sumando todas las canchas. Para que sea parejo conviene entre 5 y 6, y un número múltiplo de las canchas que uses (con 2 canchas: 4 o 6). Un equipo que solo puede un día de la semana juega 2 partidos ese día, en horas distintas; los demás, 1 por día. Nunca un equipo en dos canchas a la misma hora."
+      >
+        <div className="flex flex-wrap items-center gap-2">
+          {[4, 5, 6, 8].map((n) => (
+            <button
+              key={n}
+              type="button"
+              aria-pressed={Number(porDia) === n}
+              onClick={() => { setPorDia(String(n)); setPropuesta(null); }}
+              className={
+                "rounded-full border px-3 py-1.5 text-xs font-medium transition-colors " +
+                (Number(porDia) === n ? "bg-primary text-primary-foreground border-transparent" : "text-muted-foreground hover:bg-muted")
+              }
+            >
+              {n}
+            </button>
+          ))}
+          <div className="w-20">
+            <Input
+              inputMode="numeric"
+              value={porDia}
+              aria-label="Partidos por día"
+              onChange={(e) => { setPorDia(e.target.value.replace(/\D/g, "")); setPropuesta(null); }}
+            />
+          </div>
+        </div>
+        {canchas > 1 && canchasSel.length > 1 && Number(porDia) % canchasSel.length !== 0 && (
+          <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
+            Con {canchasSel.length} canchas conviene un número par de turnos completos: el último turno del día quedaría con una cancha vacía.
           </p>
         )}
       </Campo>

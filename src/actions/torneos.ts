@@ -3336,6 +3336,24 @@ async function completarLlaveDesdeGrupos(torneo: Torneo, categoriaId: string | n
 // ---------------------------------------------------------------------------
 // Programación de partidos (calendario del torneo) y edición de horarios
 // ---------------------------------------------------------------------------
+/**
+ * Equipo (de `equipos`) que ya juega a esa misma hora en otro partido (otra cancha), o `null`.
+ * Un equipo no puede estar en dos canchas a la vez: nunca se permite, ni a mano.
+ */
+function equipoCruzado(
+  otros: { id: string; equipo_a_id: string | null; equipo_b_id: string | null; programado_at: string | null }[],
+  equipos: (string | null)[],
+  iso: string,
+  excluir: Set<string>,
+): string | null {
+  const ms = new Date(iso).getTime();
+  for (const o of otros) {
+    if (excluir.has(o.id) || !o.programado_at || new Date(o.programado_at).getTime() !== ms) continue;
+    for (const id of equipos) if (id && (o.equipo_a_id === id || o.equipo_b_id === id)) return id;
+  }
+  return null;
+}
+
 const programarSchema = z.object({
   desde: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Elige desde qué día programar"),
   dias: z.number().int().min(1).max(30),
@@ -3351,6 +3369,8 @@ const programarSchema = z.object({
   ids: z.array(z.string().uuid()).max(500).optional(),
   /** Último día en que se programa (p. ej. domingo de «esta semana» o de «la siguiente»). */
   hasta: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  /** Partidos por día (todas las canchas). Vacío = el del calendario del torneo. */
+  por_dia: z.number().int().min(1).max(40).optional(),
   /**
    * Partidos que se dejan exactamente en este turno (los que el organizador marcó «Conservar» en la
    * propuesta o ajustó a mano). No se vuelven a sugerir; ocupan su turno y cuentan en la carga.
@@ -3457,6 +3477,20 @@ export async function programarPartidos(
     if (Number.isNaN(new Date(f.programado_at).getTime())) return { success: false, error: "Fecha inválida en un partido conservado." };
     if (turnosFijos.has(llave)) return { success: false, error: "Dos partidos conservados quedaron a la misma hora y cancha." };
     turnosFijos.add(llave);
+    const cruzado = equipoCruzado(
+      [
+        ...todos.filter((o) => !moverIds.has(o.id) && !fijoIds.has(o.id)),
+        ...fijosFilas
+          .filter((x) => x.f.id !== f.id && x.m)
+          .map((x) => ({ id: x.f.id, equipo_a_id: x.m!.equipo_a_id, equipo_b_id: x.m!.equipo_b_id, programado_at: x.f.programado_at })),
+      ],
+      [m.equipo_a_id, m.equipo_b_id],
+      f.programado_at,
+      new Set([m.id]),
+    );
+    if (cruzado) {
+      return { success: false, error: `${nombre(cruzado)} ya juega a esa hora en otra cancha: cámbiale la hora a uno de los dos.` };
+    }
     const choca = todos.find(
       (o) => o.id !== m.id && o.programado_at && !moverIds.has(o.id) && !fijoIds.has(o.id) &&
         `${new Date(o.programado_at).getTime()}|${o.cancha ?? 1}` === llave,
@@ -3491,6 +3525,7 @@ export async function programarPartidos(
     desde: parsed.data.desde,
     diasDeJuego: parsed.data.dias,
     hasta: parsed.data.hasta,
+    porDia: parsed.data.por_dia,
     calendario: leerReglas(torneo.reglas).calendario,
     canchas: torneo.cantidad_canchas,
     canchasUsar: parsed.data.canchas,
@@ -3609,6 +3644,24 @@ export async function editarHorarioEncuentro(
     if (choque && choque.length > 0) {
       return { success: false, error: "Ya hay otro partido en esa cancha a esa hora." };
     }
+    if (e.equipo_a_id || e.equipo_b_id) {
+      const { data: mismaHora } = await svc
+        .from("encuentros")
+        .select("id, equipo_a_id, equipo_b_id, programado_at")
+        .eq("torneo_id", e.torneo_id)
+        .eq("programado_at", programado_at)
+        .neq("id", e.id);
+      const cruzado = equipoCruzado(
+        (mismaHora as { id: string; equipo_a_id: string | null; equipo_b_id: string | null; programado_at: string | null }[]) ?? [],
+        [e.equipo_a_id, e.equipo_b_id],
+        programado_at,
+        new Set(),
+      );
+      if (cruzado) {
+        const { data: eq } = await svc.from("equipos_torneo").select("nombre").eq("id", cruzado).maybeSingle();
+        return { success: false, error: `${(eq as { nombre: string } | null)?.nombre ?? "Un equipo"} ya juega a esa hora en otra cancha.` };
+      }
+    }
   }
 
   const { error } = await svc
@@ -3663,6 +3716,19 @@ export async function intercambiarHorarios(
   }
   if (!a.programado_at && !b.programado_at) {
     return { success: false, error: "Ninguno de los dos tiene horario." };
+  }
+
+  // Un equipo no puede quedar en dos canchas a la misma hora.
+  const { data: otrosData } = await svc
+    .from("encuentros")
+    .select("id, equipo_a_id, equipo_b_id, programado_at")
+    .eq("torneo_id", a.torneo_id)
+    .not("programado_at", "is", null);
+  const otros = (otrosData as { id: string; equipo_a_id: string | null; equipo_b_id: string | null; programado_at: string | null }[]) ?? [];
+  for (const [m, nuevo] of [[a, b.programado_at], [b, a.programado_at]] as const) {
+    if (nuevo && equipoCruzado(otros, [m.equipo_a_id, m.equipo_b_id], nuevo, new Set([a.id, b.id]))) {
+      return { success: false, error: "Un equipo quedaría jugando a la misma hora en dos canchas. Elige otro partido." };
+    }
   }
 
   // Dos pasos: primero se libera el turno de `a` (evita chocar con algún índice de turno único).
@@ -3819,6 +3885,21 @@ export async function programarDia(
   for (const [i, t] of turnos.entries()) {
     if (ocupadosOtros.has(`${new Date(inicios[i]).getTime()}|${t.cancha}`)) {
       return { success: false, error: `A las ${t.hora} esa cancha ya está ocupada por otro partido.` };
+    }
+  }
+
+  // Un equipo no puede jugar a la misma hora en dos canchas (ni contra lo que no se mueve).
+  const nombresPorId = (id: string) => nombre(id);
+  for (const [i, t] of turnos.entries()) {
+    const otrosTurnos = turnos
+      .map((x, j) => ({ id: `t${j}`, equipo_a_id: x.equipoAId, equipo_b_id: x.equipoBId, programado_at: inicios[j] }))
+      .filter((x) => x.id !== `t${i}`);
+    const fuera = todos
+      .filter((m) => m.programado_at && !mover.includes(m.id))
+      .map((m) => ({ id: m.id, equipo_a_id: m.equipo_a_id, equipo_b_id: m.equipo_b_id, programado_at: m.programado_at }));
+    const cruzado = equipoCruzado([...otrosTurnos, ...fuera], [t.equipoAId, t.equipoBId], inicios[i], new Set());
+    if (cruzado) {
+      return { success: false, error: `A las ${t.hora}: ${nombresPorId(cruzado)} ya juega a esa hora en otra cancha.` };
     }
   }
 
