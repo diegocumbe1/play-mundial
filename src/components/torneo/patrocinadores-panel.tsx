@@ -25,8 +25,10 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { formatCOP } from "@/lib/torneos";
+import { BannerPatrocinadores } from "@/components/torneo/patrocinadores-banner";
+import { FranjaPatrocinadores } from "@/components/torneo/patrocinadores-publicos";
 import { cn } from "@/lib/utils";
-import type { PatrocinadorTorneo } from "@/types";
+import type { PatrocinadorPublico, PatrocinadorTorneo } from "@/types";
 
 const ROLES: { value: PatrocinadorTorneo["rol"]; label: string }[] = [
   { value: "organiza", label: "Organiza" },
@@ -55,7 +57,16 @@ export function PatrocinadoresPanel({
   const [pending, startTransition] = useTransition();
   const [editando, setEditando] = useState<PatrocinadorTorneo | null>(null);
   const [nuevo, setNuevo] = useState(false);
+  const [previa, setPrevia] = useState(false);
+  /** Vista previa: con los borradores (cómo quedaría todo) o solo lo publicado (cómo se ve hoy). */
+  const [conBorradores, setConBorradores] = useState(true);
   const publicados = patrocinadores.filter((p) => p.estado === "publicado" && p.logo_url).length;
+
+  const deLaPrevia: PatrocinadorPublico[] = patrocinadores
+    .filter((p) => p.logo_url && (conBorradores || p.estado === "publicado"))
+    .map((p) => ({ id: p.id, nombre: p.nombre, rol: p.rol, logo_url: p.logo_url, enlace: p.enlace }));
+  const borradoresConLogo = patrocinadores.filter((p) => p.estado === "borrador" && p.logo_url);
+  const alPublico = mostrar ? publicados : 0;
 
   function alternarVisibilidad() {
     startTransition(async () => {
@@ -115,11 +126,59 @@ export function PatrocinadoresPanel({
             {mostrar ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
             {mostrar ? "Ocultar todos" : "Mostrar todos"}
           </Button>
+          <Button size="sm" variant="outline" onClick={() => setPrevia((v) => !v)} aria-pressed={previa}>
+            <Eye className="size-3.5" /> {previa ? "Cerrar vista previa" : "Vista previa"}
+          </Button>
           <Button size="sm" onClick={() => setNuevo(true)}>
             <Plus className="size-3.5" /> Agregar
           </Button>
         </div>
       </div>
+      <p className={cn("rounded-xl border p-3 text-xs", alPublico > 0 ? "border-emerald-500/40 bg-emerald-500/10" : "border-border bg-muted/40")}>
+        <b>En el enlace público ahora:</b>{" "}
+        {alPublico > 0
+          ? `se ven ${alPublico} patrocinador(es) publicado(s).`
+          : !mostrar
+            ? "no se ve ninguno (están ocultos con «Ocultar todos»)."
+            : "no se ve ninguno (todos están en borrador o sin logo)."}
+        {borradoresConLogo.length > 0 && ` Hay ${borradoresConLogo.length} en borrador con logo: no salen hasta que los publiques.`}
+      </p>
+
+      {previa && (
+        <div className="border-primary/40 flex flex-col gap-3 rounded-2xl border border-dashed p-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-sm font-semibold">Vista previa privada <span className="text-muted-foreground font-normal">· solo la ves tú, no es el enlace público</span></p>
+            <Segmentado
+              value={conBorradores ? "con" : "hoy"}
+              onChange={(v) => setConBorradores(v === "con")}
+              options={[
+                { value: "con", label: "Con borradores" },
+                { value: "hoy", label: "Solo publicados (como hoy)" },
+              ]}
+            />
+          </div>
+          {deLaPrevia.length === 0 ? (
+            <p className="text-muted-foreground text-xs">Nada que mostrar: agrega patrocinadores con logo{conBorradores ? "" : " y publícalos"}.</p>
+          ) : (
+            <div className="flex flex-col gap-4 rounded-xl bg-neutral-950 p-4 text-white">
+              <div>
+                <p className="mb-2 text-[11px] uppercase tracking-wide text-white/50">Cinta bajo el título del torneo</p>
+                <BannerPatrocinadores patrocinadores={deLaPrevia} />
+              </div>
+              <div>
+                <p className="mb-2 text-[11px] uppercase tracking-wide text-white/50">Franja al final de la página</p>
+                <FranjaPatrocinadores patrocinadores={deLaPrevia} />
+              </div>
+            </div>
+          )}
+          {conBorradores && borradoresConLogo.length > 0 && (
+            <p className="text-muted-foreground text-xs">
+              En borrador (solo se ven aquí): {borradoresConLogo.map((p) => p.nombre).join(", ")}.
+            </p>
+          )}
+        </div>
+      )}
+
       {!mostrar && (
         <p className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-3 text-xs">
           Los patrocinadores están <b>ocultos</b>: no se ven en la página del torneo ni en la TV. No se borró nada;

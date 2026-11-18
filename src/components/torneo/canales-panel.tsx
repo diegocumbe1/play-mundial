@@ -89,6 +89,24 @@ export function CanalesPanel({
     });
   }
 
+  /** Prepara de una vez todas las canchas que aún no tienen enlaces, cada una con su propia sala. */
+  function prepararTodas(faltantes: number[]) {
+    const resumen = faltantes
+      .map((n) => `• ${nombreCancha(n)}: ${ordenDeCancha(n).conFecha.length} partido(s) con hora`)
+      .join("\n");
+    if (!confirm(`¿Crear los enlaces de TV y juez de todas las canchas?\n\n${resumen}\n\nCada cancha tiene sus propios enlaces y solo carga sus partidos.`)) return;
+    startTransition(async () => {
+      let ok = 0;
+      for (const n of faltantes) {
+        const r = await prepararCanalMarcador(torneoId, n);
+        if (r.success) ok++;
+        else toast.error(`${nombreCancha(n)}: ${r.error}`);
+      }
+      if (ok > 0) toast.success(`Enlaces listos en ${ok} cancha(s)`);
+      await recargar_lista();
+    });
+  }
+
   function cargar(canal: CanalVista, encuentroId?: string) {
     startTransition(async () => {
       let r = await cargarPartidoCanal(canal.id, { encuentroId });
@@ -153,6 +171,18 @@ export function CanalesPanel({
           botón «Siguiente partido →» del juez o desde aquí; los enlaces no cambian.
         </p>
       </div>
+
+      {canales !== null &&
+        (() => {
+          const faltantes = Array.from({ length: canchas }, (_, i) => i + 1).filter(
+            (n) => !canales.some((x) => x.cancha === n),
+          );
+          return faltantes.length > 1 ? (
+            <Button size="sm" className="self-start" disabled={pending} onClick={() => prepararTodas(faltantes)}>
+              Preparar enlaces de todas las canchas ({faltantes.length})
+            </Button>
+          ) : null;
+        })()}
 
       {canales === null ? (
         <p className="text-muted-foreground text-xs">Cargando…</p>
