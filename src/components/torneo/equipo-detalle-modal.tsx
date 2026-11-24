@@ -309,6 +309,37 @@ function AjusteTabla({
           Úsalo cuando un equipo se retiró y este quedó con un partido de más que los demás. Solo cambia PJ y PG:
           los puntos y los sets no se tocan. Escribe -1 para restar uno.
         </p>
+        <details className="mt-1.5 text-xs">
+          <summary className="text-primary cursor-pointer font-medium">Cómo se usa, paso a paso</summary>
+          <div className="text-muted-foreground mt-1.5 flex flex-col gap-2">
+            <p>
+              <b className="text-foreground">¿Cuándo?</b> Un equipo se retira, pero ya había jugado contra este. Ese
+              partido se conserva (el rival no pierde lo que ganó), así que este equipo queda con un partido y una
+              victoria más que los demás del grupo.
+            </p>
+            <ol className="list-decimal space-y-0.5 pl-4">
+              <li>Mira en la tabla cuántos PJ y PG tiene este equipo comparado con los demás.</li>
+              <li>
+                En «Partidos jugados» escribe <b className="text-foreground">-1</b> para que cuente uno menos. Haz lo
+                mismo en «Partidos ganados» si ese partido fue una victoria (o no lo toques si fue una derrota).
+              </li>
+              <li>Revisa la línea «Quedará»: PG + PP debe sumar PJ.</li>
+              <li>Pulsa «Guardar ajuste». La tabla se actualiza sola, también la que ven los visitantes.</li>
+            </ol>
+            <p>
+              <b className="text-foreground">Ejemplo:</b> tenía PJ 4 · PG 2 · PP 2. Con PJ -1 y PG -1 queda PJ 3 · PG 1
+              · PP 2. Sus puntos y sus sets siguen igual.
+            </p>
+            <p>
+              <b className="text-foreground">Para deshacerlo:</b> «Quitar ajuste». Vuelve a mostrar lo que dicen los
+              partidos jugados.
+            </p>
+            <p>
+              <b className="text-foreground">Ojo:</b> este ajuste no cambia los puntos ni los sets, solo cuántos
+              partidos jugó y ganó. Sirve para que la tabla no engañe, no para quitarle puntos al equipo.
+            </p>
+          </div>
+        </details>
       </div>
       <div className="grid grid-cols-2 gap-2">
         <label className="flex flex-col gap-1 text-xs">
