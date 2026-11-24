@@ -1223,6 +1223,51 @@ export async function actualizarEquipoTorneo(
   return { success: true, data: undefined };
 }
 
+/**
+ * Ajuste manual de lo que la tabla muestra de un equipo: cuántos PJ y PG se le suman (negativo = resta).
+ * No toca puntos, sets ni partidos; se guarda en `reglas.tabla.ajustes`. Valor absoluto: 0 y 0 lo quita.
+ * Sirve cuando un equipo se retira y su rival se queda con un partido de más que los demás del grupo.
+ */
+export async function ajustarTablaEquipo(
+  torneoId: string,
+  equipoId: string,
+  ajuste: { pj: number; pg: number },
+): Promise<ActionResult> {
+  const acceso = await accesoTorneos();
+  if (!acceso.ok) return { success: false, error: acceso.error };
+
+  const parsed = z
+    .object({ pj: z.number().int().min(-50).max(50), pg: z.number().int().min(-50).max(50) })
+    .safeParse(ajuste);
+  if (!parsed.success) return { success: false, error: "Escribe números enteros entre -50 y 50." };
+
+  const torneo = await torneoDelUsuario(torneoId, acceso.membership);
+  if (!torneo) return { success: false, error: "No autorizado" };
+
+  const svc = createServiceRoleClient();
+  const { data: equipo } = await svc
+    .from("equipos_torneo")
+    .select("id")
+    .eq("id", equipoId)
+    .eq("torneo_id", torneoId)
+    .maybeSingle();
+  if (!equipo) return { success: false, error: "Equipo no encontrado en este torneo" };
+
+  const reglas = leerReglas(torneo.reglas);
+  const ajustes = { ...reglas.tabla.ajustes };
+  if (parsed.data.pj === 0 && parsed.data.pg === 0) delete ajustes[equipoId];
+  else ajustes[equipoId] = parsed.data;
+
+  const { error } = await svc
+    .from("torneos")
+    .update({ reglas: { ...reglas, tabla: { ...reglas.tabla, ajustes } } })
+    .eq("id", torneoId);
+  if (error) return { success: false, error: error.message };
+
+  revalidarTorneo(torneo);
+  return { success: true, data: undefined };
+}
+
 /** Cambia el estado de un equipo verificando pertenencia y cupo. */
 /** Equipos que ya no juegan (retirados o rechazados): no aparecen en tablas ni clasifican. */
 async function idsFueraDeJuego(torneoId: string): Promise<Set<string>> {

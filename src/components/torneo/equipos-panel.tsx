@@ -720,6 +720,7 @@ export function EquiposPanel({
         categorias={categorias}
         encuentros={encuentros}
         retiradoIds={fueraDeJuego}
+        torneoId={torneo.id}
         tablaReglas={tablaReglas}
         nombresCanchas={nombresCanchas}
       />

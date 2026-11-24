@@ -1,12 +1,18 @@
 "use client";
 
 import { Radio } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { useState, useTransition } from "react";
+import { toast } from "sonner";
 
+import { ajustarTablaEquipo } from "@/actions/torneos";
+import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { formatFechaHoraCO } from "@/lib/fecha-co";
 import { nombreCancha } from "@/lib/torneo-avisos-reglas";
 import { calcularTabla, etiquetaLugar, labelFase, ORDEN_FASES, resultadoPartido } from "@/lib/torneo-fixture";
 import type { ReglasTorneo } from "@/lib/torneo-reglas";
+import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import type { EncuentroPublico, FaseEncuentro } from "@/types";
 
@@ -25,6 +31,7 @@ export function EquipoDetalleModal({
   tablaReglas,
   nombresCanchas = [],
   onAbrirPartido,
+  torneoId,
 }: {
   equipoId: string | null;
   onCerrar: () => void;
@@ -37,6 +44,8 @@ export function EquipoDetalleModal({
   nombresCanchas?: string[];
   /** Solo en el panel del organizador: abre el partido para cargar resultado u horario. */
   onAbrirPartido?: (e: EncuentroPublico) => void;
+  /** Solo en el panel del organizador: habilita «Ajuste de tabla» (PJ / PG). */
+  torneoId?: string;
 }) {
   if (!equipoId) return null;
   const suyos = encuentros.filter((e) => e.equipo_a_id === equipoId || e.equipo_b_id === equipoId);
@@ -198,6 +207,15 @@ export function EquipoDetalleModal({
                 </tbody>
               </table>
             </div>
+            {torneoId && (
+              <AjusteTabla
+                key={equipoId}
+                torneoId={torneoId}
+                equipoId={equipoId}
+                actual={tablaReglas.ajustes?.[equipoId] ?? { pj: 0, pg: 0 }}
+                fila={fila}
+              />
+            )}
           </section>
         )}
 
@@ -224,5 +242,106 @@ export function EquipoDetalleModal({
         )}
       </DialogContent>
     </Dialog>
+  );
+}
+
+/**
+ * Solo para el organizador. Corrige lo que la tabla MUESTRA de este equipo (PJ y PG) sin tocar sus
+ * puntos, sus sets ni a los demás equipos. Útil cuando un equipo se retira y su rival se queda con
+ * un partido de más. Se guarda como diferencia: -1 = «un partido menos».
+ */
+function AjusteTabla({
+  torneoId,
+  equipoId,
+  actual,
+  fila,
+}: {
+  torneoId: string;
+  equipoId: string;
+  actual: { pj: number; pg: number };
+  fila: { pj: number; pg: number; pp: number };
+}) {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+  const [abierto, setAbierto] = useState(actual.pj !== 0 || actual.pg !== 0);
+  const [pj, setPj] = useState(String(actual.pj));
+  const [pg, setPg] = useState(String(actual.pg));
+
+  const nPj = Number.parseInt(pj, 10);
+  const nPg = Number.parseInt(pg, 10);
+  const valido = Number.isInteger(nPj) && Number.isInteger(nPg);
+  const hayAjuste = actual.pj !== 0 || actual.pg !== 0;
+  const sinCambios = valido && nPj === actual.pj && nPg === actual.pg;
+  // La fila ya trae el ajuste guardado: se le quita y se le pone el nuevo para ver cómo quedaría.
+  const vistaPj = valido ? Math.max(0, fila.pj - actual.pj + nPj) : null;
+  const vistaPg = valido ? Math.max(0, fila.pg - actual.pg + nPg) : null;
+
+  function guardar(a: { pj: number; pg: number }) {
+    startTransition(async () => {
+      const r = await ajustarTablaEquipo(torneoId, equipoId, a);
+      if (!r.success) return void toast.error(r.error);
+      toast.success(a.pj === 0 && a.pg === 0 ? "Ajuste quitado" : "Ajuste guardado");
+      if (a.pj === 0 && a.pg === 0) {
+        setPj("0");
+        setPg("0");
+      }
+      router.refresh();
+    });
+  }
+
+  if (!abierto) {
+    return (
+      <button
+        type="button"
+        onClick={() => setAbierto(true)}
+        className="text-muted-foreground hover:text-foreground self-start text-xs underline underline-offset-2"
+      >
+        Ajustar PJ / PG en la tabla
+      </button>
+    );
+  }
+
+  return (
+    <div className="border-border flex flex-col gap-2 rounded-xl border border-dashed p-3">
+      <div>
+        <p className="text-sm font-semibold">Ajuste de tabla</p>
+        <p className="text-muted-foreground text-xs">
+          Úsalo cuando un equipo se retiró y este quedó con un partido de más que los demás. Solo cambia PJ y PG:
+          los puntos y los sets no se tocan. Escribe -1 para restar uno.
+        </p>
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <label className="flex flex-col gap-1 text-xs">
+          Partidos jugados (PJ)
+          <Input type="number" inputMode="numeric" step={1} min={-50} max={50} value={pj} onChange={(e) => setPj(e.target.value)} />
+        </label>
+        <label className="flex flex-col gap-1 text-xs">
+          Partidos ganados (PG)
+          <Input type="number" inputMode="numeric" step={1} min={-50} max={50} value={pg} onChange={(e) => setPg(e.target.value)} />
+        </label>
+      </div>
+      <p className="text-xs">
+        {vistaPj !== null && vistaPg !== null ? (
+          <>
+            Quedará: <b>PJ {vistaPj} · PG {vistaPg}</b> · PP {fila.pp}
+            {vistaPg + fila.pp !== vistaPj && (
+              <span className="text-amber-600 dark:text-amber-400"> — PG + PP no suma PJ; revisa los números.</span>
+            )}
+          </>
+        ) : (
+          <span className="text-destructive">Escribe números enteros.</span>
+        )}
+      </p>
+      <div className="flex flex-wrap gap-2">
+        <Button type="button" size="sm" disabled={pending || !valido || sinCambios} onClick={() => guardar({ pj: nPj, pg: nPg })}>
+          {pending ? "Guardando…" : "Guardar ajuste"}
+        </Button>
+        {hayAjuste && (
+          <Button type="button" size="sm" variant="outline" disabled={pending} onClick={() => guardar({ pj: 0, pg: 0 })}>
+            Quitar ajuste
+          </Button>
+        )}
+      </div>
+    </div>
   );
 }
