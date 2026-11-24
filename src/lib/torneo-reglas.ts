@@ -64,6 +64,20 @@ export const reglasSchema = z.object({
       /** Equipos de cada grupo que pasan a eliminatorias (los de verde en la tabla). */
       clasifican: entero(1).default(2),
       /**
+       * Ajustes manuales por equipo (id del equipo → cuántos PJ / PG se le restan o suman en la tabla).
+       * Solo cambia lo que se muestra y el desempate por PG: los puntos y los sets no se tocan.
+       * Ej.: `{ "<id>": { pj: -1, pg: -1 } }` = «para la tabla jugó un partido menos y ganó uno menos».
+       */
+      ajustes: z
+        .record(
+          z.string(),
+          z.object({
+            pj: z.number().int().min(-50).max(50).default(0),
+            pg: z.number().int().min(-50).max(50).default(0),
+          }),
+        )
+        .default({}),
+      /**
        * Zona de consolación (opcional): los equipos en estas posiciones de cada grupo se pintan de
        * naranja. No pasan a eliminatorias; sirve para armar APARTE un mini torneo entre ellos que
        * no afecta las posiciones ni las eliminatorias. Cada torneo decide si la usa y cuáles.

@@ -209,6 +209,14 @@ export function calcularTabla(
     }
   }
 
+  // Ajustes manuales del organizador (ver `reglas.tabla.ajustes`): solo PJ y PG, nunca por debajo de 0.
+  for (const [equipoId, aj] of Object.entries(tabla.ajustes ?? {})) {
+    const f = filas.get(equipoId);
+    if (!f) continue;
+    f.pj = Math.max(0, f.pj + aj.pj);
+    f.pg = Math.max(0, f.pg + aj.pg);
+  }
+
   const ganoEntreEllos = (x: string, y: string): number => {
     const e = jugados.find(
       (m) =>
