@@ -1,0 +1,685 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Demo · Torneo Navideño Arena Viva</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Figtree:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  /* Panel del organizador: fondo casi negro, superficies grafito, amarillo de
+     marca para la acción. Escenario 9:16: título arriba, celular abajo. */
+  --fondo: #0B0D12;
+  --sup: #161A22;
+  --sup-2: #1E232D;
+  --linea: #2A303B;
+  --texto: #EEF0F3;
+  --tenue: #98A1AE;
+  --oro: #F5C518;
+  --tinta: #1A1400;
+  --verde: #10B981;
+  --naranja: #F59E0B;
+  --rojo: #EF4444;
+  --cielo: #38BDF8;
+  --display: "Bricolage Grotesque", "Arial Black", system-ui, sans-serif;
+  --body: "Figtree", system-ui, -apple-system, "Segoe UI", sans-serif;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; margin: 0; }
+html, body { height: 100%; }
+body { background: #050608; color: var(--texto); font-family: var(--body);
+  display: flex; flex-direction: column; align-items: center; gap: 14px; padding: 16px; }
+
+.stage { position: relative; height: min(86vh, 900px); aspect-ratio: 9 / 16; max-width: calc(100vw - 32px);
+  border-radius: 28px; overflow: hidden; container-type: size;
+  background: radial-gradient(circle at 15% 8%, rgba(245,197,24,.13), transparent 42%),
+              radial-gradient(circle at 90% 85%, rgba(56,189,248,.08), transparent 45%), var(--fondo);
+  box-shadow: 0 20px 60px rgba(0,0,0,.5); }
+body.grabando { padding: 0; background: var(--fondo); justify-content: center; }
+body.grabando .stage { height: 100vh; border-radius: 0; max-width: 100vw; box-shadow: none; }
+body.grabando .controles, body.grabando .nota { display: none; }
+
+.barras { position: absolute; top: 3cqh; left: 5cqw; right: 5cqw; display: flex; gap: 1cqw; z-index: 5; }
+.barras span { flex: 1; height: .45cqh; border-radius: 9px; background: rgba(238,240,243,.18); overflow: hidden; }
+.barras span b { display: block; height: 100%; width: 0; background: var(--oro); }
+
+.titulo { position: absolute; top: 5.4cqh; left: 6cqw; right: 6cqw; z-index: 5; }
+.paso { font: 700 2.9cqw/1 var(--body); letter-spacing: .14em; text-transform: uppercase; color: var(--oro); }
+.titulo h1 { font: 800 7.2cqw/1.02 var(--display); margin-top: 1.1cqh; text-wrap: balance; }
+.titulo p { font: 500 3.4cqw/1.3 var(--body); color: var(--tenue); margin-top: .9cqh; text-wrap: balance; }
+
+.cel { position: absolute; left: 50%; bottom: -3cqh; transform: translateX(-50%); width: 80cqw; height: 69cqh;
+  border-radius: 7cqw 7cqw 0 0; border: 1.2cqw solid #000; border-bottom: 0; background: var(--fondo); overflow: hidden;
+  box-shadow: 0 0 0 .4cqw #2b2f37, 0 -10px 40px rgba(0,0,0,.45); }
+.cel::before { content: ""; position: absolute; top: 1.2cqh; left: 50%; transform: translateX(-50%); width: 22cqw; height: 2.6cqh; background: #000; border-radius: 99px; z-index: 30; }
+.pantalla { position: absolute; inset: 0; padding: 5.4cqh 3.4cqw 3cqh; opacity: 0; transition: opacity .45s ease; font-size: 2.8cqw; }
+.pantalla.on { opacity: 1; }
+
+.dedo { position: absolute; width: 9cqw; height: 9cqw; border-radius: 50%; background: rgba(238,240,243,.85);
+  border: .6cqw solid rgba(0,0,0,.4); box-shadow: 0 4px 14px rgba(0,0,0,.5); z-index: 40; opacity: 0;
+  pointer-events: none; transform: translate(-50%,-50%); }
+.dedo.toca { animation: toca .5s ease; }
+@keyframes toca { 40% { transform: translate(-50%,-50%) scale(.78); background: var(--oro); } }
+
+.toast { position: absolute; left: 50%; bottom: 3cqh; transform: translate(-50%, 180%); z-index: 35; max-width: 92%;
+  background: #fff; color: #111; font-weight: 600; font-size: 2.7cqw; border-radius: 2cqw; padding: 1.2cqh 3cqw;
+  display: flex; gap: 1.6cqw; align-items: center; box-shadow: 0 8px 24px rgba(0,0,0,.4); transition: transform .4s cubic-bezier(.2,.9,.3,1.2); }
+.toast.ver { transform: translate(-50%, 0); }
+.toast i { flex: none; width: 4cqw; height: 4cqw; border-radius: 50%; background: var(--verde); color: #fff; display: grid; place-items: center; font-style: normal; font-size: 2.4cqw; }
+
+/* Encabezado del torneo y pestañas */
+.cab h2 { font: 800 4.3cqw/1.1 var(--display); }
+.cab .meta { color: var(--tenue); font-size: 2.3cqw; margin-top: .4cqh; }
+.chip { display: inline-block; padding: .25cqh 1.8cqw; border-radius: 99px; font-size: 2.1cqw; font-weight: 700; vertical-align: middle; }
+.chip.bor { background: rgba(56,189,248,.15); color: #7DD3FC; }
+.chip.ins { background: rgba(16,185,129,.18); color: #6EE7B7; }
+.chip.pen { background: rgba(245,158,11,.18); color: #FCD34D; }
+.chip.cat { background: var(--sup-2); color: var(--texto); }
+.chip.vivo { background: rgba(239,68,68,.18); color: #FCA5A5; }
+.tabs { display: flex; gap: 2.6cqw; border-bottom: 1px solid var(--linea); margin: 1.4cqh 0 1.4cqh; font-size: 2.3cqw; color: var(--tenue); white-space: nowrap; overflow: hidden; }
+.tabs span { padding-bottom: .8cqh; }
+.tabs .si { color: var(--oro); border-bottom: 2px solid var(--oro); }
+
+.caja { background: var(--sup); border: 1px solid var(--linea); border-radius: 2.4cqw; padding: 1.3cqh 2.6cqw; margin-bottom: 1.2cqh; }
+.caja > .t { font-weight: 700; font-size: 2.8cqw; margin-bottom: .9cqh; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1cqh 2cqw; }
+.grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1cqh 1.6cqw; }
+.campo small { display: block; color: var(--tenue); font-size: 2.1cqw; margin-bottom: .4cqh; }
+.input { border: 1px solid var(--linea); border-radius: 1.6cqw; padding: .8cqh 2cqw; min-height: 3.9cqh; font-size: 2.7cqw; background: var(--fondo); color: var(--texto); display: flex; align-items: center; }
+.input.foco { border-color: var(--oro); box-shadow: 0 0 0 .5cqw rgba(245,197,24,.25); }
+.ph { color: #5d6573; }
+.cursor { display: inline-block; width: 2px; height: 1em; background: var(--oro); vertical-align: -.15em; animation: parpadea .8s infinite; }
+@keyframes parpadea { 50% { opacity: 0; } }
+.seg { display: inline-flex; gap: .8cqw; border: 1px solid var(--linea); border-radius: 1.8cqw; padding: .5cqw; }
+.seg span { padding: .7cqh 2.2cqw; border-radius: 1.2cqw; font-size: 2.4cqw; color: var(--tenue); font-weight: 600; transition: background .25s, color .25s; }
+.seg span.si { background: var(--oro); color: var(--tinta); }
+.check { display: flex; align-items: center; gap: 1.6cqw; font-size: 2.5cqw; }
+.check i { width: 3.2cqw; height: 3.2cqw; border-radius: .8cqw; border: 1px solid var(--tenue); display: grid; place-items: center; font-style: normal; font-size: 2.2cqw; color: transparent; transition: background .2s; }
+.check.si i { background: var(--cielo); border-color: var(--cielo); color: #002; }
+.btn { border-radius: 1.8cqw; padding: .9cqh 2.6cqw; font-weight: 700; font-size: 2.6cqw; display: inline-flex; align-items: center; justify-content: center; gap: 1cqw; border: 1px solid var(--linea); background: var(--sup-2); color: var(--texto); white-space: nowrap; }
+.btn.prim { background: var(--oro); color: var(--tinta); border-color: var(--oro); }
+.btn.full { width: 100%; }
+.fila { display: flex; gap: 1.6cqw; align-items: center; }
+.aviso { font-size: 2.3cqw; line-height: 1.35; margin-top: .8cqh; }
+.aviso.am { color: #FCD34D; } .aviso.ok { color: #6EE7B7; } .aviso.az { color: #7DD3FC; }
+.tenue { color: var(--tenue); }
+
+/* modal */
+.velo { position: absolute; inset: 0; background: rgba(0,0,0,.62); }
+.modal { position: absolute; left: 2.4cqw; right: 2.4cqw; top: 6.5cqh; background: var(--sup); border: 1px solid var(--linea); border-radius: 3.4cqw; padding: 1.8cqh 3.4cqw; }
+.modal h3 { font: 800 4cqw/1.1 var(--display); text-transform: uppercase; letter-spacing: .02em; }
+.modal .desc { color: var(--tenue); font-size: 2.4cqw; margin: .5cqh 0 1.4cqh; line-height: 1.3; }
+.pie { display: flex; gap: 1.6cqw; justify-content: flex-end; border-top: 1px solid var(--linea); margin: 1.6cqh -3.4cqw -1.8cqh; padding: 1.4cqh 3.4cqw; }
+
+/* jugadores */
+.jug { background: var(--sup-2); border-radius: 1.8cqw; padding: .9cqh 2cqw; margin-bottom: .8cqh; }
+.jug .fila + .fila { margin-top: .7cqh; }
+.jug .n { width: 3cqw; color: var(--tenue); font-weight: 700; font-size: 2.3cqw; }
+.mini { font-size: 2.3cqw; }
+
+/* equipos */
+.equipo { border: 1px solid var(--linea); border-radius: 2cqw; padding: 1.1cqh 2.4cqw; margin-bottom: 1cqh; }
+.equipo b { font-size: 2.9cqw; }
+.equipo .sub { color: var(--tenue); font-size: 2.2cqw; margin-top: .3cqh; }
+.equipo .acc { display: flex; gap: 1.4cqw; margin-top: .9cqh; }
+.equipo .acc .btn { font-size: 2.3cqw; padding: .7cqh 2cqw; }
+
+/* sets */
+.sets { display: grid; grid-template-columns: 1fr 12cqw 12cqw; gap: .8cqh 1.6cqw; align-items: center; font-size: 2.4cqw; }
+.sets .h { color: var(--tenue); font-size: 2.1cqw; text-align: center; }
+.sets .input { justify-content: center; font-weight: 700; font-variant-numeric: tabular-nums; }
+.juez { background: var(--sup-2); border-radius: 2cqw; padding: 1.1cqh 2.4cqw; margin-bottom: 1.2cqh; }
+.juez .t { font-weight: 700; font-size: 2.6cqw; }
+.enl { font-size: 2.3cqw; display: flex; flex-direction: column; gap: .5cqh; margin-top: .8cqh; }
+.enl span { text-decoration: underline; }
+.wa { color: var(--verde); font-weight: 600; }
+
+/* tabla y llave */
+table { width: 100%; border-collapse: collapse; font-size: 2.3cqw; }
+th { color: var(--tenue); font-weight: 500; padding: .5cqh .8cqw; text-align: center; }
+td { padding: .7cqh .8cqw; border-top: 1px solid var(--linea); text-align: center; font-variant-numeric: tabular-nums; }
+td.eq, th.eq { text-align: left; }
+tr.cl td { background: rgba(16,185,129,.07); }
+tr.cl td:first-child { color: var(--verde); font-weight: 700; }
+.partido { border: 1px solid var(--linea); border-radius: 1.8cqw; padding: .8cqh 2cqw; font-size: 2.4cqw; margin-bottom: .8cqh; }
+.partido .lado { display: flex; justify-content: space-between; }
+.partido .et { color: var(--tenue); font-size: 2cqw; margin-bottom: .3cqh; display: flex; justify-content: space-between; }
+.partido .vivo { color: #FCA5A5; font-weight: 700; }
+
+.podio { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.6cqw; text-align: center; }
+.podio div { background: var(--sup-2); border-radius: 2cqw; padding: 1.2cqh 1cqw; }
+.podio .med { font: 800 5cqw/1 var(--display); }
+.podio b { display: block; font-size: 2.5cqw; margin-top: .5cqh; }
+.podio small { color: var(--tenue); font-size: 2cqw; }
+.kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.4cqw; }
+.kpi { background: var(--sup); border: 1px solid var(--linea); border-radius: 2cqw; padding: 1cqh 2cqw; }
+.kpi small { color: var(--tenue); font-size: 2cqw; }
+.kpi b { display: block; font-size: 3.2cqw; font-variant-numeric: tabular-nums; }
+.consejo { border: 1px dashed var(--linea); border-radius: 2.2cqw; padding: 1.1cqh 2.6cqw; font-size: 2.4cqw; color: var(--tenue); line-height: 1.4; }
+.consejo b { color: var(--texto); }
+
+/* página pública en vivo */
+.pub .url { background: var(--sup-2); border-radius: 99px; padding: .6cqh 2.6cqw; font-size: 2.2cqw; color: var(--tenue); text-align: center; margin-bottom: 1.2cqh; }
+.pub h4 { font: 800 4cqw/1.1 var(--display); }
+.pub .org { color: var(--tenue); font-size: 2.2cqw; margin: .3cqh 0 1.2cqh; }
+.envivo { font-weight: 700; font-size: 2.6cqw; display: flex; align-items: center; gap: 1.4cqw; margin-bottom: .8cqh; }
+.punto { position: relative; width: 1.8cqw; height: 1.8cqw; }
+.punto::before, .punto::after { content: ""; position: absolute; inset: 0; border-radius: 50%; background: var(--rojo); }
+.punto::before { animation: ping 1.4s infinite; }
+@keyframes ping { 75%, 100% { transform: scale(2.4); opacity: 0; } }
+.marc { border: 1px solid rgba(239,68,68,.4); background: rgba(239,68,68,.06); border-radius: 2cqw; padding: 1.1cqh 2.6cqw; margin-bottom: 1.2cqh; }
+.marc .et { color: var(--tenue); font-size: 2.1cqw; display: flex; justify-content: space-between; margin-bottom: .6cqh; }
+.marc .et b { color: #FCA5A5; }
+.marc .lado { display: flex; justify-content: space-between; align-items: center; font-size: 3cqw; padding: .3cqh 0; }
+.marc .pts { display: flex; gap: 1.2cqw; font-variant-numeric: tabular-nums; }
+.marc .pts span { width: 5.4cqw; text-align: center; color: var(--tenue); }
+.marc .pts .ya { color: var(--texto); font-weight: 700; }
+.marc .pts .cur { background: rgba(239,68,68,.18); color: #FCA5A5; font-weight: 800; border-radius: 1cqw; transition: transform .2s; }
+.marc .pts .cur.sube { transform: scale(1.3); }
+.saca { color: var(--oro); font-size: 2.2cqw; margin-left: 1cqw; }
+
+.controles { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+.controles button { font: 600 14px var(--body); color: var(--texto); background: var(--sup); border: 1px solid var(--linea); border-radius: 10px; padding: 10px 14px; min-height: 44px; cursor: pointer; }
+.controles button:focus-visible { outline: 2px solid var(--oro); outline-offset: 2px; }
+.nota { color: var(--tenue); font-size: 13px; max-width: 520px; text-align: center; line-height: 1.45; }
+/* Vistas a pantalla libre (fuera del celular vertical): juez en horizontal y TV */
+.libre { position: absolute; left: 0; right: 0; top: 27cqh; bottom: 0; opacity: 0; transition: opacity .45s ease; pointer-events: none; }
+.libre.on { opacity: 1; }
+.cel { transition: opacity .45s ease; }
+.stage.sin-cel .cel { opacity: 0; }
+.team-a { --c: #2563EB; } .team-b { --c: #DC2626; }
+.horiz { position: relative; margin: 2cqh auto 0; width: 90cqw; aspect-ratio: 19.5 / 9; background: #080b12; border: 1.4cqw solid #000; border-radius: 5cqw;
+  box-shadow: 0 0 0 .4cqw #2b2f37, 0 14px 40px rgba(0,0,0,.5); overflow: hidden; display: grid; grid-template-rows: auto 1fr; }
+.horiz .bar { display: flex; align-items: center; gap: 1.6cqw; padding: .8cqh 3cqw .6cqh 5cqw; background: #131b2c; font-size: 2.2cqw; }
+.horiz .bar .info { flex: 1; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.horiz .bar .bt { background: #1b2438; border-radius: 1.2cqw; padding: .4cqh 1.8cqw; font-weight: 700; }
+.pads { display: grid; grid-template-columns: 1fr 1fr; gap: 1cqw; padding: 1cqw 1cqw 1cqw 3cqw; min-height: 0; }
+.pad { position: relative; border-radius: 2.6cqw; background: var(--c); color: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center; overflow: hidden; }
+.pad .nm { font: 800 3cqw/1 var(--body); text-transform: uppercase; letter-spacing: .03em; }
+.pad .sc { font: 900 13cqw/.9 var(--body); font-variant-numeric: tabular-nums; text-shadow: 0 .03em .08em rgba(0,0,0,.25); }
+.pad .st { font-weight: 700; font-size: 2.2cqw; opacity: .92; }
+.pad .sv { font-weight: 900; font-size: 2cqw; background: rgba(0,0,0,.4); border-radius: 99px; padding: .1em .8em; margin-bottom: .4cqh; }
+.pad .fx { position: absolute; inset: 0; display: grid; place-items: center; font: 900 12cqw/1 var(--body); opacity: 0; background: rgba(47,191,113,.45); }
+.pad.flash .fx { animation: fx .6s ease-out; }
+@keyframes fx { 0% { opacity: 1; } 100% { opacity: 0; } }
+.leyenda { display: flex; justify-content: center; gap: 3cqw; margin-top: 2.4cqh; font-size: 2.6cqw; color: var(--tenue); flex-wrap: wrap; text-align: center; }
+.leyenda b { color: var(--texto); }
+.tv { position: relative; margin: 1.5cqh auto 0; width: 94cqw; aspect-ratio: 16 / 9; background: #080b12; border: 1.3cqw solid #0d0d0f; border-radius: 1.6cqw;
+  box-shadow: 0 0 0 .3cqw #2b2f37, 0 18px 50px rgba(0,0,0,.6); padding: 1.2cqw 1.6cqw; display: grid; grid-template-rows: auto 1fr auto auto; gap: .8cqw; }
+.minij { margin-top: 1.2cqh; }
+.minij small { display: block; color: var(--tenue); font-size: 2.2cqw; margin-bottom: .6cqh; }
+.mini-h { position: relative; width: 62cqw; aspect-ratio: 19.5 / 9; margin: 0 auto; background: #080b12; border: 1cqw solid #000; border-radius: 3.4cqw;
+  box-shadow: 0 0 0 .3cqw #2b2f37; display: grid; grid-template-columns: 1fr 1fr; gap: .8cqw; padding: .8cqw .8cqw .8cqw 2.4cqw; }
+.mp { position: relative; border-radius: 1.8cqw; background: var(--c); color: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center; overflow: hidden; }
+.mp b { font-size: 2cqw; letter-spacing: .05em; }
+.mp span { font: 900 8cqw/.95 var(--body); font-variant-numeric: tabular-nums; }
+.mp i { position: absolute; inset: 0; background: rgba(47,191,113,.5); opacity: 0; }
+.mp.flash i { animation: fx .6s ease-out; }
+#dedo2 { z-index: 60; }
+.tv-pie { width: 22cqw; height: 2.4cqh; margin: 0 auto; background: linear-gradient(#1b1d22, #0d0e11); clip-path: polygon(38% 0, 62% 0, 100% 100%, 0 100%); }
+.tv .top { display: flex; justify-content: space-between; font-size: 1.7cqw; color: #a9b6cc; }
+.tv .top b { color: #f4f6fb; letter-spacing: .06em; }
+.tv .eqs { display: grid; grid-template-columns: 1fr auto 1fr; gap: 1.4cqw; min-height: 0; }
+.tv .eq { border-radius: 1.8cqw; background: var(--c); display: grid; grid-template-rows: auto 1fr auto; align-items: center; text-align: center; padding: .8cqw; transition: box-shadow .2s; }
+.tv .eq .nm { font: 800 3.2cqw/1 var(--body); text-transform: uppercase; }
+.tv .eq .sc { font: 900 15cqw/.9 var(--body); font-variant-numeric: tabular-nums; }
+.tv .eq .st { font-weight: 700; font-size: 2cqw; } .tv .eq .st b { background: rgba(0,0,0,.35); border-radius: .8cqw; padding: 0 .4em; font-size: 1.3em; }
+.tv .eq.bump .sc { animation: bump .35s ease-out; }
+.tv .eq.gana { box-shadow: 0 0 0 .7cqw #fff inset; }
+@keyframes bump { 30% { transform: scale(1.08); } }
+.tv .mid { display: flex; flex-direction: column; align-items: center; justify-content: center; min-width: 9cqw; }
+.tv .mid small { font-size: 1.6cqw; color: #a9b6cc; letter-spacing: .15em; text-transform: uppercase; }
+.tv .mid b { font: 900 7cqw/1 var(--body); }
+.tv .bot { display: flex; justify-content: center; gap: 1cqw; font-size: 1.8cqw; min-height: 1.4em; align-items: center; }
+.tv .bot .ch { background: #131b2c; border-radius: .8cqw; padding: .2em .8em; font-variant-numeric: tabular-nums; }
+.tv .bot .stt { background: #1b2438; border-radius: .8cqw; padding: .2em 1em; font-weight: 800; }
+.tv .bot .stt.won { background: #fff; color: #0d1117; }
+.tv .spon { display: flex; justify-content: center; gap: 1.4cqw; font-size: 1.5cqw; color: #a9b6cc; border-top: 1px solid #2b3854; padding-top: .5cqw; }
+.tv .spon span { border: 1px dashed #2b3854; border-radius: .6cqw; padding: .1em 1em; }
+@media (prefers-reduced-motion: reduce) { .pantalla, .toast { transition: none; } .cursor { animation: none; } }
+</style>
+</head>
+<body>
+  <div class="stage" id="stage">
+    <div class="barras" id="barras"></div>
+    <div class="dedo" id="dedo2"></div>
+    <div class="titulo">
+      <div class="paso" id="paso">Paso 1 de 10</div>
+      <h1 id="h1"></h1>
+      <p id="sub"></p>
+    </div>
+
+    <div class="cel">
+      <div class="dedo" id="dedo"></div>
+      <div class="toast" id="toast"><i>✓</i><span id="toast-txt"></span></div>
+
+      <!-- 1. Crear el torneo -->
+      <section class="pantalla on">
+        <div class="cab"><h2>Torneo Navideño Vóley Playa <span class="chip bor">Borrador</span></h2>
+          <div class="meta">Vóley playa · Arena · Organiza Arena Viva</div></div>
+        <div class="tabs"><span>Resumen</span><span>Equipos</span><span class="si">Categorías y reglas</span><span>Fixture y resultados</span></div>
+        <div class="caja">
+          <div class="t">1 · Categoría</div>
+          <div class="input" id="c-nom" style="font-weight:700;margin-bottom:1cqh"><span class="ph">Nombre de la categoría</span></div>
+          <div class="grid3">
+            <div class="campo"><small>En cancha</small><div class="input">4</div></div>
+            <div class="campo"><small>Máx. inscritos</small><div class="input">6</div></div>
+            <div class="campo"><small>Cupo de equipos</small><div class="input" id="c-cupo"><span class="ph">0</span></div></div>
+          </div>
+        </div>
+        <div class="caja">
+          <div class="t">2 · Cómo se juega</div>
+          <div class="campo"><small>Sets por partido</small><div class="seg"><span id="s-1">1 set</span><span id="s-3">Mejor de 3</span><span>Mejor de 5</span></div></div>
+          <div class="aviso tenue" id="s-txt">Elige cuántos sets tiene cada partido.</div>
+          <div class="grid2" style="margin-top:1cqh">
+            <div class="campo"><small>Puntos por set</small><div class="input">21</div></div>
+            <div class="campo"><small>Puntos del set decisivo</small><div class="input">15</div></div>
+          </div>
+        </div>
+        <span class="btn prim" id="b-cat">Guardar y redactar reglamento</span>
+      </section>
+
+      <!-- 2. Publicar y compartir -->
+      <section class="pantalla">
+        <div class="cab"><h2>Torneo Navideño Vóley Playa <span class="chip bor" id="chip2">Borrador</span></h2>
+          <div class="meta">Mixta · 8 cupos · viernes 27 de noviembre</div></div>
+        <div class="fila" style="margin:1.4cqh 0"><span class="btn">Editar</span><span class="btn prim" id="b-pub">Publicar y abrir inscripciones</span></div>
+        <div class="caja" id="enlace2" style="opacity:.25">
+          <div class="t">Enlace público</div>
+          <div class="input mini">/t/torneo-navideno-arena-viva</div>
+          <div class="fila" style="margin-top:1cqh"><span class="btn">Copiar enlace</span><span class="btn" id="b-wa2">WhatsApp</span><span class="tenue mini">Abrir</span></div>
+        </div>
+        <div class="consejo">Un solo enlace para todo: <b>inscripción, reglamento, programación, marcador en vivo y tabla</b>. Se comparte por WhatsApp o en el post de Instagram.</div>
+      </section>
+
+      <!-- 3. Inscripción pública -->
+      <section class="pantalla">
+        <div style="font-weight:700;font-size:3.4cqw;margin-bottom:1cqh">Inscribe tu equipo</div>
+        <div class="grid2">
+          <div class="campo"><small>Nombre del equipo</small><div class="input" id="i-eq"><span class="ph">Equipo 5</span></div></div>
+          <div class="campo"><small>Categoría</small><div class="input mini">Mixta · 5 cupos libres</div></div>
+        </div>
+        <div style="font-weight:700;font-size:2.8cqw;margin:1.3cqh 0 .5cqh">Jugadores del equipo</div>
+        <div class="tenue mini" style="margin-bottom:.8cqh">De 4 a 6 jugadores.</div>
+        <div class="jug"><div class="fila"><span class="n">1</span><div class="input" style="flex:1" id="j1"><span class="ph">Nombre completo</span></div></div>
+          <div class="fila"><span class="n"></span><div class="input" style="width:24cqw" id="j1d"><span class="ph">Documento</span></div><div class="seg"><span id="j1m">Mujer</span><span id="j1h">Hombre</span></div></div></div>
+        <div class="jug"><div class="fila"><span class="n">2</span><div class="input" style="flex:1">Jugadora Ejemplo</div></div>
+          <div class="fila"><span class="n"></span><div class="input" style="width:24cqw">1077845512</div><div class="seg"><span class="si">Mujer</span><span>Hombre</span></div></div></div>
+        <div class="check si" style="margin:1cqh 0"><i>✓</i><span class="mini">Acepto el reglamento y las condiciones del torneo</span></div>
+        <span class="btn prim full" id="b-ins">Inscribir equipo</span>
+      </section>
+
+      <!-- 4. Confirmar equipos -->
+      <section class="pantalla">
+        <div class="tabs" style="margin-top:0"><span>Resumen</span><span class="si">Equipos</span><span>Categorías</span><span>Fixture</span></div>
+        <div class="equipo"><b>Equipo 1</b> <span class="chip ins">Confirmado</span> <span class="chip cat">Mixta</span><div class="sub">6 jugadores</div></div>
+        <div class="equipo"><b>Equipo 2</b> <span class="chip ins">Confirmado</span> <span class="chip cat">Mixta</span><div class="sub">5 jugadores</div></div>
+        <div class="equipo"><b>Equipo 3</b> <span class="chip ins">Confirmado</span> <span class="chip cat">Mixta</span><div class="sub">4 jugadores</div></div>
+        <div class="equipo"><b>Equipo 4</b> <span class="chip pen" id="est4">Pendiente</span> <span class="chip cat">Mixta</span>
+          <div class="sub">Capitán: Jugadora Demo · 5 jugadores</div>
+          <div class="acc"><span class="btn" id="b-jug">Ver jugadores</span><span class="btn prim" id="b-conf">Confirmar</span></div></div>
+        <div class="consejo">Tú decides quién entra: revisas la lista de cada equipo y <b>confirmas su cupo</b> con un toque.</div>
+      </section>
+
+      <!-- 5. Programación -->
+      <section class="pantalla">
+        <div class="tabs" style="margin-top:0"><span>Equipos</span><span>Categorías</span><span class="si">Fixture y resultados</span></div>
+        <div class="caja">
+          <div class="fila" style="justify-content:space-between"><b style="font-size:3cqw">Mixta</b><span class="tenue mini">4 confirmados</span></div>
+          <div class="campo" style="margin-top:1cqh"><small>Formato</small><div class="seg"><span>Grupos + llave</span><span class="si">Liga</span><span>Eliminación</span></div></div>
+          <div class="grid2" style="margin-top:1cqh">
+            <div class="campo"><small>Primer partido</small><div class="input">27/11/2026</div></div>
+            <div class="campo"><small>Hora</small><div class="input">5:00 p. m.</div></div>
+          </div>
+          <div class="aviso tenue">Todos contra todos: 6 partidos, sin choques de cancha ni de equipo.</div>
+          <div style="margin-top:1.2cqh"><span class="btn prim" id="b-fix">Generar fixture</span></div>
+        </div>
+        <div id="fix5" style="opacity:0;transition:opacity .4s">
+          <div class="tenue mini" style="margin-bottom:.6cqh">VIERNES 27 DE NOVIEMBRE</div>
+          <div class="partido"><div class="et"><span>Jornada 1</span><span>5:00 p. m. · Cancha 1</span></div><div class="lado"><span>Equipo 1</span></div><div class="lado"><span>Equipo 2</span></div></div>
+          <div class="partido"><div class="et"><span>Jornada 1</span><span>5:40 p. m. · Cancha 1</span></div><div class="lado"><span>Equipo 1</span></div><div class="lado"><span>Equipo 3</span></div></div>
+          <div class="partido" id="p3"><div class="et"><span>Jornada 1</span><span><span id="hora3">6:20 p. m.</span> · Cancha 1 <span class="btn" id="b-rep" style="font-size:2cqw;padding:.3cqh 1.6cqw;margin-left:1cqw">Reprogramar</span></span></div><div class="lado"><span>Equipo 2</span></div><div class="lado"><span>Equipo 4</span></div></div>
+        </div>
+      </section>
+
+      <!-- 6. Juez -->
+      <section class="pantalla">
+        <div class="velo"></div>
+        <div class="modal">
+          <h3>Equipo 1 vs Equipo 2</h3>
+          <div class="desc">Viernes 5:00 p. m. · mejor de 3 a 21 (decisivo a 15)</div>
+          <div class="juez">
+            <div class="t">Marcador del juez</div>
+            <div class="tenue mini" style="margin:.5cqh 0 1cqh">El juez marca los puntos en vivo desde su celular. No necesita instalar nada ni tener cuenta.</div>
+            <span class="btn" id="b-abrir">Abrir marcador para el juez</span>
+            <div class="enl" id="enl6" style="display:none"><span>Juez (celular)</span><span>Pantalla / TV de la cancha</span><b class="wa" id="b-wa6">Enviar al juez por WhatsApp</b></div>
+          </div>
+          <div class="consejo">El juez toca su lado del celular: <b>1 toque suma un punto</b>, 2 toques lo restan. Si tienen una TV en la arena, el marcador se ve en grande.</div>
+        </div>
+      </section>
+
+      <!-- 7. Público en vivo -->
+      <section class="pantalla pub">
+        <div class="url">torneo-navideno-arena-viva · enlace público</div>
+        <h4>Torneo Navideño Vóley Playa</h4>
+        <div class="org">Organiza Arena Viva · El deporte nos une</div>
+        <div class="envivo"><span class="punto"></span>En vivo</div>
+        <div class="marc">
+          <div class="et"><span>5:00 p. m. · Cancha 1</span><b>● Set 3 · decisivo a 15</b></div>
+          <div class="lado"><span>Equipo 1 <span class="saca" id="saca-a">● saca</span></span><span class="pts"><span class="ya">21</span><span>18</span><span class="cur" id="pa">9</span></span></div>
+          <div class="lado"><span>Equipo 2 <span class="saca" id="saca-b" style="visibility:hidden">● saca</span></span><span class="pts"><span>17</span><span class="ya">21</span><span class="cur" id="pb">7</span></span></div>
+        </div>
+        <div class="tenue mini" style="margin-bottom:.6cqh">PRÓXIMOS</div>
+        <div class="partido"><div class="et"><span>Jornada 1</span><span>5:40 p. m.</span></div><div class="lado"><span>Equipo 1</span></div><div class="lado"><span>Equipo 3</span></div></div>
+        <div class="minij"><small>Mientras tanto, en la cancha, el juez marca desde su celular:</small>
+          <div class="mini-h"><div class="mp team-a" id="mp0"><b>EQUIPO 1</b><span id="ms0">9</span><i></i></div><div class="mp team-b" id="mp1"><b>EQUIPO 2</b><span id="ms1">7</span><i></i></div></div></div>
+      </section>
+
+      <!-- 8. Confirmar resultado -->
+      <section class="pantalla">
+        <div class="velo"></div>
+        <div class="modal">
+          <h3>Equipo 1 vs Equipo 2</h3>
+          <div class="desc">Mejor de 3 a 21 (decisivo a 15)</div>
+          <div class="juez"><span class="btn prim" id="b-traer">Traer marcador</span>
+            <div class="aviso az" id="av8" style="opacity:0">El juez terminó el partido. Revisa los sets y confirma con “Finalizar partido”.</div></div>
+          <div class="sets">
+            <span></span><span class="h">Equipo 1</span><span class="h">Equipo 2</span>
+            <span class="tenue">Set 1</span><div class="input" id="s1a"></div><div class="input" id="s1b"></div>
+            <span class="tenue">Set 2</span><div class="input" id="s2a"></div><div class="input" id="s2b"></div>
+            <span class="tenue">Set 3 (decisivo)</span><div class="input" id="s3a"></div><div class="input" id="s3b"></div>
+          </div>
+          <div class="aviso am" id="ok8">Escribe los puntos de cada set.</div>
+          <div class="pie"><span class="btn">Guardar en vivo</span><span class="btn prim" id="b-fin">Finalizar partido</span></div>
+        </div>
+      </section>
+
+      <!-- 9. Tabla -->
+      <section class="pantalla">
+        <div class="tabs" style="margin-top:0"><span>Equipos</span><span>Categorías</span><span class="si">Fixture y resultados</span></div>
+        <div class="caja" style="padding:1cqh 1.6cqw">
+          <div class="t" style="padding-left:1cqw">Posiciones · Mixta</div>
+          <table>
+            <tr><th>#</th><th class="eq">Equipo</th><th>PJ</th><th>PG</th><th>Sets</th><th>Pts</th></tr>
+            <tr class="cl"><td>1</td><td class="eq">Equipo 1</td><td>2</td><td>2</td><td>4-1</td><td><b>4</b></td></tr>
+            <tr class="cl"><td>2</td><td class="eq">Equipo 2</td><td>2</td><td>1</td><td>3-2</td><td><b>3</b></td></tr>
+            <tr><td>3</td><td class="eq">Equipo 4</td><td>1</td><td>0</td><td>0-2</td><td><b>1</b></td></tr>
+            <tr><td>4</td><td class="eq">Equipo 3</td><td>1</td><td>0</td><td>0-2</td><td><b>1</b></td></tr>
+          </table>
+        </div>
+        <span class="btn prim" id="b-elim">Generar final</span>
+        <div id="llave9" style="opacity:0;transition:opacity .4s;margin-top:1.2cqh">
+          <div class="tenue mini" style="margin-bottom:.6cqh">FINAL</div>
+          <div class="partido"><div class="et"><span>Final</span><span>vie 4 dic 6:00 p. m. · Cancha 1</span></div><div class="lado"><span>Equipo 1</span></div><div class="lado"><span>Equipo 2</span></div></div>
+        </div>
+        <div class="consejo" style="margin-top:1.2cqh">Al finalizar cada partido <b>la tabla se recalcula sola</b>. Si un partido se jugó por fuera, puedes ajustar PJ y PG a mano.</div>
+      </section>
+
+      <!-- 10. Podio -->
+      <section class="pantalla">
+        <div class="cab"><h2>Torneo Navideño Vóley Playa <span class="chip ins">Finalizado</span></h2></div>
+        <div class="caja" style="margin-top:1.2cqh">
+          <div class="t">Podio · Mixta</div>
+          <div class="podio">
+            <div><div class="med" style="color:#FBBF24">1</div><b>Equipo 1</b><small>Campeón</small></div>
+            <div><div class="med" style="color:#CBD5E1">2</div><b>Equipo 2</b><small>Subcampeón</small></div>
+            <div><div class="med" style="color:#FB923C">3</div><b>Equipo 4</b><small>Tercer puesto</small></div>
+          </div>
+        </div>
+        <div class="kpis">
+          <div class="kpi"><small>Equipos</small><b>4</b></div>
+          <div class="kpi"><small>Partidos</small><b>7</b></div>
+          <div class="kpi"><small>Sets marcados</small><b>17</b></div>
+        </div>
+        <div class="consejo" style="margin-top:1.4cqh">Todo queda en un solo lugar: <b>equipos, programación, resultados y campeones</b>. Ustedes lo gestionan desde su cuenta, con una guía paso a paso.</div>
+      </section>
+    </div>
+
+    <!-- Juez en horizontal -->
+    <section class="libre" id="v-juez">
+      <div class="horiz">
+        <div class="bar"><span class="info">Equipo 1 vs Equipo 2 · Set 2 a 21</span><span class="bt" id="j-undo">↶ Deshacer</span><span class="bt">☰</span></div>
+        <div class="pads">
+          <div class="pad team-a" id="pad0"><span class="sv" id="sv0">SACA</span><span class="nm">Equipo 1</span><span class="sc" id="js0">14</span><span class="st">SETS 1</span><span class="fx">+1</span></div>
+          <div class="pad team-b" id="pad1"><span class="sv" id="sv1" style="visibility:hidden">SACA</span><span class="nm">Equipo 2</span><span class="sc" id="js1">15</span><span class="st">SETS 0</span><span class="fx">+1</span></div>
+        </div>
+      </div>
+      <div class="leyenda"><span><b>1 toque</b> suma un punto</span><span><b>↶ Deshacer</b> si se equivoca</span><span><b>Sin app</b>: es un enlace</span></div>
+    </section>
+
+    <!-- TV de la cancha -->
+    <section class="libre" id="v-tv">
+      <div class="tv">
+        <div class="top"><b>TORNEO NAVIDEÑO · VÓLEY PLAYA</b><span>Cancha 1 · en vivo</span></div>
+        <div class="eqs">
+          <div class="eq team-a" id="tv0"><span class="nm">Equipo 1</span><span class="sc" id="ts0">16</span><span class="st">SETS <b>1</b></span></div>
+          <div class="mid"><small>Set</small><b id="tv-set">2</b><small>a 21</small></div>
+          <div class="eq team-b" id="tv1"><span class="nm">Equipo 2</span><span class="sc" id="ts1">17</span><span class="st">SETS <b id="tv-sets1">0</b></span></div>
+        </div>
+        <div class="bot"><span class="ch">Set 1 · 21-17</span><span class="stt" id="tv-st"></span></div>
+        <div class="spon"><span>Organiza</span><span>Tu patrocinador</span><span>Tu patrocinador</span><span>Tu patrocinador</span></div>
+      </div>
+      <div class="tv-pie"></div>
+      <div class="leyenda"><span><b>Cambia sola</b> de partido</span><span><b>Logos</b> de patrocinadores abajo</span><span>Con <b>voz</b> que canta el marcador</span></div>
+    </section>
+  </div>
+
+  <div class="controles">
+    <button id="b-ant" type="button">← Anterior</button>
+    <button id="b-play" type="button">Pausar</button>
+    <button id="b-sig" type="button">Siguiente →</button>
+    <button id="b-grabar" type="button">Modo grabación</button>
+  </div>
+  <p class="nota">Demo para Arena Viva con datos de ejemplo: los resultados son inventados. Para compartirla como video, activa <b>Modo grabación</b> y graba la pantalla. Toca el escenario para salir.</p>
+
+<script>
+(() => {
+  const PASOS = [
+    { h: "Crea tu torneo", p: "Categoría, cupo y cómo se juega. El reglamento se redacta solo." },
+    { h: "Publica y comparte", p: "Un enlace del torneo para mandar por WhatsApp o Instagram." },
+    { h: "Los equipos se inscriben", p: "Cada equipo registra a sus jugadores y acepta el reglamento." },
+    { h: "Confirma los equipos", p: "Revisas la lista y confirmas el cupo con un toque." },
+    { h: "Arma la programación", p: "Fechas, horas y cancha sin choques. ¿Se corre un partido? Lo reprogramas." },
+    { h: "Envía el marcador al juez", p: "Le mandas el enlace por WhatsApp. No necesita app ni cuenta." },
+    { h: "Así marca el juez", p: "Celular en horizontal: toca el lado del equipo que gana cada punto." },
+    { h: "Así se ve en la TV", p: "La pantalla de la arena muestra el marcador en grande, al instante." },
+    { h: "Todos lo ven en vivo", p: "Cada toque del juez llega al instante al celular del público." },
+    { h: "Confirma el resultado", p: "Traes el marcador del juez, revisas los sets y finalizas." },
+    { h: "La tabla se arma sola", p: "Posiciones al instante y, al cerrar la liga, la final." },
+    { h: "Cierra con el podio", p: "Campeones del Torneo Navideño, listos para publicar." },
+  ];
+  const DUR = 5600;
+  const reducido = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const $ = (id) => document.getElementById(id);
+  const dentro = [...document.querySelectorAll(".cel .pantalla")];
+  const pantallas = [...dentro.slice(0, 6), document.getElementById("v-juez"), document.getElementById("v-tv"), ...dentro.slice(6)];
+  const stage = document.getElementById("stage");
+  const cel = document.querySelector(".cel");
+  const dedo = $("dedo");
+  $("barras").innerHTML = PASOS.map(() => "<span><b></b></span>").join("");
+  const barras = [...$("barras").children];
+
+  let paso = 0, timers = [], pausado = reducido, inicio = 0;
+  const t = (fn, ms) => timers.push(setTimeout(fn, reducido ? 0 : ms));
+  const limpiar = () => { timers.forEach(clearTimeout); timers = []; };
+
+  function tocar(el, ms) {
+    t(() => {
+      const enCel = cel.contains(el);
+      const dedo = enCel ? $("dedo") : $("dedo2");
+      const a = el.getBoundingClientRect(), c = (enCel ? cel : stage).getBoundingClientRect();
+      dedo.style.left = (a.left - c.left + a.width / 2) + "px";
+      dedo.style.top = (a.top - c.top + a.height / 2) + "px";
+      dedo.style.transition = "opacity .25s"; dedo.style.opacity = 1;
+      dedo.classList.remove("toca"); void dedo.offsetWidth; dedo.classList.add("toca");
+      t(() => (dedo.style.opacity = 0), 700);
+    }, ms);
+  }
+  function escribir(el, texto, desde, cada = 80) {
+    t(() => { el.classList.add("foco"); el.innerHTML = '<span class="cursor"></span>'; }, desde - 150);
+    [...texto].forEach((_, i) => t(() => (el.innerHTML = texto.slice(0, i + 1) + '<span class="cursor"></span>'), desde + i * cada));
+    t(() => { el.textContent = texto; el.classList.remove("foco"); }, desde + texto.length * cada + 250);
+  }
+  function aviso(txt, ms) {
+    t(() => { $("toast-txt").textContent = txt; $("toast").classList.add("ver"); }, ms);
+    t(() => $("toast").classList.remove("ver"), ms + 1800);
+  }
+  const vacio = (el, ph) => (el.innerHTML = `<span class="ph">${ph}</span>`);
+  const ver = (el, si) => (el.style.opacity = si ? 1 : 0);
+
+  const ESCENAS = [
+    () => {
+      vacio($("c-nom"), "Nombre de la categoría"); vacio($("c-cupo"), "0");
+      $("s-3").classList.remove("si"); $("s-txt").textContent = "Elige cuántos sets tiene cada partido.";
+      escribir($("c-nom"), "Mixta", 700, 90);
+      escribir($("c-cupo"), "8", 1500);
+      tocar($("s-3"), 2200);
+      t(() => { $("s-3").classList.add("si"); $("s-txt").textContent = "Gana el primero que se lleve 2 sets. Si van 1-1, se juega el decisivo a 15."; }, 2400);
+      tocar($("b-cat"), 3800);
+      aviso("Torneo guardado y reglamento redactado", 4100);
+    },
+    () => {
+      $("chip2").className = "chip bor"; $("chip2").textContent = "Borrador";
+      $("enlace2").style.transition = "opacity .4s"; $("enlace2").style.opacity = .25;
+      tocar($("b-pub"), 900);
+      t(() => { $("chip2").className = "chip ins"; $("chip2").textContent = "Inscripciones abiertas"; $("enlace2").style.opacity = 1; }, 1300);
+      aviso("¡Torneo publicado! Comparte el enlace", 1300);
+      tocar($("b-wa2"), 3600);
+    },
+    () => {
+      vacio($("i-eq"), "Equipo 5"); vacio($("j1"), "Nombre completo"); vacio($("j1d"), "Documento");
+      $("j1m").classList.remove("si");
+      escribir($("i-eq"), "Equipo 4", 500, 90);
+      escribir($("j1"), "Jugadora Demo", 1300, 55);
+      escribir($("j1d"), "1075234981", 2300, 45);
+      tocar($("j1m"), 3000);
+      t(() => $("j1m").classList.add("si"), 3200);
+      tocar($("b-ins"), 4100);
+      aviso("Inscripción enviada", 4400);
+    },
+    () => {
+      $("est4").className = "chip pen"; $("est4").textContent = "Pendiente";
+      tocar($("b-jug"), 900);
+      tocar($("b-conf"), 2300);
+      t(() => { $("est4").className = "chip ins"; $("est4").textContent = "Confirmado"; }, 2550);
+      aviso("Equipo 4 confirmado · 4 equipos listos", 2550);
+    },
+    () => {
+      ver($("fix5"), 0); $("hora3").textContent = "6:20 p. m.";
+      tocar($("b-fix"), 1000);
+      aviso("Fixture generado: 6 partidos", 1300);
+      t(() => ver($("fix5"), 1), 1400);
+      tocar($("b-rep"), 3200);
+      t(() => ($("hora3").textContent = "6:10 p. m."), 3500);
+      aviso("Partido reprogramado a las 6:10 p. m.", 3600);
+    },
+    () => {
+      $("b-abrir").style.display = ""; $("enl6").style.display = "none";
+      tocar($("b-abrir"), 1000);
+      t(() => { $("b-abrir").style.display = "none"; $("enl6").style.display = "flex"; }, 1300);
+      aviso("Marcador listo: compártelo con el juez", 1300);
+      tocar($("b-wa6"), 3600);
+    },
+    () => {
+      const sc = [14, 15];
+      const pinta = () => { $("js0").textContent = sc[0]; $("js1").textContent = sc[1]; };
+      const saca = (k) => { $("sv0").style.visibility = k === 0 ? "visible" : "hidden"; $("sv1").style.visibility = k === 1 ? "visible" : "hidden"; };
+      pinta(); saca(1);
+      const punto = (k, ms) => {
+        tocar($("pad" + k), ms);
+        t(() => { sc[k]++; pinta(); saca(k); const p = $("pad" + k); p.classList.remove("flash"); void p.offsetWidth; p.classList.add("flash"); }, ms + 150);
+      };
+      punto(0, 600); punto(0, 1300); punto(1, 2000); punto(1, 2700);
+      tocar($("j-undo"), 3300);
+      t(() => { sc[1]--; pinta(); saca(0); }, 3450);
+      aviso("Punto deshecho", 3450);
+      punto(1, 4300);
+    },
+    () => {
+      const sc = [16, 17];
+      $("tv0").classList.remove("gana"); $("tv1").classList.remove("gana"); $("tv-sets1").textContent = "0";
+      const st = $("tv-st"); st.className = "stt"; st.textContent = "";
+      const pinta = () => { $("ts0").textContent = sc[0]; $("ts1").textContent = sc[1]; };
+      pinta();
+      const punto = (k, ms) => t(() => {
+        sc[k]++; pinta(); const e = $("tv" + k); e.classList.remove("bump"); void e.offsetWidth; e.classList.add("bump");
+        if (sc[1] >= 20 && sc[1] > sc[0]) { st.className = "stt"; st.textContent = "PUNTO DE SET · EQUIPO 2"; }
+      }, ms);
+      punto(0, 600); punto(1, 1200); punto(1, 1900); punto(0, 2600); punto(1, 3300); punto(1, 4000);
+      t(() => { st.className = "stt won"; st.textContent = "SET 2 PARA EQUIPO 2"; $("tv1").classList.add("gana"); $("tv-sets1").textContent = "1"; }, 4150);
+    },
+    () => {
+      const m = { pa: 9, pb: 7 };
+      Object.entries(m).forEach(([id, v]) => ($(id).textContent = v));
+      $("saca-a").style.visibility = "hidden"; $("saca-b").style.visibility = "visible";
+      $("ms0").textContent = 9; $("ms1").textContent = 7;
+      const punto = (id, ms) => { const k = id === "pa" ? 0 : 1; tocar($("mp" + k), ms - 150); t(() => {
+        m[id] += 1; const el = $(id);
+        $("ms" + k).textContent = m[id]; const mp = $("mp" + k); mp.classList.remove("flash"); void mp.offsetWidth; mp.classList.add("flash");
+        el.textContent = m[id]; el.classList.add("sube");
+        setTimeout(() => el.classList.remove("sube"), 220);
+        $("saca-a").style.visibility = id === "pa" ? "visible" : "hidden";
+        $("saca-b").style.visibility = id === "pb" ? "visible" : "hidden";
+      }, ms); };
+      [["pa", 700], ["pa", 1300], ["pb", 1900], ["pa", 2500], ["pb", 3100], ["pb", 3700], ["pa", 4300], ["pb", 4900]].forEach(([id, ms]) => punto(id, ms));
+    },
+    () => {
+      ["s1a", "s1b", "s2a", "s2b", "s3a", "s3b"].forEach((id) => ($(id).textContent = "")); ver($("av8"), 0);
+      $("ok8").className = "aviso am"; $("ok8").textContent = "Escribe los puntos de cada set.";
+      tocar($("b-traer"), 900);
+      t(() => {
+        [["s1a", 21], ["s1b", 17], ["s2a", 18], ["s2b", 21], ["s3a", 15], ["s3b", 12]].forEach(([id, v]) => ($(id).textContent = v));
+        $("av8").style.transition = "opacity .3s"; ver($("av8"), 1);
+        $("ok8").className = "aviso ok"; $("ok8").textContent = "Equipo 1 gana 2-1. Puedes finalizar el partido.";
+      }, 1300);
+      tocar($("b-fin"), 3700);
+      aviso("Partido finalizado", 4000);
+    },
+    () => {
+      ver($("llave9"), 0);
+      tocar($("b-elim"), 1500);
+      aviso("Final programada", 1800);
+      t(() => ver($("llave9"), 1), 1900);
+    },
+    () => {},
+  ];
+
+  function ir(i) {
+    limpiar();
+    paso = (i + PASOS.length) % PASOS.length;
+    pantallas.forEach((p, k) => p.classList.toggle("on", k === paso));
+    barras.forEach((b, k) => (b.firstChild.style.width = k < paso ? "100%" : "0"));
+    $("paso").textContent = `Arena Viva · Paso ${paso + 1} de ${PASOS.length}`;
+    $("h1").textContent = PASOS[paso].h;
+    $("sub").textContent = PASOS[paso].p;
+    dedo.style.opacity = 0; $("dedo2").style.opacity = 0;
+    stage.classList.toggle("sin-cel", pantallas[paso].classList.contains("libre"));
+    $("toast").classList.remove("ver");
+    ESCENAS[paso]();
+    inicio = performance.now();
+  }
+  function tick(ahora) {
+    if (!pausado) {
+      const avance = Math.min(1, (ahora - inicio) / DUR);
+      barras[paso].firstChild.style.width = (avance * 100) + "%";
+      if (avance >= 1) ir(paso + 1);
+    } else {
+      inicio = ahora - (parseFloat(barras[paso].firstChild.style.width) || 0) / 100 * DUR;
+    }
+    requestAnimationFrame(tick);
+  }
+
+  $("b-sig").onclick = () => ir(paso + 1);
+  $("b-ant").onclick = () => ir(paso - 1);
+  $("b-play").onclick = () => { pausado = !pausado; $("b-play").textContent = pausado ? "Reproducir" : "Pausar"; };
+  $("b-grabar").onclick = () => { document.body.classList.add("grabando"); pausado = false; $("b-play").textContent = "Pausar"; ir(0); };
+  $("stage").onclick = () => document.body.classList.remove("grabando");
+  if (pausado) $("b-play").textContent = "Reproducir";
+  ir(0);
+  requestAnimationFrame(tick);
+})();
+</script>
+</body>
+</html>
